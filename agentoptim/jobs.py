@@ -366,7 +366,8 @@ async def call_judge_model(
     
     # Get API key from environment, with fallback to configuration file
     api_key = os.environ.get("AGENTOPTIM_API_KEY")
-    api_base = os.environ.get("AGENTOPTIM_API_BASE", "https://api.anthropic.com/v1")
+    # api_base = os.environ.get("AGENTOPTIM_API_BASE", "https://api.anthropic.com/v1")
+    api_base = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234")
     
     if not api_key:
         # Try to load from config file
