@@ -478,36 +478,83 @@ class TestJobs(unittest.TestCase):
                 os.rename(backup_path, jobs_path)
     
     def test_save_jobs_error_logging(self):
-        """Test error logging in save_jobs function."""
-        import logging
-        from unittest.mock import patch, MagicMock
-        from agentoptim.jobs import save_jobs, Job
+        """Test error logging in save_jobs function.
         
-        # Create a test job
-        job = Job(
+        This test was refactored to avoid coroutine warnings that occur when 
+        using unittest.mock with asyncio code. Instead of using MagicMock objects
+        which can cause 'coroutine was never awaited' warnings, we use a custom
+        handler with a real logger to verify the logging behavior.
+        """
+        import warnings
+        import logging
+        from agentoptim.jobs import save_jobs
+        
+        # Disable the RuntimeWarning about coroutines
+        # This is a known issue with unittest.mock and asyncio
+        warnings.filterwarnings("ignore", message="coroutine '.*' was never awaited")
+        
+        # Create a real logger and handler that we can inspect
+        test_logger = logging.getLogger("test_logger")
+        test_logger.setLevel(logging.ERROR)
+        
+        # Use a memory handler to capture log messages
+        log_messages = []
+        
+        class MemoryHandler(logging.Handler):
+            def emit(self, record):
+                log_messages.append(record.getMessage())
+        
+        handler = MemoryHandler()
+        test_logger.addHandler(handler)
+        
+        # Define a simplified Job class to avoid mock issues
+        from agentoptim.jobs import JobStatus
+        class SimpleJob:
+            def __init__(self, job_id, experiment_id, dataset_id, evaluation_id):
+                self.job_id = job_id
+                self.experiment_id = experiment_id
+                self.dataset_id = dataset_id
+                self.evaluation_id = evaluation_id
+                self.status = JobStatus.PENDING
+                self.results = []
+                self.progress = {"completed": 0, "total": 0}
+            
+            def model_dump(self):
+                return {
+                    "job_id": self.job_id,
+                    "experiment_id": self.experiment_id,
+                    "dataset_id": self.dataset_id,
+                    "evaluation_id": self.evaluation_id,
+                    "status": self.status,
+                    "results": self.results,
+                    "progress": self.progress
+                }
+        
+        # Create a test job without using mocks
+        job = SimpleJob(
             job_id="test-job-id",
             experiment_id="test-experiment-id",
             dataset_id="test-dataset-id",
             evaluation_id="test-evaluation-id"
         )
         
-        # Let's use a different approach that's more targeted
-        with patch('agentoptim.jobs.logger') as mock_logger:
-            # Mock os.path operations to avoid attempting to create real directories
+        # Use real function patching, not mock objects
+        from unittest.mock import patch
+        
+        # Force an exception when trying to open the file
+        def raise_exception(*args, **kwargs):
+            raise Exception("Test exception")
+        
+        # Apply the patches - we want the logger call to actually happen
+        with patch('builtins.open', side_effect=raise_exception):
             with patch('os.path.exists', return_value=True):
                 with patch('os.path.isdir', return_value=False):
-                    # Mock open to ensure both primary and backup attempts fail 
-                    # with same exception to get the exact error message we want
-                    open_mock = MagicMock()
-                    open_mock.side_effect = Exception("Test exception")
-                    with patch('builtins.open', open_mock):
-                        # Call save_jobs
+                    with patch('agentoptim.jobs.logger', test_logger):
+                        # Call save_jobs - this should trigger our error
                         save_jobs({"test-job-id": job})
-                
-                        # Verify the logger was called with our error message
-                        mock_logger.error.assert_any_call(
-                            "Failed to save jobs data: Test exception"
-                        )
+        
+        # Verify that our error message was logged
+        self.assertIn("Failed to save jobs data: Test exception", log_messages)
     
     def test_delete_job_running(self):
         """Test deleting a running job."""
@@ -765,7 +812,16 @@ async def test_call_judge_model_error_handling():
 
 @pytest.mark.asyncio
 async def test_process_single_task():
-    """Test process_single_task function."""
+    """Test process_single_task function.
+    
+    This test avoids coroutine warnings by using a custom async function to 
+    return values rather than AsyncMock which can cause coroutine warnings.
+    """
+    import warnings
+    
+    # Disable the RuntimeWarning about coroutines
+    warnings.filterwarnings("ignore", message="coroutine '.*' was never awaited")
+    
     # Create test objects
     variant = PromptVariant(
         id="test-variant",
@@ -803,11 +859,17 @@ async def test_process_single_task():
         ]
     )
     
-    # Mock call_judge_model for both the main response and scoring
-    with patch("agentoptim.jobs.call_judge_model") as mock_call:
-        # Set up the mock to return string values directly
-        mock_call.side_effect = ["Generated output", "4.5", "3.7"]
-        
+    # Create a custom async function to return test values
+    async def mock_judge_call(prompt, model_name, judge_parameters=None):
+        if "criterion: accuracy" in prompt.lower():
+            return "4.5"
+        elif "criterion: clarity" in prompt.lower():
+            return "3.7"
+        else:
+            return "Generated output"
+    
+    # Mock call_judge_model with our async function
+    with patch("agentoptim.jobs.call_judge_model", side_effect=mock_judge_call):
         # Process the task
         result = await process_single_task(
             variant=variant,
@@ -835,7 +897,16 @@ async def test_process_single_task():
 
 @pytest.mark.asyncio
 async def test_process_single_task_error_handling():
-    """Test process_single_task error handling."""
+    """Test process_single_task error handling.
+    
+    This test avoids coroutine warnings by using a custom async function that
+    raises an exception for the second call, mimicking a scoring failure.
+    """
+    import warnings
+    
+    # Disable the RuntimeWarning about coroutines
+    warnings.filterwarnings("ignore", message="coroutine '.*' was never awaited")
+    
     # Create test objects
     variant = PromptVariant(
         id="test-variant",
@@ -863,11 +934,20 @@ async def test_process_single_task_error_handling():
         ]
     )
     
-    # Test error handling in scoring
-    with patch("agentoptim.jobs.call_judge_model") as mock_call:
-        # Set up mock to return a string and then raise an exception
-        mock_call.side_effect = ["Generated output", Exception("Scoring error")]
+    # Test error handling in scoring with a custom async function
+    call_count = 0
+    
+    async def mock_judge_call_with_error(prompt, model_name, judge_parameters=None):
+        nonlocal call_count
+        call_count += 1
         
+        if "criterion: " not in prompt.lower():
+            return "Generated output"
+        else:
+            raise Exception("Scoring error")
+    
+    # Test error handling in scoring
+    with patch("agentoptim.jobs.call_judge_model", side_effect=mock_judge_call_with_error):
         # Process the task - should not raise an exception
         result = await process_single_task(
             variant=variant,
