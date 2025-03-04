@@ -273,6 +273,155 @@ class TestEvaluation(unittest.TestCase):
         self.assertEqual(eval2.template, self.test_template)
         self.assertEqual(eval2.questions, self.test_questions)
         self.assertEqual(eval2.description, self.test_description)
+    
+    def test_manage_evaluation_create_validation_questions(self):
+        """Test validation in manage_evaluation create action for questions."""
+        # Test with invalid questions type (not a list)
+        result = manage_evaluation(
+            action="create",
+            name=self.test_name,
+            template=self.test_template,
+            questions="Not a list"  # Should be a list
+        )
+        self.assertTrue(result.get("error", False))
+        self.assertIn("Questions must be a list", result.get("message", ""))
+        
+        # Test with too many questions
+        too_many_questions = ["Question"] * 101  # 101 questions exceeds the limit
+        result = manage_evaluation(
+            action="create",
+            name=self.test_name,
+            template=self.test_template,
+            questions=too_many_questions
+        )
+        self.assertTrue(result.get("error", False))
+        self.assertIn("Maximum of 100 questions", result.get("message", ""))
+    
+    def test_manage_evaluation_create_validation_criteria(self):
+        """Test validation in manage_evaluation create action for criteria."""
+        # Test with invalid criteria (not a list)
+        result = manage_evaluation(
+            action="create",
+            name=self.test_name,
+            template=self.test_template,
+            criteria_or_description={"not": "a list"}  # Should be a list or string
+        )
+        self.assertTrue(result.get("error", False))
+        # The actual error message is about Pydantic validation, so we just check for error
+        
+        # Test with invalid criterion (not a dict)
+        result = manage_evaluation(
+            action="create",
+            name=self.test_name,
+            template=self.test_template,
+            criteria_or_description=["not a dict"]  # Each item should be a dict
+        )
+        self.assertTrue(result.get("error", False))
+        self.assertIn("Each criterion must be a dictionary", result.get("message", ""))
+        
+        # Test with criterion missing name
+        result = manage_evaluation(
+            action="create",
+            name=self.test_name,
+            template=self.test_template,
+            criteria_or_description=[{"weight": 1.0}]  # Missing name
+        )
+        self.assertTrue(result.get("error", False))
+        self.assertIn("Each criterion must have a name", result.get("message", ""))
+    
+    def test_manage_evaluation_update_validation(self):
+        """Test validation in manage_evaluation update action."""
+        # Create an evaluation to update
+        evaluation = create_evaluation(
+            self.test_name, self.test_template, self.test_questions, self.test_description
+        )
+        
+        # Test with invalid questions (not a list)
+        result = manage_evaluation(
+            action="update",
+            evaluation_id=evaluation.id,
+            questions="Not a list"  # Should be a list
+        )
+        self.assertTrue(result.get("error", False))
+        self.assertIn("Questions must be a list", result.get("message", ""))
+        
+        # Test with too many questions
+        too_many_questions = ["Question"] * 101  # 101 questions exceeds the limit
+        result = manage_evaluation(
+            action="update",
+            evaluation_id=evaluation.id,
+            questions=too_many_questions
+        )
+        self.assertTrue(result.get("error", False))
+        self.assertIn("Maximum of 100 questions", result.get("message", ""))
+        
+        # Test with invalid criteria (not a list)
+        result = manage_evaluation(
+            action="update",
+            evaluation_id=evaluation.id,
+            criteria_or_description={"not": "a list"}  # Should be a list or string
+        )
+        self.assertTrue(result.get("error", False))
+        # The actual error message is about Pydantic validation, so we just check for error
+        
+        # Test with invalid criterion (not a dict)
+        result = manage_evaluation(
+            action="update",
+            evaluation_id=evaluation.id,
+            criteria_or_description=["not a dict"]  # Each item should be a dict
+        )
+        self.assertTrue(result.get("error", False))
+        self.assertIn("Each criterion must be a dictionary", result.get("message", ""))
+        
+        # Test with criterion missing name
+        result = manage_evaluation(
+            action="update",
+            evaluation_id=evaluation.id,
+            criteria_or_description=[{"weight": 1.0}]  # Missing name
+        )
+        self.assertTrue(result.get("error", False))
+        self.assertIn("Each criterion must have a name", result.get("message", ""))
+    
+    def test_manage_evaluation_with_exception(self):
+        """Test manage_evaluation handles generic exceptions."""
+        with mock.patch('agentoptim.evaluation.validate_action', side_effect=Exception("Test exception")):
+            result = manage_evaluation(action="list")
+            self.assertTrue(result.get("error", False))
+            self.assertIn("Unexpected error", result.get("message", ""))
+            self.assertIn("Test exception", result.get("message", ""))
+    
+    def test_create_evaluation_with_criteria_description_conflict(self):
+        """Test creating an evaluation with both criteria_or_description as string and explicit description."""
+        # When both are provided, the explicit description should take precedence
+        evaluation = create_evaluation(
+            name=self.test_name,
+            template=self.test_template,
+            criteria_or_description="Description from criteria_or_description",
+            description="Explicit description"
+        )
+        
+        # Verify explicit description was used
+        self.assertEqual(evaluation.description, "Explicit description")
+        
+        # Verify no criteria were created
+        self.assertEqual(len(evaluation.criteria), 0)
+    
+    def test_update_evaluation_with_criteria_description_conflict(self):
+        """Test updating an evaluation with both criteria_or_description as string and explicit description."""
+        # Create an evaluation
+        evaluation = create_evaluation(
+            self.test_name, self.test_template, self.test_questions, self.test_description
+        )
+        
+        # Update with conflicting descriptions
+        updated = update_evaluation(
+            evaluation_id=evaluation.id,
+            criteria_or_description="Description from criteria_or_description",
+            description="Explicit description from update"
+        )
+        
+        # Verify explicit description was used
+        self.assertEqual(updated.description, "Explicit description from update")
 
 
 if __name__ == "__main__":

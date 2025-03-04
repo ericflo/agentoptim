@@ -470,6 +470,207 @@ class TestExperiment(unittest.TestCase):
         self.assertEqual(exp2.evaluation_id, self.test_evaluation_id)
         self.assertEqual(exp2.model_name, self.test_model_name)
         self.assertEqual(len(exp2.prompt_variants), 1)
+    
+    def test_prompt_variant_validation(self):
+        """Test validation in PromptVariant."""
+        # Test creating variant with missing required fields
+        with self.assertRaises(Exception):
+            PromptVariant(type=PromptVariantType.SYSTEM)  # Missing name and template
+        
+        # Test with invalid type
+        with self.assertRaises(Exception):
+            PromptVariant(
+                name="Test",
+                template="Test template",
+                type="invalid_type"  # Invalid type
+            )
+        
+        # Test with variables that aren't PromptVariable objects
+        with self.assertRaises(Exception):
+            PromptVariant(
+                name="Test",
+                template="Test template",
+                type=PromptVariantType.SYSTEM,
+                variables=["not a variable object"]  # Should be PromptVariable objects
+            )
+    
+    def test_prompt_variable_validation(self):
+        """Test validation in PromptVariable."""
+        # Test creating variable with missing required fields
+        with self.assertRaises(Exception):
+            PromptVariable()  # Missing name
+        
+        # Test with empty options list
+        variable = PromptVariable(
+            name="test",
+            options=[]
+        )
+        self.assertEqual(variable.options, [])
+        
+        # Test with description
+        variable = PromptVariable(
+            name="test",
+            description="Test description",
+            options=["option1", "option2"]
+        )
+        self.assertEqual(variable.description, "Test description")
+    
+    def test_experiment_result_tracking(self):
+        """Test tracking and updating experiment results."""
+        experiment = create_experiment(
+            name=self.test_name,
+            dataset_id=self.test_dataset_id,
+            evaluation_id=self.test_evaluation_id,
+            prompt_variants=self.test_prompt_variants,
+            model_name=self.test_model_name,
+        )
+        
+        # Add initial results
+        initial_results = {
+            "variant-1": {
+                "average_score": 0.8,
+                "scores": [0.7, 0.8, 0.9]
+            }
+        }
+        
+        updated = update_experiment(
+            experiment.id,
+            results=initial_results,
+            status="completed"
+        )
+        
+        self.assertEqual(updated.results, initial_results)
+        self.assertEqual(updated.status, "completed")
+        
+        # Update with new results
+        new_results = {
+            "variant-1": {
+                "average_score": 0.85,
+                "scores": [0.8, 0.9, 0.85]
+            },
+            "variant-2": {
+                "average_score": 0.9,
+                "scores": [0.9, 0.9, 0.9]
+            }
+        }
+        
+        updated = update_experiment(
+            experiment.id,
+            results=new_results
+        )
+        
+        self.assertEqual(updated.results, new_results)
+        self.assertEqual(len(updated.results), 2)
+    
+    def test_create_experiment_validation(self):
+        """Test validation in create_experiment."""
+        # Test with missing required fields
+        with self.assertRaises(Exception):
+            create_experiment(
+                # Missing name
+                dataset_id=self.test_dataset_id,
+                evaluation_id=self.test_evaluation_id,
+                prompt_variants=self.test_prompt_variants,
+                model_name=self.test_model_name
+            )
+        
+        # Test with invalid prompt variants
+        with self.assertRaises(Exception):
+            create_experiment(
+                name=self.test_name,
+                dataset_id=self.test_dataset_id,
+                evaluation_id=self.test_evaluation_id,
+                prompt_variants="not a list",  # Should be a list
+                model_name=self.test_model_name
+            )
+        
+        # Check that experiment can be created with empty variants list
+        # (apparently this is allowed in the implementation)
+        experiment = create_experiment(
+            name=self.test_name,
+            dataset_id=self.test_dataset_id,
+            evaluation_id=self.test_evaluation_id,
+            prompt_variants=[],  # Empty list
+            model_name=self.test_model_name
+        )
+        self.assertEqual(experiment.prompt_variants, [])
+    
+    def test_manage_experiment_with_exception(self):
+        """Test manage_experiment handles exceptions properly."""
+        with mock.patch('agentoptim.experiment.validate_action', side_effect=Exception("Test exception")):
+            result = manage_experiment(action="list")
+            self.assertEqual(result["error"], True)
+            self.assertIn("Unexpected error", result["message"])
+            self.assertIn("Test exception", result["message"])
+    
+    def test_prompt_variant_serialization(self):
+        """Test serialization of PromptVariant objects."""
+        # Create a prompt variant with variables
+        variable = PromptVariable(
+            name="test_var",
+            description="Test variable",
+            options=["option1", "option2", "option3"]
+        )
+        
+        variant = PromptVariant(
+            name="Test Variant",
+            type=PromptVariantType.SYSTEM,
+            template="Test template with {{test_var}}",
+            description="Test description",
+            variables=[variable]
+        )
+        
+        # Serialize to dict
+        variant_dict = variant.to_dict()
+        
+        # Verify serialization
+        self.assertEqual(variant_dict["name"], "Test Variant")
+        self.assertEqual(variant_dict["type"], PromptVariantType.SYSTEM)
+        self.assertEqual(variant_dict["template"], "Test template with {{test_var}}")
+        self.assertEqual(variant_dict["description"], "Test description")
+        self.assertEqual(len(variant_dict["variables"]), 1)
+        self.assertEqual(variant_dict["variables"][0]["name"], "test_var")
+        self.assertEqual(variant_dict["variables"][0]["description"], "Test variable")
+        self.assertEqual(len(variant_dict["variables"][0]["options"]), 3)
+        
+        # Deserialize back to PromptVariant
+        deserialized = PromptVariant.from_dict(variant_dict)
+        
+        # Verify deserialization
+        self.assertEqual(deserialized.name, "Test Variant")
+        self.assertEqual(deserialized.type, PromptVariantType.SYSTEM)
+        self.assertEqual(deserialized.template, "Test template with {{test_var}}")
+        self.assertEqual(deserialized.description, "Test description")
+        self.assertEqual(len(deserialized.variables), 1)
+        self.assertEqual(deserialized.variables[0].name, "test_var")
+        self.assertEqual(deserialized.variables[0].description, "Test variable")
+        self.assertEqual(len(deserialized.variables[0].options), 3)
+    
+    def test_update_experiment_validation(self):
+        """Test validation in update_experiment."""
+        # Create an experiment first
+        experiment = create_experiment(
+            name=self.test_name,
+            dataset_id=self.test_dataset_id,
+            evaluation_id=self.test_evaluation_id,
+            prompt_variants=self.test_prompt_variants,
+            model_name=self.test_model_name,
+        )
+        
+        # Test with invalid results (not a dict)
+        # (apparently string is automatically converted/serialized by pydantic)
+        result = update_experiment(
+            experiment.id,
+            results="not a dict"  # Will be converted by pydantic
+        )
+        self.assertEqual(result.id, experiment.id)
+        
+        # Test with invalid status
+        with self.assertRaises(Exception):
+            update_experiment(
+                experiment.id,
+                status="invalid_status"  # Should be one of the valid statuses
+            )
 
 
 if __name__ == "__main__":
