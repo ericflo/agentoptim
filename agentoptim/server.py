@@ -12,8 +12,7 @@ from agentoptim.evaluation import manage_evaluation
 from agentoptim.dataset import manage_dataset
 from agentoptim.experiment import manage_experiment
 from agentoptim.jobs import manage_job
-# Import other module functions as they're implemented
-# from agentoptim.analysis import analyze_results
+from agentoptim.analysis import analyze_results
 
 # Configure logging
 logging.basicConfig(
@@ -233,9 +232,43 @@ async def run_job_tool(
         return f"Error: {str(e)}"
 
 
-# @mcp.tool()
-# async def analyze_results_tool():
-#     pass
+@mcp.tool()
+async def analyze_results_tool(
+    action: str,
+    experiment_id: Optional[str] = None,
+    job_id: Optional[str] = None,
+    analysis_id: Optional[str] = None,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    analysis_ids: Optional[List[str]] = None,
+) -> str:
+    """
+    Analyze experiment results to find the best performing prompts.
+    
+    Args:
+        action: One of "analyze", "list", "get", "delete", "compare"
+        experiment_id: Required for analyze
+        job_id: Optional job ID for analyze
+        analysis_id: Required for get, delete
+        name: Optional name for the analysis
+        description: Optional description
+        analysis_ids: Required for compare
+    """
+    logger.info(f"analyze_results_tool called with action={action}")
+    try:
+        result = analyze_results(
+            action=action,
+            experiment_id=experiment_id,
+            job_id=job_id,
+            analysis_id=analysis_id,
+            name=name,
+            description=description,
+            analysis_ids=analysis_ids,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error in analyze_results_tool: {str(e)}", exc_info=True)
+        return f"Error: {str(e)}"
 
 
 def main():
