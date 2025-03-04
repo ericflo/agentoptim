@@ -172,7 +172,7 @@ Future enhancements and feature requests can be added to the roadmap for upcomin
 
 ## Test Coverage
 
-The project has now reached 92% overall test coverage, with most modules at or near 100%:
+The project has now reached 93% overall test coverage, with most modules at or near 100%:
 
 - cache.py: 100% (caching and performance optimizations)
 - errors.py: 100% (error handling and logging)
@@ -181,11 +181,11 @@ The project has now reached 92% overall test coverage, with most modules at or n
 - server.py: 98% (MCP server endpoints)
 - analysis.py: 94% (results analysis and optimization)
 - evaluation.py: 94% (evaluation criteria and questions)
+- experiment.py: 92% (experiment configuration)
 - jobs.py: 86% (job execution)
 - dataset.py: 85% (dataset management)
-- experiment.py: 82% (experiment configuration)
 
-The comprehensive test suite provides excellent protection against regressions and ensures that core functionality works as expected. With 195 tests, we have very strong coverage across all parts of the codebase, focusing especially on error handling and edge cases.
+The comprehensive test suite provides excellent protection against regressions and ensures that core functionality works as expected. With 201 tests, we have very strong coverage across all parts of the codebase, focusing especially on error handling and edge cases.
 
 ## Common Commands
 

@@ -19,6 +19,7 @@ from agentoptim.experiment import (
     duplicate_experiment,
     manage_experiment,
 )
+from agentoptim.utils import ValidationError
 
 
 class TestExperiment(unittest.TestCase):
@@ -328,6 +329,85 @@ class TestExperiment(unittest.TestCase):
         # Test non-existent experiment
         result = manage_experiment(action="get", experiment_id="nonexistent-id")
         self.assertEqual(result["error"], True)
+        
+    def test_manage_experiment_get_with_max_tokens(self):
+        """Test getting an experiment with max_tokens set."""
+        experiment = create_experiment(
+            name=self.test_name,
+            description=self.test_description,
+            dataset_id=self.test_dataset_id,
+            evaluation_id=self.test_evaluation_id,
+            prompt_variants=self.test_prompt_variants,
+            model_name=self.test_model_name,
+            max_tokens=500,
+        )
+        
+        result = manage_experiment(action="get", experiment_id=experiment.id)
+        
+        self.assertEqual(result["error"], False)
+        self.assertIn("Max Tokens: 500", result["message"])
+        
+    def test_manage_experiment_get_with_results(self):
+        """Test getting an experiment with results data."""
+        experiment = create_experiment(
+            name=self.test_name,
+            description=self.test_description,
+            dataset_id=self.test_dataset_id,
+            evaluation_id=self.test_evaluation_id,
+            prompt_variants=self.test_prompt_variants,
+            model_name=self.test_model_name,
+        )
+        
+        # Get the first variant ID to use in results
+        variant_id = experiment.prompt_variants[0].id
+        
+        # Update with some results
+        update_experiment(
+            experiment.id,
+            results={
+                variant_id: {
+                    "average_score": 0.95,
+                    "scores": [0.9, 1.0, 0.95]
+                }
+            },
+            status="completed"
+        )
+        
+        result = manage_experiment(action="get", experiment_id=experiment.id)
+        
+        self.assertEqual(result["error"], False)
+        self.assertIn("Results Summary", result["message"])
+        self.assertIn("0.95", result["message"])
+        
+    def test_manage_experiment_get_with_unusual_results(self):
+        """Test getting an experiment with unusual results data format."""
+        experiment = create_experiment(
+            name=self.test_name,
+            description=self.test_description,
+            dataset_id=self.test_dataset_id,
+            evaluation_id=self.test_evaluation_id,
+            prompt_variants=self.test_prompt_variants,
+            model_name=self.test_model_name,
+        )
+        
+        # Update with results that don't match the expected format but are still valid
+        update_experiment(
+            experiment.id,
+            results={"summary": "Overall good results", "value": 0.85},
+            status="completed"
+        )
+        
+        result = manage_experiment(action="get", experiment_id=experiment.id)
+        
+        self.assertEqual(result["error"], False)
+        self.assertIn("Results Summary", result["message"])
+        # Should contain some representation of the unusual results
+        # Either as a string or individual values
+        self.assertTrue(
+            "summary" in result["message"] or 
+            "Overall good results" in result["message"] or
+            "0.85" in result["message"]
+        )
     
     def test_manage_experiment_update(self):
         """Test the manage_experiment function for updating experiments."""
@@ -602,6 +682,74 @@ class TestExperiment(unittest.TestCase):
             self.assertEqual(result["error"], True)
             self.assertIn("Unexpected error", result["message"])
             self.assertIn("Test exception", result["message"])
+            
+    def test_manage_experiment_create_validation_errors(self):
+        """Test validation errors in manage_experiment create action."""
+        # Test with empty prompt variants
+        result = manage_experiment(
+            action="create",
+            name=self.test_name,
+            dataset_id=self.test_dataset_id,
+            evaluation_id=self.test_evaluation_id,
+            prompt_variants=[],
+            model_name=self.test_model_name,
+        )
+        self.assertEqual(result["error"], True)
+        self.assertIn("Prompt variants must be a non-empty list", result["message"])
+        
+        # Test with prompt variant missing required fields
+        result = manage_experiment(
+            action="create",
+            name=self.test_name,
+            dataset_id=self.test_dataset_id,
+            evaluation_id=self.test_evaluation_id,
+            prompt_variants=[{"description": "Missing name, type and template"}],
+            model_name=self.test_model_name,
+        )
+        self.assertEqual(result["error"], True)
+        self.assertIn("Prompt variant at index 0 is missing required fields", result["message"])
+        
+        # Test with validation error
+        with mock.patch('agentoptim.experiment.create_experiment', side_effect=ValidationError("Test validation error")):
+            result = manage_experiment(
+                action="create",
+                name=self.test_name,
+                dataset_id=self.test_dataset_id,
+                evaluation_id=self.test_evaluation_id,
+                prompt_variants=self.test_prompt_variants,
+                model_name=self.test_model_name,
+            )
+            self.assertEqual(result["error"], True)
+            self.assertIn("Test validation error", result["message"])
+            
+    def test_manage_experiment_update_validation_errors(self):
+        """Test validation errors in manage_experiment update action."""
+        # Create an experiment first
+        experiment = create_experiment(
+            name=self.test_name,
+            dataset_id=self.test_dataset_id,
+            evaluation_id=self.test_evaluation_id,
+            prompt_variants=self.test_prompt_variants,
+            model_name=self.test_model_name,
+        )
+        
+        # Test with empty prompt variants list
+        result = manage_experiment(
+            action="update",
+            experiment_id=experiment.id,
+            prompt_variants=[],
+        )
+        self.assertEqual(result["error"], True)
+        self.assertIn("Prompt variants must be a non-empty list", result["message"])
+        
+        # Test with prompt variant missing required fields
+        result = manage_experiment(
+            action="update",
+            experiment_id=experiment.id,
+            prompt_variants=[{"description": "Missing name, type and template"}],
+        )
+        self.assertEqual(result["error"], True)
+        self.assertIn("Prompt variant at index 0 is missing required fields", result["message"])
     
     def test_prompt_variant_serialization(self):
         """Test serialization of PromptVariant objects."""
@@ -671,6 +819,55 @@ class TestExperiment(unittest.TestCase):
                 experiment.id,
                 status="invalid_status"  # Should be one of the valid statuses
             )
+            
+        # Test with invalid prompt_variants format
+        with self.assertRaises(Exception):
+            update_experiment(
+                experiment.id,
+                prompt_variants="not a list"  # Should be a list
+            )
+            
+        # Test with invalid temperature
+        with self.assertRaises(Exception):
+            update_experiment(
+                experiment.id,
+                temperature="not a float"  # Should be a float
+            )
+
+    def test_update_experiment_edge_cases(self):
+        """Test edge cases for update_experiment."""
+        # Create an experiment first
+        experiment = create_experiment(
+            name=self.test_name,
+            dataset_id=self.test_dataset_id,
+            evaluation_id=self.test_evaluation_id,
+            prompt_variants=self.test_prompt_variants,
+            model_name=self.test_model_name,
+        )
+        
+        # Test updating with empty prompt variants list
+        updated = update_experiment(
+            experiment.id,
+            prompt_variants=[]
+        )
+        self.assertEqual(updated.prompt_variants, [])
+        
+        # Test updating with None for optional fields
+        updated = update_experiment(
+            experiment.id,
+            description=None,
+            max_tokens=None
+        )
+        self.assertIsNone(updated.description)
+        self.assertIsNone(updated.max_tokens)
+        
+        # Test updating with new metadata
+        new_metadata = {"key1": "value1", "key2": 123}
+        updated = update_experiment(
+            experiment.id,
+            metadata=new_metadata
+        )
+        self.assertEqual(updated.metadata, new_metadata)
 
 
 if __name__ == "__main__":
