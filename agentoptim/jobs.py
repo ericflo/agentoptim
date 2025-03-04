@@ -364,31 +364,116 @@ async def call_judge_model(
         if key not in parameters:
             parameters[key] = value
     
-    # For now, we'll implement a simple local mock for testing
-    # In a real implementation, this would call an external API
+    # Get API key from environment, with fallback to configuration file
+    api_key = os.environ.get("AGENTOPTIM_API_KEY")
+    api_base = os.environ.get("AGENTOPTIM_API_BASE", "https://api.anthropic.com/v1")
     
-    # Mock implementation - would be replaced with actual API call
+    if not api_key:
+        # Try to load from config file
+        config_path = os.path.join(DATA_DIR, "config.json")
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    api_key = config.get("api_key")
+                    if "api_base" in config:
+                        api_base = config.get("api_base")
+            except Exception as e:
+                logger.warning(f"Failed to load config: {e}")
+    
+    if not api_key and not "mock" in model.lower():
+        raise ValueError("API key not found. Set the AGENTOPTIM_API_KEY environment variable or add it to the config file.")
+    
     try:
-        # Simulate API latency
-        await asyncio.sleep(0.5)
-        
-        # Simple mock response based on the model name
+        # Support for mock models for testing
         if "mock" in model.lower():
+            # Simulate API latency
+            await asyncio.sleep(0.5)
             return f"This is a mock response from {model}. The prompt was: {prompt[:50]}..."
+            
+        # Prepare headers and payload based on model type
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
         
-        # In a real implementation, this would be replaced with an actual API call
-        # For example:
-        # async with httpx.AsyncClient() as client:
-        #     response = await client.post(
-        #         f"https://api.example.com/v1/models/{model}/completions",
-        #         json={"prompt": prompt, **parameters},
-        #         headers={"Authorization": f"Bearer {API_KEY}"}
-        #     )
-        #     return response.json()["choices"][0]["text"]
+        payload = {}
         
-        # For now, just return a placeholder
-        return f"Response from {model}: This would be an actual model response in production."
+        # Handle different API formats based on the model provider
+        if "llama" in model.lower() or "mistral" in model.lower():
+            # For open models via local API or providers like Fireworks/Together
+            headers["Authorization"] = f"Bearer {api_key}"
+            payload = {
+                "model": model,
+                "prompt": prompt,
+                "max_tokens": parameters.get("max_tokens", 1024),
+                "temperature": parameters.get("temperature", 0.0),
+                "stop": parameters.get("stop", None)
+            }
+            endpoint = f"{api_base}/completions"
+            response_handler = lambda r: r.json()["choices"][0]["text"]
+            
+        elif "claude" in model.lower():
+            # Anthropic Claude API
+            headers["x-api-key"] = api_key
+            headers["anthropic-version"] = "2023-06-01"
+            payload = {
+                "model": model,
+                "prompt": f"\n\nHuman: {prompt}\n\nAssistant:",
+                "max_tokens_to_sample": parameters.get("max_tokens", 1024),
+                "temperature": parameters.get("temperature", 0.0),
+                "stop_sequences": parameters.get("stop", [])
+            }
+            endpoint = f"{api_base}/complete"
+            response_handler = lambda r: r.json()["completion"]
+            
+        elif "gpt" in model.lower():
+            # OpenAI GPT API
+            headers["Authorization"] = f"Bearer {api_key}"
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": parameters.get("max_tokens", 1024),
+                "temperature": parameters.get("temperature", 0.0),
+                "stop": parameters.get("stop", None)
+            }
+            endpoint = f"{api_base}/chat/completions"
+            response_handler = lambda r: r.json()["choices"][0]["message"]["content"]
+            
+        else:
+            # Default format for other API providers
+            headers["Authorization"] = f"Bearer {api_key}"
+            payload = {
+                "model": model,
+                "prompt": prompt,
+                **parameters
+            }
+            endpoint = f"{api_base}/completions"
+            response_handler = lambda r: r.json()["choices"][0]["text"]
+        
+        # Make the API call
+        timeout = httpx.Timeout(30.0)  # 30 seconds timeout
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                endpoint,
+                json=payload,
+                headers=headers
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"API error: {response.status_code} {response.text}")
+                raise Exception(f"API error ({response.status_code}): {response.text}")
+                
+            return response_handler(response)
     
+    except httpx.TimeoutException:
+        logger.error("Request to judge model timed out")
+        raise Exception("Request to judge model timed out after 30 seconds")
+        
+    except httpx.RequestError as e:
+        logger.error(f"Error connecting to judge model API: {str(e)}")
+        raise Exception(f"Connection error: {str(e)}")
+        
     except Exception as e:
         logger.error(f"Error calling judge model: {str(e)}")
         raise Exception(f"Failed to call judge model: {str(e)}")
@@ -441,22 +526,74 @@ async def process_single_task(
     # Call the judge model to get a response
     output_text = await call_judge_model(input_text, judge_model, judge_parameters)
     
-    # For scoring, in a real implementation we would:
-    # 1. Format a scoring prompt using the evaluation criteria
-    # 2. Send this to the judge model to get scores
-    # 3. Parse the scores from the response
-    
-    # Mock scoring for now
+    # Create scoring prompts based on evaluation criteria
     scores = {}
+    metadata = {
+        "input_tokens": len(input_text.split()),
+        "output_tokens": len(output_text.split()),
+        "model": judge_model
+    }
+    
+    # Score each criterion
     for criterion in evaluation.criteria:
-        # In a real implementation, we would use the judge model to score each criterion
-        # For now, just use a random score as a placeholder
-        import random
-        scores[criterion.name] = round(random.uniform(1, 5), 2)
+        # Format a scoring prompt
+        scoring_prompt = f"""
+You are an expert evaluator. Your task is to score the following model output based on a specific criterion.
+
+Input prompt: {input_text}
+
+Model output: {output_text}
+
+Criterion: {criterion.name}
+Description: {criterion.description}
+
+Scoring guidelines:
+{criterion.scoring_guidelines}
+
+Please provide a score from {criterion.min_score} to {criterion.max_score} for this criterion.
+Respond with ONLY A NUMBER between {criterion.min_score} and {criterion.max_score}. 
+Do not explain your reasoning or add any additional text.
+"""
+
+        # Call the judge model with scoring parameters
+        scoring_params = {
+            "temperature": 0.0,  # Use deterministic output for scoring
+            "max_tokens": 10     # We only need a short response
+        }
+        
+        try:
+            # Get score from judge model
+            score_response = await call_judge_model(scoring_prompt, judge_model, scoring_params)
+            
+            # Parse the score (extract first number from the response)
+            import re
+            score_match = re.search(r'(\d+(\.\d+)?)', score_response)
+            if score_match:
+                try:
+                    score = float(score_match.group(1))
+                    # Ensure score is within valid range
+                    score = max(criterion.min_score, min(criterion.max_score, score))
+                    scores[criterion.name] = round(score, 2)
+                except ValueError:
+                    # Fallback if parsing fails
+                    logger.warning(f"Failed to parse score from response: {score_response}")
+                    scores[criterion.name] = (criterion.min_score + criterion.max_score) / 2
+            else:
+                # No numeric score found
+                logger.warning(f"No score found in response: {score_response}")
+                scores[criterion.name] = (criterion.min_score + criterion.max_score) / 2
+                
+        except Exception as e:
+            # Handle errors in scoring
+            logger.error(f"Error scoring criterion {criterion.name}: {str(e)}")
+            # Use middle value if scoring fails
+            scores[criterion.name] = (criterion.min_score + criterion.max_score) / 2
+    
+    # Calculate aggregate score if multiple criteria
+    if len(scores) > 0:
+        metadata["average_score"] = round(sum(scores.values()) / len(scores), 2)
     
     # Create and return the result
-    # Use variant.id instead of variant.variant_id
-    # DataItem doesn't have get() method, need to access id attribute or use a default
     data_item_id = getattr(data_item, "id", None)
     if not data_item_id:
         # Try to use input as the id if no id attribute is available
@@ -467,7 +604,8 @@ async def process_single_task(
         data_item_id=data_item_id,
         input_text=input_text,
         output_text=output_text,
-        scores=scores
+        scores=scores,
+        metadata=metadata
     )
 
 
@@ -495,6 +633,9 @@ async def run_job(job_id: str, max_parallel: int = 5) -> Job:
     # Update job status to running
     job = update_job_status(job_id, JobStatus.RUNNING)
     
+    # Create a cancellation event
+    cancel_event = asyncio.Event()
+    
     try:
         # Get the experiment, dataset, and evaluation
         experiment = get_experiment(job.experiment_id)
@@ -503,32 +644,134 @@ async def run_job(job_id: str, max_parallel: int = 5) -> Job:
         
         # Create a list of all tasks
         tasks = []
-        for variant in experiment.prompt_variants:  # Use prompt_variants instead of variants
+        for variant in experiment.prompt_variants:
             for item in dataset.items:
                 tasks.append((variant, item))
+        
+        # Record total tasks in job
+        job.progress["total"] = len(tasks)
+        job.progress["completed"] = 0
+        job.progress["percentage"] = 0
+        
+        # Save updated job progress
+        jobs = load_jobs()
+        jobs[job_id] = job
+        save_jobs(jobs)
         
         # Process tasks in parallel with a limit
         semaphore = asyncio.Semaphore(max_parallel)
         
         async def process_with_semaphore(variant, item):
-            async with semaphore:
-                result = await process_single_task(
-                    variant=variant,
-                    data_item=item,
-                    evaluation=evaluation,
-                    judge_model=job.judge_model,
-                    judge_parameters=job.judge_parameters
-                )
-                # Add the result to the job
-                add_job_result(job_id, result)
-                return result
+            # Check if job has been cancelled
+            if cancel_event.is_set():
+                logger.info(f"Task for variant {variant.id} and data item {getattr(item, 'id', 'unknown')} cancelled")
+                return None
+                
+            try:
+                async with semaphore:
+                    # Check again after acquiring semaphore
+                    if cancel_event.is_set():
+                        return None
+                        
+                    # Process the task
+                    result = await process_single_task(
+                        variant=variant,
+                        data_item=item,
+                        evaluation=evaluation,
+                        judge_model=job.judge_model,
+                        judge_parameters=job.judge_parameters
+                    )
+                    
+                    # Add the result to the job if not cancelled
+                    if not cancel_event.is_set():
+                        add_job_result(job_id, result)
+                    
+                    return result
+            except Exception as e:
+                logger.error(f"Error processing task: {str(e)}")
+                # Continue with other tasks even if one fails
+                return None
         
-        # Create asyncio tasks
-        coroutines = [process_with_semaphore(variant, item) for variant, item in tasks]
-        results = await asyncio.gather(*coroutines)
+        # Create and run tasks with proper exception handling
+        pending = set()
+        results = []
         
+        # Create a task for checking job status
+        async def check_job_status():
+            while True:
+                await asyncio.sleep(5)  # Check every 5 seconds
+                if cancel_event.is_set():
+                    return
+                    
+                # Reload job to see if it's been cancelled externally
+                try:
+                    current_job = get_job(job_id)
+                    if current_job.status == JobStatus.CANCELLED:
+                        logger.info(f"Job {job_id} cancelled externally")
+                        cancel_event.set()
+                        return
+                except Exception as e:
+                    logger.error(f"Error checking job status: {str(e)}")
+        
+        # Start the status checker
+        status_checker = asyncio.create_task(check_job_status())
+        
+        # Add initial tasks to pending set
+        for i, (variant, item) in enumerate(tasks):
+            if i < max_parallel * 2:  # Start with 2x batch size
+                task = asyncio.create_task(process_with_semaphore(variant, item))
+                pending.add(task)
+            else:
+                break
+                
+        remaining_tasks = tasks[max_parallel * 2:]
+        task_index = 0
+        
+        # Process all tasks with proper backpressure
+        while pending and not cancel_event.is_set():
+            done, pending = await asyncio.wait(
+                pending, 
+                return_when=asyncio.FIRST_COMPLETED,
+                timeout=1.0  # Add timeout to allow checking cancel_event
+            )
+            
+            # Handle completed tasks
+            for task in done:
+                try:
+                    result = task.result()
+                    if result:
+                        results.append(result)
+                except Exception as e:
+                    logger.error(f"Task failed: {str(e)}")
+            
+            # Add more tasks if available
+            while len(pending) < max_parallel and task_index < len(remaining_tasks) and not cancel_event.is_set():
+                variant, item = remaining_tasks[task_index]
+                task = asyncio.create_task(process_with_semaphore(variant, item))
+                pending.add(task)
+                task_index += 1
+        
+        # Cancel the status checker
+        status_checker.cancel()
+        try:
+            await status_checker
+        except asyncio.CancelledError:
+            pass
+        
+        # Check if job was cancelled
+        if cancel_event.is_set():
+            # Cancel all pending tasks
+            for task in pending:
+                task.cancel()
+                
+            # Update job status to cancelled
+            job = update_job_status(job_id, JobStatus.CANCELLED)
+            logger.info(f"Job {job_id} cancelled with {len(results)} tasks completed")
+            return job
+            
         # Final job update
         job = update_job_status(job_id, JobStatus.COMPLETED)
+        logger.info(f"Job {job_id} completed with {len(results)} results")
         return job
     
     except Exception as e:
@@ -537,6 +780,9 @@ async def run_job(job_id: str, max_parallel: int = 5) -> Job:
         logger.error(f"Job {job_id} failed: {error_message}")
         job = update_job_status(job_id, JobStatus.FAILED, error_message)
         return job
+    finally:
+        # Set cancel event in case any tasks are still running
+        cancel_event.set()
 
 
 def cancel_job(job_id: str) -> Job:
@@ -568,7 +814,7 @@ def manage_job(action: str, **kwargs) -> Dict[str, Any]:
     Manage jobs with various actions.
     
     Args:
-        action: The action to perform (create, get, list, delete, run, cancel)
+        action: The action to perform (create, get, list, delete, run, cancel, status)
         **kwargs: Action-specific arguments
         
     Returns:
@@ -583,55 +829,227 @@ def manage_job(action: str, **kwargs) -> Dict[str, Any]:
             if field not in kwargs:
                 raise ValueError(f"Missing required field: {field}")
         
-        job = create_job(
-            experiment_id=kwargs["experiment_id"],
-            dataset_id=kwargs["dataset_id"],
-            evaluation_id=kwargs["evaluation_id"],
-            judge_model=kwargs.get("judge_model"),
-            judge_parameters=kwargs.get("judge_parameters")
-        )
-        return {"status": "success", "message": f"Job created with ID: {job.job_id}", "job": job.model_dump()}
+        # Validate that experiment, dataset, and evaluation exist
+        try:
+            get_experiment(kwargs["experiment_id"])
+            get_dataset(kwargs["dataset_id"])
+            get_evaluation(kwargs["evaluation_id"])
+        except ValueError as e:
+            return {
+                "status": "error", 
+                "message": f"Validation error: {str(e)}"
+            }
+        
+        # Validate judge model and parameters
+        judge_model = kwargs.get("judge_model", "llama-3.1-8b-instruct")
+        judge_parameters = kwargs.get("judge_parameters", {})
+        
+        # Create the job
+        try:
+            job = create_job(
+                experiment_id=kwargs["experiment_id"],
+                dataset_id=kwargs["dataset_id"],
+                evaluation_id=kwargs["evaluation_id"],
+                judge_model=judge_model,
+                judge_parameters=judge_parameters
+            )
+            return {
+                "status": "success", 
+                "message": f"Job created with ID: {job.job_id}", 
+                "job": job.model_dump()
+            }
+        except Exception as e:
+            return {
+                "status": "error", 
+                "message": f"Failed to create job: {str(e)}"
+            }
     
     elif action == "get":
         if "job_id" not in kwargs:
             raise ValueError("Missing required field: job_id")
         
-        job = get_job(kwargs["job_id"])
-        return {"status": "success", "job": job.model_dump()}
+        try:
+            job = get_job(kwargs["job_id"])
+            
+            # Include additional calculated statistics
+            job_data = job.model_dump()
+            
+            # Add analytics if job has results
+            if job.results:
+                # Group results by variant
+                variant_results = {}
+                for result in job.results:
+                    if result.variant_id not in variant_results:
+                        variant_results[result.variant_id] = []
+                    variant_results[result.variant_id].append(result)
+                
+                # Calculate statistics for each variant
+                stats = {}
+                for variant_id, results in variant_results.items():
+                    variant_stats = {
+                        "count": len(results),
+                        "scores": {}
+                    }
+                    
+                    # Calculate average scores
+                    all_scores = {}
+                    for result in results:
+                        for criterion, score in result.scores.items():
+                            if criterion not in all_scores:
+                                all_scores[criterion] = []
+                            all_scores[criterion].append(score)
+                    
+                    # Calculate statistics for each criterion
+                    for criterion, scores in all_scores.items():
+                        import numpy as np
+                        variant_stats["scores"][criterion] = {
+                            "mean": round(float(np.mean(scores)), 2),
+                            "median": round(float(np.median(scores)), 2),
+                            "min": round(float(np.min(scores)), 2),
+                            "max": round(float(np.max(scores)), 2),
+                            "std": round(float(np.std(scores)), 2) if len(scores) > 1 else 0
+                        }
+                    
+                    # Calculate overall score if possible
+                    if all_scores:
+                        all_means = [stats["mean"] for stats in variant_stats["scores"].values()]
+                        variant_stats["overall_score"] = round(sum(all_means) / len(all_means), 2)
+                    
+                    stats[variant_id] = variant_stats
+                
+                job_data["stats"] = stats
+            
+            return {"status": "success", "job": job_data}
+        except ValueError as e:
+            return {"status": "error", "message": str(e)}
     
     elif action == "list":
-        jobs = list_jobs(experiment_id=kwargs.get("experiment_id"))
-        return {"status": "success", "jobs": [job.model_dump() for job in jobs]}
+        try:
+            jobs = list_jobs(experiment_id=kwargs.get("experiment_id"))
+            
+            # Filter by status if specified
+            if "status" in kwargs:
+                status = kwargs["status"]
+                if status in [s.value for s in JobStatus]:
+                    jobs = [job for job in jobs if job.status == status]
+            
+            # Sort jobs by creation time (most recent first)
+            jobs.sort(key=lambda job: job.created_at, reverse=True)
+            
+            # Add a summary of results to each job
+            job_summaries = []
+            for job in jobs:
+                summary = job.model_dump()
+                
+                # Add a simple summary of results if job has them
+                if job.results:
+                    variant_counts = {}
+                    for result in job.results:
+                        if result.variant_id not in variant_counts:
+                            variant_counts[result.variant_id] = 0
+                        variant_counts[result.variant_id] += 1
+                    
+                    summary["result_counts"] = variant_counts
+                
+                job_summaries.append(summary)
+            
+            return {"status": "success", "jobs": job_summaries}
+        except Exception as e:
+            return {"status": "error", "message": f"Error listing jobs: {str(e)}"}
     
     elif action == "delete":
         if "job_id" not in kwargs:
             raise ValueError("Missing required field: job_id")
         
-        delete_job(kwargs["job_id"])
-        return {"status": "success", "message": f"Job {kwargs['job_id']} deleted"}
+        try:
+            delete_job(kwargs["job_id"])
+            return {"status": "success", "message": f"Job {kwargs['job_id']} deleted"}
+        except ValueError as e:
+            return {"status": "error", "message": str(e)}
     
     elif action == "run":
         if "job_id" not in kwargs:
             raise ValueError("Missing required field: job_id")
         
-        # Run the job in the background
-        # In a real application, this would be handled by a task queue
-        # For simplicity, we'll create a background task
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(run_job(kwargs["job_id"], max_parallel=kwargs.get("max_parallel", 5)))
-        
-        return {
-            "status": "success", 
-            "message": f"Job {kwargs['job_id']} started",
-            "job_id": kwargs["job_id"]
-        }
+        try:
+            # Get the job to validate it exists and can be run
+            job = get_job(kwargs["job_id"])
+            if job.status != JobStatus.PENDING:
+                return {
+                    "status": "error", 
+                    "message": f"Cannot run job {kwargs['job_id']} because its status is {job.status}"
+                }
+            
+            # Run the job in the background
+            # In a production environment, we might use a task queue system
+            loop = asyncio.get_event_loop()
+            max_parallel = int(kwargs.get("max_parallel", 5))
+            task = loop.create_task(run_job(kwargs["job_id"], max_parallel=max_parallel))
+            
+            return {
+                "status": "success", 
+                "message": f"Job {kwargs['job_id']} started",
+                "job_id": kwargs["job_id"]
+            }
+        except ValueError as e:
+            return {"status": "error", "message": str(e)}
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to start job: {str(e)}"}
     
     elif action == "cancel":
         if "job_id" not in kwargs:
             raise ValueError("Missing required field: job_id")
         
-        job = cancel_job(kwargs["job_id"])
-        return {"status": "success", "message": f"Job {kwargs['job_id']} cancelled", "job": job.model_dump()}
+        try:
+            job = cancel_job(kwargs["job_id"])
+            return {
+                "status": "success", 
+                "message": f"Job {kwargs['job_id']} cancelled", 
+                "job": job.model_dump()
+            }
+        except ValueError as e:
+            return {"status": "error", "message": str(e)}
+    
+    elif action == "status":
+        if "job_id" not in kwargs:
+            raise ValueError("Missing required field: job_id")
+            
+        try:
+            job = get_job(kwargs["job_id"])
+            
+            # Prepare a status summary
+            status_info = {
+                "job_id": job.job_id,
+                "status": job.status,
+                "progress": job.progress,
+                "created_at": job.created_at,
+                "updated_at": job.updated_at,
+                "completed_at": job.completed_at,
+                "error": job.error
+            }
+            
+            # Add result summary if job has results
+            if job.results:
+                status_info["results_count"] = len(job.results)
+                
+                # Calculate average scores across all results
+                all_scores = {}
+                for result in job.results:
+                    for criterion, score in result.scores.items():
+                        if criterion not in all_scores:
+                            all_scores[criterion] = []
+                        all_scores[criterion].append(score)
+                
+                # Calculate average for each criterion
+                avg_scores = {}
+                for criterion, scores in all_scores.items():
+                    avg_scores[criterion] = round(sum(scores) / len(scores), 2)
+                
+                status_info["average_scores"] = avg_scores
+            
+            return {"status": "success", "job_status": status_info}
+        except ValueError as e:
+            return {"status": "error", "message": str(e)}
     
     else:
         raise ValueError(f"Invalid action: {action}")

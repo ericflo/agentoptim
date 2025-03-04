@@ -28,6 +28,9 @@ class EvaluationCriterion(BaseModel):
     name: str
     description: Optional[str] = None
     weight: float = 1.0
+    min_score: float = 1.0
+    max_score: float = 5.0
+    scoring_guidelines: Optional[str] = None
 
 
 class Evaluation(BaseModel):
