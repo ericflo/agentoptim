@@ -188,6 +188,12 @@ venv/bin/pytest --cov=agentoptim tests/
 # Run tests for specific module with coverage
 venv/bin/pytest --cov=agentoptim.dataset tests/test_dataset.py
 
+# Run tests with verbose output
+venv/bin/pytest -v
+
+# Run tests and see print statements
+venv/bin/pytest -v --capture=no
+
 # Check code style
 flake8 agentoptim
 
@@ -204,3 +210,6 @@ venv/bin/pip install -U -r requirements.txt
 - Judge model API calls will be configurable to support different backends
 - We'll support both local and remote judge models
 - Default judge is `Llama-3.1-8B-Instruct` but can be configured to any model
+- The jobs.py module handles cases where jobs.json might be created as a directory instead of a file
+- Job results and metadata are stored in jobs.json by default with robust error handling
+- Current test coverage is at 61% with analysis.py and dataset.py over 85% covered
