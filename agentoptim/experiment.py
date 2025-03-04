@@ -141,14 +141,25 @@ def create_experiment(
     # Convert dict variants to PromptVariant objects
     variants = []
     for variant_data in prompt_variants:
-        # Process variables if they exist
-        if "variables" in variant_data:
-            variable_list = []
-            for var_data in variant_data["variables"]:
-                variable_list.append(PromptVariable(**var_data))
-            variant_data["variables"] = variable_list
+        # Create a copy to avoid modifying the original
+        variant_dict = variant_data.copy()
         
-        variants.append(PromptVariant(**variant_data))
+        # Handle content field - map to template if needed
+        if "content" in variant_dict and "template" not in variant_dict:
+            variant_dict["template"] = variant_dict.pop("content")
+        
+        # Default type if not provided
+        if "type" not in variant_dict:
+            variant_dict["type"] = "system"
+            
+        # Process variables if they exist
+        if "variables" in variant_dict:
+            variable_list = []
+            for var_data in variant_dict["variables"]:
+                variable_list.append(PromptVariable(**var_data))
+            variant_dict["variables"] = variable_list
+        
+        variants.append(PromptVariant(**variant_dict))
     
     experiment = Experiment(
         name=name,
@@ -216,14 +227,25 @@ def update_experiment(
         # Convert dict variants to PromptVariant objects
         variants = []
         for variant_data in prompt_variants:
-            # Process variables if they exist
-            if "variables" in variant_data:
-                variable_list = []
-                for var_data in variant_data["variables"]:
-                    variable_list.append(PromptVariable(**var_data))
-                variant_data["variables"] = variable_list
+            # Create a copy to avoid modifying the original
+            variant_dict = variant_data.copy()
             
-            variants.append(PromptVariant(**variant_data))
+            # Handle content field - map to template if needed
+            if "content" in variant_dict and "template" not in variant_dict:
+                variant_dict["template"] = variant_dict.pop("content")
+            
+            # Default type if not provided
+            if "type" not in variant_dict:
+                variant_dict["type"] = "system"
+                
+            # Process variables if they exist
+            if "variables" in variant_dict:
+                variable_list = []
+                for var_data in variant_dict["variables"]:
+                    variable_list.append(PromptVariable(**var_data))
+                variant_dict["variables"] = variable_list
+            
+            variants.append(PromptVariant(**variant_dict))
         experiment.prompt_variants = variants
     if model_name is not None:
         experiment.model_name = model_name
@@ -409,8 +431,20 @@ def manage_experiment(
                 return format_error("Prompt variants must be a non-empty list")
             
             for i, variant in enumerate(prompt_variants):
-                if "name" not in variant or "type" not in variant or "template" not in variant:
-                    return format_error(f"Prompt variant at index {i} is missing required fields")
+                missing_fields = []
+                if "name" not in variant:
+                    missing_fields.append("name")
+                if "type" not in variant:
+                    missing_fields.append("type")
+                if "content" not in variant and "template" not in variant:  # Allow either content or template
+                    missing_fields.append("content/template")
+                    
+                if missing_fields:
+                    missing_str = ", ".join(f"'{field}'" for field in missing_fields)
+                    return format_error(
+                        f"Prompt variant at index {i} is missing required fields: {missing_str}",
+                        {"example": "{'name': 'formal_tone', 'type': 'system', 'content': 'You are a formal customer service representative...'}"}
+                    )
             
             experiment = create_experiment(
                 name=name,
@@ -437,8 +471,20 @@ def manage_experiment(
                     return format_error("Prompt variants must be a non-empty list")
                 
                 for i, variant in enumerate(prompt_variants):
-                    if "name" not in variant or "type" not in variant or "template" not in variant:
-                        return format_error(f"Prompt variant at index {i} is missing required fields")
+                    missing_fields = []
+                    if "name" not in variant:
+                        missing_fields.append("name")
+                    if "type" not in variant:
+                        missing_fields.append("type")
+                    if "content" not in variant and "template" not in variant:  # Allow either content or template
+                        missing_fields.append("content/template")
+                        
+                    if missing_fields:
+                        missing_str = ", ".join(f"'{field}'" for field in missing_fields)
+                        return format_error(
+                            f"Prompt variant at index {i} is missing required fields: {missing_str}",
+                            {"example": "{'name': 'formal_tone', 'type': 'system', 'content': 'You are a formal customer service representative...'}"}
+                        )
             
             experiment = update_experiment(
                 experiment_id=experiment_id,

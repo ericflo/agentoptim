@@ -238,21 +238,52 @@ def validate_required_params(params: Dict[str, Any], required: List[str]) -> Non
         )
 
 
-def format_error(message: str) -> Dict[str, Any]:
+def format_error(message: str, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Format an error message for consistent API output.
     
     Args:
         message: The error message
+        details: Optional dictionary of additional error details
         
     Returns:
         A dictionary with error details formatted for API response
     """
     logger.debug(f"Formatting error message: {message}")
-    return {
+    
+    # Create the standard error dictionary for API responses and tests
+    response = {
         "error": True,
         "message": message
     }
+    
+    # Add any details if provided
+    if details:
+        response["details"] = details
+    
+    # For MCP presentation, also create a formatted string version
+    # Basic formatting to make errors stand out and be clear
+    error_msg = f"Error: {message}"
+    
+    # Add helpful details if provided
+    if details:
+        details_str = "\n".join([f"- {k}: {v}" for k, v in details.items()])
+        error_msg += f"\n\nDetails:\n{details_str}"
+    
+    # Add a helpful suggestion if possible based on message content
+    if "required parameters" in message:
+        error_msg += "\n\nPlease check that you've provided all required parameters."
+    elif "not found" in message:
+        error_msg += "\n\nUse the 'list' action to see available resources."
+    elif "invalid action" in message.lower():
+        error_msg += "\n\nCheck the documentation for valid actions and their parameters."
+    elif "permission" in message.lower():
+        error_msg += "\n\nCheck file/directory permissions and try again."
+    
+    # Add the formatted message for MCP display
+    response["formatted_message"] = error_msg
+    
+    return response
 
 
 def format_success(message: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -267,21 +298,51 @@ def format_success(message: str, data: Optional[Dict[str, Any]] = None) -> Dict[
         A dictionary with success details formatted for API response
     """
     logger.debug(f"Formatting success message: {message}")
+    
+    # Create the standard success dictionary for API responses and tests
     response = {
         "error": False,
         "message": message
     }
     
+    # Include data if provided
     if data:
         response["data"] = data
-        
+    
+    # For MCP presentation, also create a formatted string version
+    # Format the base success message
+    success_msg = f"Success: {message}"
+    
+    # Add formatted data if provided
+    if data:
+        if len(data) == 1 and "id" in data:
+            # Simple ID response
+            success_msg += f"\nID: {data['id']}"
+        else:
+            # More complex data to present
+            data_str = "\n".join([f"- {k}: {v}" for k, v in data.items()])
+            success_msg += f"\n\nDetails:\n{data_str}"
+    
+    # Add next step suggestions based on the message content
+    if "created" in message.lower():
+        resource_type = message.split("'")[1].split("'")[0] if "'" in message else "resource"
+        success_msg += f"\n\nYou can now use this {resource_type} in other operations."
+    elif "updated" in message.lower():
+        success_msg += "\n\nThe changes have been saved successfully."
+    elif "deleted" in message.lower():
+        success_msg += "\n\nThe resource has been permanently removed."
+    
+    # Add the formatted message for MCP display
+    response["formatted_message"] = success_msg
+    
     return response
 
 
 def format_list(
     items: List[Dict[str, Any]], 
     name_field: str = "name",
-    include_fields: Optional[List[str]] = None
+    include_fields: Optional[List[str]] = None,
+    resource_type: str = "items"
 ) -> Dict[str, Any]:
     """
     Format a list of items for API response.
@@ -290,20 +351,14 @@ def format_list(
         items: List of item dictionaries
         name_field: The field to use as the item name
         include_fields: Optional list of fields to include in the response
+        resource_type: The type of resources being listed (e.g., "evaluations", "datasets")
         
     Returns:
-        Dictionary with formatted list data for API response
+        A dictionary with formatted list data for API response
     """
-    logger.debug(f"Formatting list of {len(items)} items")
+    logger.debug(f"Formatting list of {len(items)} {resource_type}")
     
-    if not items:
-        return {
-            "error": False,
-            "message": "No items found.",
-            "items": [],
-            "count": 0
-        }
-    
+    # Create the standard dictionary response for API and tests
     formatted_items = []
     for item in items:
         name = item.get(name_field, "Unnamed")
@@ -326,12 +381,68 @@ def format_list(
         
         formatted_items.append(formatted_item)
     
-    return {
+    if not items:
+        message = f"No {resource_type} found."
+    else:
+        message = f"Found {len(items)} {resource_type}."
+        
+    response = {
         "error": False,
-        "message": f"Found {len(items)} items.",
+        "message": message,
         "items": formatted_items,
         "count": len(items)
     }
+    
+    # For MCP presentation, also create a formatted string version
+    if not items:
+        formatted_message = f"No {resource_type} found."
+    else:
+        # Start with a header line
+        result = [f"Found {len(items)} {resource_type}:"]
+        result.append("")  # Empty line for readability
+        
+        # Format each item
+        for item in items:
+            name = item.get(name_field, "Unnamed")
+            id_value = item.get("id", "No ID")
+            
+            # Start with ID and name
+            item_line = f"• {name} (ID: {id_value})"
+            result.append(item_line)
+            
+            # Add indented description if present
+            if "description" in item and item["description"]:
+                result.append(f"  Description: {item['description']}")
+            
+            # Add additional fields with indentation
+            if include_fields:
+                for field in include_fields:
+                    if field in item and field not in [name_field, "id", "description"]:
+                        # Format the value based on type
+                        if isinstance(item[field], dict):
+                            value = f"<{len(item[field])} key-value pairs>"
+                        elif isinstance(item[field], list):
+                            value = f"<{len(item[field])} items>"
+                        else:
+                            value = str(item[field])
+                        
+                        # Add formatted field
+                        field_name = field.replace("_", " ").title()
+                        result.append(f"  {field_name}: {value}")
+            
+            # Add empty line between items for readability
+            result.append("")
+        
+        # Add helpful usage hint at the end
+        singular_type = resource_type[:-1] if resource_type.endswith("s") else resource_type
+        result.append(f"Use 'get' action with the {singular_type}_id to see more details about a specific {singular_type}.")
+        
+        formatted_message = "\n".join(result)
+    
+    # Add the formatted message for MCP display
+    response["formatted_message"] = formatted_message
+    
+    return response
 
 
 def format_list_text(items: List[Dict[str, Any]], name_field: str = "name") -> str:
