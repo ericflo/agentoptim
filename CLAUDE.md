@@ -110,18 +110,18 @@ pytest>=7.0.0        # Testing framework
 
 ### Phase 3: Experiment Framework
 
-1. ⬜ Create data models for experiments and prompt variants
-2. ⬜ Implement experiment storage and configuration
-3. ⬜ Implement `manage_experiment` tool
-4. ⬜ Add testing for experiment functionality
+1. ✅ Create data models for experiments and prompt variants
+2. ✅ Implement experiment storage and configuration
+3. ✅ Implement `manage_experiment` tool
+4. ✅ Add testing for experiment functionality
 
 ### Phase 4: Job Execution
 
-1. ⬜ Implement the job runner framework
-2. ⬜ Add support for calling external judge models
-3. ⬜ Implement parallel execution for experiments
-4. ⬜ Implement `run_job` tool
-5. ⬜ Add testing for job execution
+1. ✅ Implement the job runner framework
+2. ✅ Add support for calling external judge models
+3. ✅ Implement parallel execution for experiments
+4. ✅ Implement `run_job_tool`
+5. ✅ Add testing for job execution
 
 ### Phase 5: Results Analysis
 
