@@ -1,0 +1,12 @@
+{"question": "What is 2 + 2?", "answer": "4", "difficulty": "easy", "category": "addition"}
+{"question": "What is 5 - 3?", "answer": "2", "difficulty": "easy", "category": "subtraction"}
+{"question": "What is 3 × 4?", "answer": "12", "difficulty": "easy", "category": "multiplication"}
+{"question": "What is 10 ÷ 2?", "answer": "5", "difficulty": "easy", "category": "division"}
+{"question": "What is 7 + 8?", "answer": "15", "difficulty": "medium", "category": "addition"}
+{"question": "What is 12 - 5?", "answer": "7", "difficulty": "medium", "category": "subtraction"}
+{"question": "What is 6 × 7?", "answer": "42", "difficulty": "medium", "category": "multiplication"}
+{"question": "What is 18 ÷ 3?", "answer": "6", "difficulty": "medium", "category": "division"}
+{"question": "What is 15 + 17?", "answer": "32", "difficulty": "hard", "category": "addition"}
+{"question": "What is 24 - 19?", "answer": "5", "difficulty": "hard", "category": "subtraction"}
+{"question": "What is 8 × 9?", "answer": "72", "difficulty": "hard", "category": "multiplication"}
+{"question": "What is 56 ÷ 8?", "answer": "7", "difficulty": "hard", "category": "division"}

@@ -102,11 +102,11 @@ pytest>=7.0.0        # Testing framework
 
 ### Phase 2: Dataset Management
 
-1. ⬜ Create data models for datasets
-2. ⬜ Implement dataset storage and retrieval
-3. ⬜ Implement dataset splitting functionality
-4. ⬜ Implement `manage_dataset` tool
-5. ⬜ Add testing for dataset functionality
+1. ✅ Create data models for datasets
+2. ✅ Implement dataset storage and retrieval
+3. ✅ Implement dataset splitting functionality
+4. ✅ Implement `manage_dataset` tool
+5. ✅ Add testing for dataset functionality
 
 ### Phase 3: Experiment Framework
 
