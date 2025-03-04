@@ -8,6 +8,7 @@ against datasets, using specified judge models for evaluation.
 import asyncio
 import json
 import logging
+import os
 import uuid
 from datetime import datetime
 from enum import Enum
@@ -75,19 +76,88 @@ class Job(BaseModel):
 
 def get_jobs_path() -> str:
     """Get the path to the jobs data file."""
-    return get_data_path("jobs.json")
+    # Use DATA_DIR directly to avoid creating a directory named jobs.json
+    jobs_path = os.path.join(DATA_DIR, "jobs.json")
+    
+    # Ensure jobs.json isn't a directory
+    if os.path.isdir(jobs_path):
+        try:
+            os.rmdir(jobs_path)  # Try to remove the directory if it's empty
+            logger.warning(f"Removed directory {jobs_path} which should be a file")
+        except Exception as e:
+            logger.error(f"Failed to remove directory {jobs_path}: {e}")
+            # Create the file with a different name to avoid conflicts
+            jobs_path = os.path.join(DATA_DIR, "jobs_data.json")
+            logger.warning(f"Using alternative jobs file path: {jobs_path}")
+    
+    # Create an empty jobs file if it doesn't exist yet
+    if not os.path.exists(jobs_path):
+        with open(jobs_path, 'w') as f:
+            f.write('{}')
+        logger.info(f"Created empty jobs file at {jobs_path}")
+        
+    return jobs_path
 
 
 def load_jobs() -> Dict[str, Job]:
     """Load all jobs from storage."""
-    jobs_data = load_json(get_jobs_path(), {})
-    return {job_id: Job.model_validate(job_data) for job_id, job_data in jobs_data.items()}
+    jobs_path = get_jobs_path()
+    
+    try:
+        if not os.path.exists(jobs_path):
+            # Create the file if it doesn't exist
+            with open(jobs_path, 'w') as f:
+                f.write('{}')
+            logger.info(f"Created empty jobs file at {jobs_path}")
+            return {}
+            
+        with open(jobs_path, 'r') as f:
+            jobs_data = json.load(f)
+            
+        if not isinstance(jobs_data, dict):
+            logger.warning(f"Jobs data at {jobs_path} is not a dictionary. Resetting to empty dict.")
+            jobs_data = {}
+            save_json(jobs_data, jobs_path)
+            
+        return {job_id: Job.model_validate(job_data) for job_id, job_data in jobs_data.items()}
+    except json.JSONDecodeError:
+        logger.warning(f"Invalid JSON in {jobs_path}. Resetting to empty dict.")
+        jobs_data = {}
+        save_json(jobs_data, jobs_path)
+        return {}
+    except Exception as e:
+        logger.error(f"Error loading jobs data: {e}")
+        return {}
 
 
 def save_jobs(jobs: Dict[str, Job]) -> None:
     """Save all jobs to storage."""
+    jobs_path = get_jobs_path()
     jobs_data = {job_id: job.model_dump() for job_id, job in jobs.items()}
-    save_json(get_jobs_path(), jobs_data)
+    
+    try:
+        # Ensure the file exists and is valid before writing to it
+        if not os.path.exists(jobs_path) or os.path.isdir(jobs_path):
+            # If it's a directory or doesn't exist, handle accordingly
+            if os.path.isdir(jobs_path):
+                logger.warning(f"{jobs_path} is a directory. Using alternative path.")
+                jobs_path = os.path.join(DATA_DIR, "jobs_data.json")
+                
+        # Write the data directly to avoid any issues with the utils.save_json
+        with open(jobs_path, 'w') as f:
+            json.dump(jobs_data, f, indent=2)
+            
+        logger.debug(f"Successfully saved jobs data to {jobs_path}")
+    except Exception as e:
+        logger.error(f"Failed to save jobs data: {e}")
+        # Try an alternative path as a last resort
+        try:
+            alternative_path = os.path.join(DATA_DIR, "jobs_backup.json")
+            with open(alternative_path, 'w') as f:
+                json.dump(jobs_data, f, indent=2)
+            logger.warning(f"Saved jobs data to alternative path: {alternative_path}")
+        except Exception as backup_error:
+            logger.error(f"Failed to save jobs data to backup path: {backup_error}")
 
 
 def create_job(experiment_id: str, dataset_id: str, evaluation_id: str, 
@@ -345,17 +415,28 @@ async def process_single_task(
         The job result
     """
     # Replace variables in the prompt template
-    input_text = variant.prompt
+    input_text = variant.template  # Use template instead of prompt
     
-    # Replace dataset item variables
-    for key, value in data_item.items():
-        if isinstance(value, str):
-            input_text = input_text.replace(f"{{{key}}}", value)
+    # Replace dataset item variables - DataItems are Pydantic models
+    # Access their attributes directly instead of treating them as dictionaries
+    if hasattr(data_item, 'input'):
+        input_text = input_text.replace("{input}", data_item.input)
+    if hasattr(data_item, 'expected_output') and data_item.expected_output:
+        input_text = input_text.replace("{expected_output}", data_item.expected_output)
+    
+    # Process any metadata
+    if hasattr(data_item, 'metadata'):
+        for key, value in data_item.metadata.items():
+            if isinstance(value, str):
+                input_text = input_text.replace(f"{{{key}}}", value)
     
     # If this variant has specific values for variables, replace those too
     if variant.variables:
-        for var_name, var_value in variant.variables.items():
-            input_text = input_text.replace(f"{{{var_name}}}", var_value)
+        # The variables are now a list of PromptVariable objects with name and options
+        for var in variant.variables:
+            # Use the first option in the list as the default value
+            if var.options and len(var.options) > 0:
+                input_text = input_text.replace(f"{{{var.name}}}", var.options[0])
     
     # Call the judge model to get a response
     output_text = await call_judge_model(input_text, judge_model, judge_parameters)
@@ -374,9 +455,16 @@ async def process_single_task(
         scores[criterion.name] = round(random.uniform(1, 5), 2)
     
     # Create and return the result
+    # Use variant.id instead of variant.variant_id
+    # DataItem doesn't have get() method, need to access id attribute or use a default
+    data_item_id = getattr(data_item, "id", None)
+    if not data_item_id:
+        # Try to use input as the id if no id attribute is available
+        data_item_id = getattr(data_item, "input", "unknown")[:20]  # Use first 20 chars of input
+        
     return JobResult(
-        variant_id=variant.variant_id,
-        data_item_id=data_item.get("id", "unknown"),
+        variant_id=variant.id,
+        data_item_id=data_item_id,
         input_text=input_text,
         output_text=output_text,
         scores=scores
@@ -415,7 +503,7 @@ async def run_job(job_id: str, max_parallel: int = 5) -> Job:
         
         # Create a list of all tasks
         tasks = []
-        for variant in experiment.variants:
+        for variant in experiment.prompt_variants:  # Use prompt_variants instead of variants
             for item in dataset.items:
                 tasks.append((variant, item))
         
