@@ -68,3 +68,17 @@ venv.bak/
 
 # Project-specific
 .agentoptim/
+evaluations/
+datasets/
+experiments/
+
+# Data storage
+*.db
+*.sqlite
+*.sqlite3
+*.json
+!examples/**/*.json
+
+# Logs
+logs/
+*.log
