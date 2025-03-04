@@ -9,6 +9,7 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 from agentoptim.utils import (
+    DATA_DIR,
     EXPERIMENTS_DIR,
     generate_id,
     save_json,
@@ -270,25 +271,25 @@ def duplicate_experiment(
     if not experiment:
         return None
     
-    # Create a copy of the experiment data
-    experiment_data = experiment.to_dict()
+    # Extract only the fields needed for create_experiment
+    new_experiment_data = {
+        "name": new_name if new_name else f"Copy of {experiment.name}",
+        "description": new_description if new_description else experiment.description,
+        "dataset_id": experiment.dataset_id,
+        "evaluation_id": experiment.evaluation_id,
+        "prompt_variants": [variant.to_dict() for variant in experiment.prompt_variants],
+        "model_name": experiment.model_name,
+        "temperature": experiment.temperature,
+    }
     
-    # Remove ID and results, reset status
-    experiment_data.pop("id")
-    experiment_data.pop("results", None)
-    experiment_data["status"] = "created"
+    if experiment.max_tokens:
+        new_experiment_data["max_tokens"] = experiment.max_tokens
     
-    # Update name and description
-    if new_name:
-        experiment_data["name"] = new_name
-    else:
-        experiment_data["name"] = f"Copy of {experiment_data['name']}"
-    
-    if new_description:
-        experiment_data["description"] = new_description
+    if experiment.metadata:
+        new_experiment_data["metadata"] = experiment.metadata.copy()
     
     # Create new experiment
-    return create_experiment(**experiment_data)
+    return create_experiment(**new_experiment_data)
 
 
 def manage_experiment(
@@ -306,7 +307,7 @@ def manage_experiment(
     results: Optional[Dict[str, Any]] = None,
     metadata: Optional[Dict[str, Any]] = None,
     new_name: Optional[str] = None,
-) -> str:
+) -> Dict[str, Any]:
     """
     Manage experiments for prompt optimization.
     
@@ -327,7 +328,7 @@ def manage_experiment(
         new_name: New name for duplicated experiment
     
     Returns:
-        A string response describing the result
+        A dictionary response describing the result
     """
     valid_actions = ["create", "list", "get", "update", "delete", "duplicate"]
     
@@ -390,7 +391,7 @@ def manage_experiment(
                 except:
                     result.append(str(exp_dict['results']))
             
-            return "\n".join(result)
+            return {"error": False, "message": "\n".join(result)}
         
         elif action == "create":
             validate_required_params(

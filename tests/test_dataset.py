@@ -252,7 +252,9 @@ class TestDataset(unittest.TestCase):
         # Check the first item
         self.assertEqual(dataset.items[0].input, "Question 0")
         self.assertEqual(dataset.items[0].expected_output, "Answer 0")
-        self.assertEqual(dataset.items[0].metadata["difficulty"], 0)
+        # Metadata is accessible
+        self.assertIsNotNone(dataset.items[0].metadata)
+        self.assertEqual(dataset.items[0].metadata.get("difficulty"), 0)
         
         # Test with non-existent file
         error_result = import_from_jsonl(
@@ -272,8 +274,8 @@ class TestDataset(unittest.TestCase):
             tags=self.test_tags,
         )
         
-        self.assertIn("Success", result)
-        self.assertIn(self.test_name, result)
+        self.assertEqual(result["error"], False)
+        self.assertIn(self.test_name, result["message"])
         
         # Check that one dataset now exists
         datasets = list_datasets()
@@ -287,8 +289,11 @@ class TestDataset(unittest.TestCase):
         
         result = manage_dataset(action="list")
         
-        self.assertIn("Dataset 1", result)
-        self.assertIn("Dataset 2", result)
+        self.assertEqual(result["error"], False)
+        self.assertEqual(len(result["items"]), 2)
+        dataset_names = [item["name"] for item in result["items"]]
+        self.assertIn("Dataset 1", dataset_names)
+        self.assertIn("Dataset 2", dataset_names)
     
     def test_manage_dataset_get(self):
         """Test the manage_dataset function for getting a dataset."""
@@ -299,15 +304,16 @@ class TestDataset(unittest.TestCase):
         
         result = manage_dataset(action="get", dataset_id=dataset.id)
         
-        self.assertIn(self.test_name, result)
-        self.assertIn(self.test_description, result)
-        self.assertIn(self.test_source, result)
-        self.assertIn("test", result)  # Tag
-        self.assertIn("Test input 1", result)
+        self.assertEqual(result["error"], False)
+        self.assertIn(self.test_name, result["message"])
+        self.assertIn(self.test_description, result["message"])
+        self.assertIn(self.test_source, result["message"])
+        self.assertIn("test", result["message"])  # Tag
+        self.assertIn("Test input 1", result["message"])
         
         # Test non-existent dataset
         result = manage_dataset(action="get", dataset_id="nonexistent-id")
-        self.assertIn("Error", result)
+        self.assertEqual(result["error"], True)
     
     def test_manage_dataset_update(self):
         """Test the manage_dataset function for updating datasets."""
@@ -320,8 +326,8 @@ class TestDataset(unittest.TestCase):
             action="update", dataset_id=dataset.id, name=new_name
         )
         
-        self.assertIn("Success", result)
-        self.assertIn(new_name, result)
+        self.assertEqual(result["error"], False)
+        self.assertIn(new_name, result["message"])
         
         # Check that the name was updated
         updated = get_dataset(dataset.id)
@@ -331,7 +337,7 @@ class TestDataset(unittest.TestCase):
         result = manage_dataset(
             action="update", dataset_id="nonexistent-id", name=new_name
         )
-        self.assertIn("Error", result)
+        self.assertEqual(result["error"], True)
     
     def test_manage_dataset_delete(self):
         """Test the manage_dataset function for deleting datasets."""
@@ -341,14 +347,14 @@ class TestDataset(unittest.TestCase):
         
         result = manage_dataset(action="delete", dataset_id=dataset.id)
         
-        self.assertIn("Success", result)
+        self.assertEqual(result["error"], False)
         
         # Check that the dataset is gone
         self.assertIsNone(get_dataset(dataset.id))
         
         # Test non-existent dataset
         result = manage_dataset(action="delete", dataset_id="nonexistent-id")
-        self.assertIn("Error", result)
+        self.assertEqual(result["error"], True)
     
     def test_manage_dataset_split(self):
         """Test the manage_dataset function for splitting datasets."""
@@ -360,15 +366,15 @@ class TestDataset(unittest.TestCase):
             action="split", dataset_id=dataset.id, test_ratio=0.3, seed=42
         )
         
-        self.assertIn("Success", result)
-        self.assertIn("Train dataset ID", result)
-        self.assertIn("Test dataset ID", result)
+        self.assertEqual(result["error"], False)
+        self.assertIn("Train dataset ID", result["message"])
+        self.assertIn("Test dataset ID", result["message"])
         
         # Test with invalid ratio
         result = manage_dataset(
             action="split", dataset_id=dataset.id, test_ratio=1.5
         )
-        self.assertIn("Error", result)
+        self.assertEqual(result["error"], True)
     
     def test_manage_dataset_sample(self):
         """Test the manage_dataset function for sampling datasets."""
@@ -380,14 +386,14 @@ class TestDataset(unittest.TestCase):
             action="sample", dataset_id=dataset.id, sample_size=3, seed=42
         )
         
-        self.assertIn("Success", result)
-        self.assertIn("Sample dataset ID", result)
+        self.assertEqual(result["error"], False)
+        self.assertIn("Sample dataset ID", result["message"])
         
         # Test with invalid sample size
         result = manage_dataset(
             action="sample", dataset_id=dataset.id, sample_size=0
         )
-        self.assertIn("Error", result)
+        self.assertEqual(result["error"], True)
     
     def test_manage_dataset_import(self):
         """Test the manage_dataset function for importing datasets."""
@@ -411,8 +417,8 @@ class TestDataset(unittest.TestCase):
             description="Imported test dataset",
         )
         
-        self.assertIn("Success", result)
-        self.assertIn("Imported Dataset", result)
+        self.assertEqual(result["error"], False)
+        self.assertIn("Imported Dataset", result["message"])
         
         # Test with non-existent file
         result = manage_dataset(
@@ -420,25 +426,25 @@ class TestDataset(unittest.TestCase):
             name="Invalid Import",
             filepath="nonexistent-file.jsonl",
         )
-        self.assertIn("Error", result)
+        self.assertEqual(result["error"], True)
     
     def test_manage_dataset_invalid_action(self):
         """Test the manage_dataset function with an invalid action."""
         result = manage_dataset(action="invalid")
-        self.assertIn("Error", result)
-        self.assertIn("Invalid action", result)
+        self.assertEqual(result["error"], True)
+        self.assertIn("Invalid action", result["message"])
     
     def test_manage_dataset_missing_params(self):
         """Test the manage_dataset function with missing parameters."""
         # Missing dataset_id for get action
         result = manage_dataset(action="get")
-        self.assertIn("Error", result)
-        self.assertIn("Missing required parameters", result)
+        self.assertEqual(result["error"], True)
+        self.assertIn("Missing required parameters", result["message"])
         
         # Missing required params for create action
         result = manage_dataset(action="create", name=self.test_name)
-        self.assertIn("Error", result)
-        self.assertIn("Missing required parameters", result)
+        self.assertEqual(result["error"], True)
+        self.assertIn("Missing required parameters", result["message"])
     
     def test_dataset_model(self):
         """Test the Dataset model functionality."""

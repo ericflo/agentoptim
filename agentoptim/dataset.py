@@ -8,6 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from agentoptim.utils import (
+    DATA_DIR,
     DATASETS_DIR,
     generate_id,
     save_json,
@@ -174,7 +175,33 @@ def create_dataset(
         The created dataset
     """
     # Convert dict items to DataItem objects
-    data_items = [DataItem(**item) for item in items]
+    data_items = []
+    for item in items:
+        # Map common keys to the expected DataItem format
+        if "input" not in item:
+            if "question" in item:
+                item["input"] = item["question"]
+            elif "text" in item:
+                item["input"] = item["text"]
+            elif "prompt" in item:
+                item["input"] = item["prompt"]
+        
+        if "expected_output" not in item and "answer" in item:
+            item["expected_output"] = item["answer"]
+        
+        # Copy additional fields to metadata
+        metadata = {}
+        for key, value in item.items():
+            if key not in ["input", "expected_output", "metadata"]:
+                metadata[key] = value
+        
+        if metadata and "metadata" not in item:
+            item["metadata"] = metadata
+        
+        try:
+            data_items.append(DataItem(**item))
+        except Exception as e:
+            raise ValueError(f"Invalid data item format: {item}. Error: {str(e)}")
     
     dataset = Dataset(
         name=name,
@@ -217,7 +244,36 @@ def update_dataset(
     if name is not None:
         dataset.name = name
     if items is not None:
-        dataset.items = [DataItem(**item) for item in items]
+        # Convert items using the same logic as in create_dataset
+        data_items = []
+        for item in items:
+            # Map common keys to the expected DataItem format
+            if "input" not in item:
+                if "question" in item:
+                    item["input"] = item["question"]
+                elif "text" in item:
+                    item["input"] = item["text"]
+                elif "prompt" in item:
+                    item["input"] = item["prompt"]
+            
+            if "expected_output" not in item and "answer" in item:
+                item["expected_output"] = item["answer"]
+            
+            # Copy additional fields to metadata
+            metadata = {}
+            for key, value in item.items():
+                if key not in ["input", "expected_output", "metadata"]:
+                    metadata[key] = value
+            
+            if metadata and "metadata" not in item:
+                item["metadata"] = metadata
+            
+            try:
+                data_items.append(DataItem(**item))
+            except Exception as e:
+                raise ValueError(f"Invalid data item format: {item}. Error: {str(e)}")
+                
+        dataset.items = data_items
     if description is not None:
         dataset.description = description
     if source is not None:
@@ -347,7 +403,11 @@ def import_from_jsonl(
                         k: v for k, v in data.items() 
                         if k != input_field and k != output_field
                     }
-                    if metadata:
+                    
+                    # If the "metadata" field exists in the original data, use that directly
+                    if "metadata" in data:
+                        item["metadata"] = data["metadata"]
+                    elif metadata:
                         item["metadata"] = metadata
                     
                     items.append(item)
@@ -386,7 +446,7 @@ def manage_dataset(
     test_ratio: Optional[float] = None,
     sample_size: Optional[int] = None,
     seed: Optional[int] = None,
-) -> str:
+) -> Dict[str, Any]:
     """
     Manage datasets for experiments and evaluations.
     
@@ -448,7 +508,7 @@ def manage_dataset(
                 if item_count > sample_count:
                     result.append(f"\n... and {item_count - sample_count} more items")
             
-            return "\n".join(result)
+            return {"error": False, "message": "\n".join(result)}
         
         elif action == "create":
             validate_required_params(

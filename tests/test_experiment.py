@@ -269,8 +269,8 @@ class TestExperiment(unittest.TestCase):
             temperature=0.5,
         )
         
-        self.assertIn("Success", result)
-        self.assertIn(self.test_name, result)
+        self.assertEqual(result["error"], False)
+        self.assertIn(self.test_name, result["message"])
         
         # Check that one experiment now exists
         experiments = list_experiments()
@@ -297,8 +297,11 @@ class TestExperiment(unittest.TestCase):
         
         result = manage_experiment(action="list")
         
-        self.assertIn("Experiment 1", result)
-        self.assertIn("Experiment 2", result)
+        self.assertEqual(result["error"], False)
+        self.assertEqual(len(result["items"]), 2)
+        experiment_names = [item["name"] for item in result["items"]]
+        self.assertIn("Experiment 1", experiment_names)
+        self.assertIn("Experiment 2", experiment_names)
     
     def test_manage_experiment_get(self):
         """Test the manage_experiment function for getting an experiment."""
@@ -313,17 +316,18 @@ class TestExperiment(unittest.TestCase):
         
         result = manage_experiment(action="get", experiment_id=experiment.id)
         
-        self.assertIn(self.test_name, result)
-        self.assertIn(self.test_description, result)
-        self.assertIn(self.test_dataset_id, result)
-        self.assertIn(self.test_evaluation_id, result)
-        self.assertIn(self.test_model_name, result)
-        self.assertIn("Basic Variant", result)
-        self.assertIn("Advanced Variant", result)
+        self.assertEqual(result["error"], False)
+        self.assertIn(self.test_name, result["message"])
+        self.assertIn(self.test_description, result["message"])
+        self.assertIn(self.test_dataset_id, result["message"])
+        self.assertIn(self.test_evaluation_id, result["message"])
+        self.assertIn(self.test_model_name, result["message"])
+        self.assertIn("Basic Variant", result["message"])
+        self.assertIn("Advanced Variant", result["message"])
         
         # Test non-existent experiment
         result = manage_experiment(action="get", experiment_id="nonexistent-id")
-        self.assertIn("Error", result)
+        self.assertEqual(result["error"], True)
     
     def test_manage_experiment_update(self):
         """Test the manage_experiment function for updating experiments."""
@@ -344,8 +348,8 @@ class TestExperiment(unittest.TestCase):
             status="running",
         )
         
-        self.assertIn("Success", result)
-        self.assertIn(new_name, result)
+        self.assertEqual(result["error"], False)
+        self.assertIn(new_name, result["message"])
         
         # Check that the name was updated
         updated = get_experiment(experiment.id)
@@ -358,7 +362,7 @@ class TestExperiment(unittest.TestCase):
             experiment_id="nonexistent-id",
             name=new_name,
         )
-        self.assertIn("Error", result)
+        self.assertEqual(result["error"], True)
     
     def test_manage_experiment_delete(self):
         """Test the manage_experiment function for deleting experiments."""
@@ -373,14 +377,14 @@ class TestExperiment(unittest.TestCase):
         
         result = manage_experiment(action="delete", experiment_id=experiment.id)
         
-        self.assertIn("Success", result)
+        self.assertEqual(result["error"], False)
         
         # Check that the experiment is gone
         self.assertIsNone(get_experiment(experiment.id))
         
         # Test non-existent experiment
         result = manage_experiment(action="delete", experiment_id="nonexistent-id")
-        self.assertIn("Error", result)
+        self.assertEqual(result["error"], True)
     
     def test_manage_experiment_duplicate(self):
         """Test the manage_experiment function for duplicating experiments."""
@@ -399,8 +403,8 @@ class TestExperiment(unittest.TestCase):
             new_name="Duplicated Test",
         )
         
-        self.assertIn("Success", result)
-        self.assertIn("Duplicated Test", result)
+        self.assertEqual(result["error"], False)
+        self.assertIn("Duplicated Test", result["message"])
         
         # Check that we now have two experiments
         experiments = list_experiments()
@@ -411,25 +415,25 @@ class TestExperiment(unittest.TestCase):
             action="duplicate",
             experiment_id="nonexistent-id",
         )
-        self.assertIn("Error", result)
+        self.assertEqual(result["error"], True)
     
     def test_manage_experiment_invalid_action(self):
         """Test the manage_experiment function with an invalid action."""
         result = manage_experiment(action="invalid")
-        self.assertIn("Error", result)
-        self.assertIn("Invalid action", result)
+        self.assertEqual(result["error"], True)
+        self.assertIn("Invalid action", result["message"])
     
     def test_manage_experiment_missing_params(self):
         """Test the manage_experiment function with missing parameters."""
         # Missing experiment_id for get action
         result = manage_experiment(action="get")
-        self.assertIn("Error", result)
-        self.assertIn("Missing required parameters", result)
+        self.assertEqual(result["error"], True)
+        self.assertIn("Missing required parameters", result["message"])
         
         # Missing required params for create action
         result = manage_experiment(action="create", name=self.test_name)
-        self.assertIn("Error", result)
-        self.assertIn("Missing required parameters", result)
+        self.assertEqual(result["error"], True)
+        self.assertIn("Missing required parameters", result["message"])
     
     def test_experiment_model(self):
         """Test the Experiment model functionality."""

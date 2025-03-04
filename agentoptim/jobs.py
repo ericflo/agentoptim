@@ -14,9 +14,9 @@ from enum import Enum
 from typing import Dict, List, Optional, Any, Union
 
 import httpx
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
-from agentoptim.utils import get_data_path, load_json, save_json
+from agentoptim.utils import DATA_DIR, get_data_path, load_json, save_json
 from agentoptim.dataset import Dataset, get_dataset
 from agentoptim.experiment import Experiment, get_experiment, PromptVariant
 from agentoptim.evaluation import Evaluation, get_evaluation
@@ -61,7 +61,7 @@ class Job(BaseModel):
     completed_at: Optional[str] = None
     error: Optional[str] = None
     
-    @validator('judge_parameters', pre=True, always=True)
+    @field_validator('judge_parameters', mode='before')
     def set_default_judge_parameters(cls, v):
         """Set default judge parameters if not provided."""
         defaults = {
@@ -121,7 +121,7 @@ def create_job(experiment_id: str, dataset_id: str, evaluation_id: str,
     )
     
     # Calculate total number of tasks
-    job.progress["total"] = len(dataset.items) * len(experiment.variants)
+    job.progress["total"] = len(dataset.items) * len(experiment.prompt_variants)
     
     # Save the job
     jobs = load_jobs()

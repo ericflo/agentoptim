@@ -32,13 +32,20 @@ def temp_data_dir():
     # Set up the test data directory
     os.makedirs(TEST_DATA_DIR, exist_ok=True)
     
-    # Patch the DATA_DIR constant
+    # Also set up subdirectories
+    os.makedirs(os.path.join(TEST_DATA_DIR, "datasets"), exist_ok=True)
+    os.makedirs(os.path.join(TEST_DATA_DIR, "evaluations"), exist_ok=True)
+    os.makedirs(os.path.join(TEST_DATA_DIR, "experiments"), exist_ok=True)
+    os.makedirs(os.path.join(TEST_DATA_DIR, "results"), exist_ok=True)
+    
+    # Patch the DATA_DIR constant 
     with patch('agentoptim.utils.DATA_DIR', TEST_DATA_DIR):
         with patch('agentoptim.evaluation.DATA_DIR', TEST_DATA_DIR):
             with patch('agentoptim.dataset.DATA_DIR', TEST_DATA_DIR):
                 with patch('agentoptim.experiment.DATA_DIR', TEST_DATA_DIR):
                     with patch('agentoptim.jobs.DATA_DIR', TEST_DATA_DIR):
-                        with patch('agentoptim.analysis.DATA_DIR', TEST_DATA_DIR):
+                        # Make sure RESULTS_DIR is also patched for analysis
+                        with patch('agentoptim.analysis.RESULTS_DIR', os.path.join(TEST_DATA_DIR, "results")):
                             yield TEST_DATA_DIR
     
     # Clean up after the test
@@ -58,20 +65,20 @@ class TestFullWorkflow:
             name="Test Dataset",
             description="Dataset for integration testing",
             items=[
-                {"id": "item1", "input": "Test input 1", "expected": "Expected output 1"},
-                {"id": "item2", "input": "Test input 2", "expected": "Expected output 2"},
+                {"input": "Test input 1", "expected_output": "Expected output 1"},
+                {"input": "Test input 2", "expected_output": "Expected output 2"},
             ]
         )
         
         # Verify dataset was created
         assert dataset is not None
-        assert dataset.dataset_id is not None
+        assert dataset.id is not None
         assert len(dataset.items) == 2
         
         # Verify dataset can be retrieved
-        retrieved_dataset = get_dataset(dataset.dataset_id)
+        retrieved_dataset = get_dataset(dataset.id)
         assert retrieved_dataset is not None
-        assert retrieved_dataset.dataset_id == dataset.dataset_id
+        assert retrieved_dataset.id == dataset.id
         
         # 2. Create an evaluation
         evaluation = create_evaluation(
@@ -153,7 +160,7 @@ class TestFullWorkflow:
         
         # Verify analysis was created
         assert analysis is not None
-        assert analysis.analysis_id is not None
+        assert analysis.id is not None
         assert len(analysis.variant_results) == 2
         
         # Check that recommendations were generated
@@ -173,18 +180,18 @@ class TestCacheIntegration:
             name="Cache Test Dataset",
             description="Dataset for cache testing",
             items=[
-                {"id": "item1", "input": "Test input", "expected": "Expected output"},
+                {"input": "Test input", "expected_output": "Expected output"},
             ]
         )
         
         # First retrieval should cache the dataset
         with patch('agentoptim.cache.cache_resource') as mock_cache:
-            get_dataset(dataset.dataset_id, use_cache=True)
+            get_dataset(dataset.id, use_cache=True)
             assert mock_cache.called
         
         # Second retrieval should use the cache
         with patch('agentoptim.cache.get_cached_resource', return_value=dataset) as mock_get_cache:
-            get_dataset(dataset.dataset_id, use_cache=True)
+            get_dataset(dataset.id, use_cache=True)
             assert mock_get_cache.called
         
         # Modification should update the cache
@@ -210,7 +217,7 @@ class TestParallelProcessing:
         dataset = create_dataset(
             name="Parallel Test Dataset",
             description="Dataset for parallel processing testing",
-            items=[{"id": f"item{i}", "input": f"Test input {i}"} for i in range(5)]
+            items=[{"input": f"Test input {i}", "expected_output": f"Expected output {i}"} for i in range(5)]
         )
         
         # Create an evaluation

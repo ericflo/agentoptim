@@ -177,16 +177,25 @@ Future enhancements and feature requests can be added to the roadmap for upcomin
 python -m agentoptim.server
 
 # Run tests
-pytest
+venv/bin/pytest
 
 # Run specific test file
-pytest tests/test_evaluation.py
+venv/bin/pytest tests/test_evaluation.py
+
+# Run tests with coverage
+venv/bin/pytest --cov=agentoptim tests/
+
+# Run tests for specific module with coverage
+venv/bin/pytest --cov=agentoptim.dataset tests/test_dataset.py
 
 # Check code style
 flake8 agentoptim
 
 # Generate documentation
 pdoc --html --output-dir docs agentoptim
+
+# Install/update dependencies
+venv/bin/pip install -U -r requirements.txt
 ```
 
 ## Notes

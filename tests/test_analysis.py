@@ -273,8 +273,8 @@ def test_analyze_results_list(mock_list_analyses):
     
     result = analyze_results(action="list")
     
-    assert "Analysis 1" in result
-    assert "Analysis 2" in result
+    assert result["items"][0]["name"] == "Analysis 1"
+    assert result["items"][1]["name"] == "Analysis 2"
 
 
 @patch("agentoptim.analysis.get_analysis")
@@ -301,10 +301,10 @@ def test_analyze_results_get(mock_get_analysis):
     
     result = analyze_results(action="get", analysis_id="a1")
     
-    assert "Analysis 1" in result
-    assert "Variant 1" in result
-    assert "Best Variants" in result
-    assert "Recommendations" in result
+    assert "Analysis 1" in result["message"]
+    assert "Variant 1" in result["message"]
+    assert "Best Variants" in result["message"]
+    assert "Recommendations" in result["message"]
 
 
 @patch("agentoptim.analysis.analyze_experiment_results")
@@ -333,9 +333,9 @@ def test_analyze_results_analyze(mock_analyze_experiment):
         name="New Analysis"
     )
     
-    assert "Success" in result
-    assert "New Analysis" in result
-    assert "Variant 1" in result
+    assert result["error"] == False
+    assert "New Analysis" in result["message"]
+    assert "Variant 1" in result["message"]
 
 
 @patch("agentoptim.analysis.delete_analysis")
@@ -345,8 +345,8 @@ def test_analyze_results_delete(mock_delete_analysis):
     
     result = analyze_results(action="delete", analysis_id="a1")
     
-    assert "Success" in result
-    assert "deleted" in result
+    assert result["error"] == False
+    assert "deleted" in result["message"]
 
 
 @patch("agentoptim.analysis.compare_analyses")
@@ -374,8 +374,9 @@ def test_analyze_results_compare(mock_compare_analyses):
     
     result = analyze_results(action="compare", analysis_ids=["a1", "a2"])
     
-    assert "Analysis Comparison" in result
-    assert "Analysis 1" in result
-    assert "Analysis 2" in result
-    assert "Best Overall Variants" in result
-    assert "Performance by Criterion" in result
+    assert result["error"] == False
+    assert "Analysis Comparison" in result["message"]
+    assert "Analysis 1" in result["message"]
+    assert "Analysis 2" in result["message"]
+    assert "Best Overall Variants" in result["message"]
+    assert "Performance by Criterion" in result["message"]
