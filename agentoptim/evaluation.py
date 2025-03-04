@@ -2,11 +2,12 @@
 
 import os
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
 from agentoptim.utils import (
+    DATA_DIR,
     EVALUATIONS_DIR,
     generate_id,
     save_json,
@@ -21,13 +22,22 @@ from agentoptim.utils import (
 )
 
 
+class EvaluationCriterion(BaseModel):
+    """Model for an evaluation criterion."""
+    
+    name: str
+    description: Optional[str] = None
+    weight: float = 1.0
+
+
 class Evaluation(BaseModel):
     """Model for an evaluation."""
     
     id: str = Field(default_factory=generate_id)
     name: str
-    template: str
-    questions: List[str]
+    template: str = "{input}"
+    questions: List[str] = Field(default_factory=list)
+    criteria: List[EvaluationCriterion] = Field(default_factory=list)
     description: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
@@ -64,12 +74,54 @@ def get_evaluation(evaluation_id: str) -> Optional[Evaluation]:
 
 
 def create_evaluation(
-    name: str, template: str, questions: List[str], description: Optional[str] = None
+    name: str, 
+    template: str = "{input}", 
+    questions: Optional[List[str]] = None,
+    criteria_or_description: Optional[Union[List[Dict[str, Any]], str]] = None,  
+    description: Optional[str] = None
 ) -> Evaluation:
-    """Create a new evaluation."""
+    """
+    Create a new evaluation.
+    
+    Args:
+        name: The name of the evaluation
+        template: The evaluation template string
+        questions: List of evaluation questions
+        criteria_or_description: Either a list of criteria dictionaries or a description string
+        description: Optional description
+        
+    Returns:
+        The created Evaluation object
+    """
+    # Handle the case where criteria_or_description is actually a description string
+    criteria = None
+    if isinstance(criteria_or_description, str):
+        # The old function signature had description as the 4th parameter
+        real_description = criteria_or_description
+        if description is not None:
+            # We have both parameters, which shouldn't happen normally
+            # but we'll prioritize the explicit description parameter
+            real_description = description
+    else:
+        # The new function signature has criteria as the 4th parameter
+        criteria = criteria_or_description
+        real_description = description
+    
+    # Convert criteria dictionaries to EvaluationCriterion objects
+    criteria_objects = []
+    if criteria:
+        for criterion in criteria:
+            criteria_objects.append(EvaluationCriterion(**criterion))
+    
+    # Create the evaluation
     evaluation = Evaluation(
-        name=name, template=template, questions=questions, description=description
+        name=name, 
+        template=template, 
+        questions=questions or [], 
+        criteria=criteria_objects,
+        description=real_description
     )
+    
     save_json(evaluation.to_dict(), get_evaluation_path(evaluation.id))
     return evaluation
 
@@ -79,9 +131,23 @@ def update_evaluation(
     name: Optional[str] = None,
     template: Optional[str] = None,
     questions: Optional[List[str]] = None,
+    criteria_or_description: Optional[Union[List[Dict[str, Any]], str]] = None,
     description: Optional[str] = None,
 ) -> Optional[Evaluation]:
-    """Update an existing evaluation."""
+    """
+    Update an existing evaluation.
+    
+    Args:
+        evaluation_id: ID of the evaluation to update
+        name: Optional new name
+        template: Optional new template string
+        questions: Optional new list of questions
+        criteria_or_description: Either a list of criteria dictionaries or a description string
+        description: Optional new description
+        
+    Returns:
+        The updated Evaluation object, or None if not found
+    """
     evaluation = get_evaluation(evaluation_id)
     if not evaluation:
         return None
@@ -92,6 +158,18 @@ def update_evaluation(
         evaluation.template = template
     if questions is not None:
         evaluation.questions = questions
+    
+    # Handle the case where criteria_or_description is actually a description string
+    if isinstance(criteria_or_description, str):
+        evaluation.description = criteria_or_description
+    elif criteria_or_description is not None:
+        # It's a criteria list
+        criteria_objects = []
+        for criterion in criteria_or_description:
+            criteria_objects.append(EvaluationCriterion(**criterion))
+        evaluation.criteria = criteria_objects
+    
+    # The explicit description parameter overrides any description from criteria_or_description
     if description is not None:
         evaluation.description = description
     
@@ -114,6 +192,7 @@ def manage_evaluation(
     name: Optional[str] = None,
     template: Optional[str] = None,
     questions: Optional[List[str]] = None,
+    criteria_or_description: Optional[Union[List[Dict[str, Any]], str]] = None,
     description: Optional[str] = None,
 ) -> str:
     """
@@ -123,8 +202,9 @@ def manage_evaluation(
         action: One of "create", "list", "get", "update", "delete"
         evaluation_id: Required for get, update, delete
         name: Required for create
-        template: Required for create, optional for update
-        questions: Required for create, optional for update
+        template: Optional template string (default: "{input}")
+        questions: Optional list of evaluation questions
+        criteria: Optional list of criteria dictionaries with name, description, and weight
         description: Optional description
     
     Returns:
@@ -151,27 +231,60 @@ def manage_evaluation(
                 f"Evaluation: {eval_dict['name']} (ID: {eval_dict['id']})",
                 f"Description: {eval_dict.get('description', 'None')}",
                 f"Template:\n{eval_dict['template']}",
-                "Questions:",
             ]
             
-            for i, question in enumerate(eval_dict["questions"], 1):
-                result.append(f"{i}. {question}")
+            # Show questions if available
+            if eval_dict.get("questions"):
+                result.append("Questions:")
+                for i, question in enumerate(eval_dict["questions"], 1):
+                    result.append(f"{i}. {question}")
+            
+            # Show criteria if available
+            if eval_dict.get("criteria"):
+                result.append("\nCriteria:")
+                for criterion in eval_dict["criteria"]:
+                    result.append(f"- {criterion['name']} (weight: {criterion['weight']})")
+                    if criterion.get("description"):
+                        result.append(f"  Description: {criterion['description']}")
             
             return "\n".join(result)
         
         elif action == "create":
+            # For testing, we need to validate that the required fields are present
+            # We need to make sure at least name and template are provided
             validate_required_params(
-                {"name": name, "template": template, "questions": questions},
-                ["name", "template", "questions"],
+                {"name": name, "template": template or "{input}"},
+                ["name", "template"]
             )
             
-            if not isinstance(questions, list) or not questions:
-                return format_error("Questions must be a non-empty list")
+            # Validate questions if provided
+            if questions is not None:
+                if not isinstance(questions, list):
+                    return format_error("Questions must be a list")
+                
+                if len(questions) > 100:
+                    return format_error("Maximum of 100 questions allowed per evaluation")
             
-            if len(questions) > 100:
-                return format_error("Maximum of 100 questions allowed per evaluation")
+            # Validate criteria if provided
+            if criteria_or_description is not None and isinstance(criteria_or_description, list):
+                if not isinstance(criteria_or_description, list):
+                    return format_error("Criteria must be a list")
+                
+                for criterion in criteria_or_description:
+                    if not isinstance(criterion, dict):
+                        return format_error("Each criterion must be a dictionary")
+                    
+                    if "name" not in criterion:
+                        return format_error("Each criterion must have a name")
             
-            evaluation = create_evaluation(name, template, questions, description)
+            evaluation = create_evaluation(
+                name=name,
+                template=template or "{input}",
+                questions=questions,
+                criteria_or_description=criteria_or_description,
+                description=description
+            )
+            
             return format_success(
                 f"Evaluation '{name}' created with ID: {evaluation.id}"
             )
@@ -179,12 +292,35 @@ def manage_evaluation(
         elif action == "update":
             validate_required_params({"evaluation_id": evaluation_id}, ["evaluation_id"])
             
-            if questions is not None and len(questions) > 100:
-                return format_error("Maximum of 100 questions allowed per evaluation")
+            # Validate questions if provided
+            if questions is not None:
+                if not isinstance(questions, list):
+                    return format_error("Questions must be a list")
+                
+                if len(questions) > 100:
+                    return format_error("Maximum of 100 questions allowed per evaluation")
+            
+            # Validate criteria if provided
+            if criteria_or_description is not None and isinstance(criteria_or_description, list):
+                if not isinstance(criteria_or_description, list):
+                    return format_error("Criteria must be a list")
+                
+                for criterion in criteria_or_description:
+                    if not isinstance(criterion, dict):
+                        return format_error("Each criterion must be a dictionary")
+                    
+                    if "name" not in criterion:
+                        return format_error("Each criterion must have a name")
             
             evaluation = update_evaluation(
-                evaluation_id, name, template, questions, description
+                evaluation_id=evaluation_id,
+                name=name,
+                template=template,
+                questions=questions,
+                criteria_or_description=criteria_or_description,
+                description=description
             )
+            
             if not evaluation:
                 return format_error(f"Evaluation with ID '{evaluation_id}' not found")
             

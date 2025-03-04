@@ -434,7 +434,7 @@ def validate_email(value: Any, field_name: str, required: bool = True) -> Option
         )
     
     # Simple email validation regex
-    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'$'
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     if not re.match(email_pattern, value):
         raise ValidationError(
             f"'{field_name}' must be a valid email address",
@@ -472,7 +472,7 @@ def validate_url(value: Any, field_name: str, required: bool = True) -> Optional
         )
     
     # Simple URL validation regex
-    url_pattern = r'^(https?|ftp)://[^\s/$.?#].[^\s]*$'$'
+    url_pattern = r'^(https?|ftp)://[^\s/$.?#].[^\s]*$'
     if not re.match(url_pattern, value):
         raise ValidationError(
             f"'{field_name}' must be a valid URL",
@@ -511,7 +511,7 @@ def validate_id_format(value: Any, field_name: str, prefix: str, required: bool 
         )
     
     # ID format validation
-    id_pattern = f'^{prefix}_[a-zA-Z0-9]+$'$'
+    id_pattern = f'^{prefix}_[a-zA-Z0-9]+$'
     if not re.match(id_pattern, value):
         raise ValidationError(
             f"'{field_name}' must start with '{prefix}_' followed by alphanumeric characters",

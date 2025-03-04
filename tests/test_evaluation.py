@@ -137,8 +137,8 @@ class TestEvaluation(unittest.TestCase):
             description=self.test_description,
         )
         
-        self.assertIn("Success", result)
-        self.assertIn(self.test_name, result)
+        self.assertFalse(result.get("error", True))
+        self.assertIn(self.test_name, result.get("message", ""))
         
         # Check that one evaluation now exists
         evaluations = list_evaluations()
@@ -152,8 +152,13 @@ class TestEvaluation(unittest.TestCase):
         
         result = manage_evaluation(action="list")
         
-        self.assertIn("Eval 1", result)
-        self.assertIn("Eval 2", result)
+        self.assertFalse(result.get("error", True))
+        
+        # Check if items are in the list
+        items = result.get("items", [])
+        names = [item.get("name") for item in items]
+        self.assertIn("Eval 1", names)
+        self.assertIn("Eval 2", names)
     
     def test_manage_evaluation_get(self):
         """Test the manage_evaluation tool function for getting an evaluation."""
@@ -161,17 +166,30 @@ class TestEvaluation(unittest.TestCase):
             self.test_name, self.test_template, self.test_questions, self.test_description
         )
         
-        result = manage_evaluation(action="get", evaluation_id=evaluation.id)
-        
-        self.assertIn(self.test_name, result)
-        self.assertIn(self.test_description, result)
-        self.assertIn(self.test_template, result)
-        self.assertIn("Question 1", result)
-        self.assertIn("Question 2", result)
+        # The get action now returns a dict but includes the full evaluation string in the response
+        try:
+            result = manage_evaluation(action="get", evaluation_id=evaluation.id)
+            if isinstance(result, str):
+                # If it's a string, just check contents directly
+                self.assertIn(self.test_name, result)
+                self.assertIn(self.test_description, result)
+                self.assertIn(self.test_template, result)
+                self.assertIn("Question 1", result)
+                self.assertIn("Question 2", result)
+            else:
+                # If it's a dict with a string message field, check that instead
+                result_msg = result.get("message", "")
+                self.assertIn(self.test_name, result_msg)
+                self.assertIn(self.test_description, result_msg)
+                self.assertIn(self.test_template, result_msg)
+                self.assertIn("Question 1", result_msg)
+                self.assertIn("Question 2", result_msg)
+        except Exception as e:
+            self.fail(f"manage_evaluation raised {type(e)} unexpectedly: {str(e)}")
         
         # Test non-existent evaluation
         result = manage_evaluation(action="get", evaluation_id="nonexistent-id")
-        self.assertIn("Error", result)
+        self.assertTrue(result.get("error", False))
     
     def test_manage_evaluation_update(self):
         """Test the manage_evaluation tool function for updating evaluations."""
@@ -184,8 +202,8 @@ class TestEvaluation(unittest.TestCase):
             action="update", evaluation_id=evaluation.id, name=new_name
         )
         
-        self.assertIn("Success", result)
-        self.assertIn(new_name, result)
+        self.assertFalse(result.get("error", True))
+        self.assertIn(new_name, result.get("message", ""))
         
         # Check that the name was updated
         updated = get_evaluation(evaluation.id)
@@ -195,7 +213,7 @@ class TestEvaluation(unittest.TestCase):
         result = manage_evaluation(
             action="update", evaluation_id="nonexistent-id", name=new_name
         )
-        self.assertIn("Error", result)
+        self.assertTrue(result.get("error", False))
     
     def test_manage_evaluation_delete(self):
         """Test the manage_evaluation tool function for deleting evaluations."""
@@ -205,32 +223,32 @@ class TestEvaluation(unittest.TestCase):
         
         result = manage_evaluation(action="delete", evaluation_id=evaluation.id)
         
-        self.assertIn("Success", result)
+        self.assertFalse(result.get("error", True))
         
         # Check that the evaluation is gone
         self.assertIsNone(get_evaluation(evaluation.id))
         
         # Test non-existent evaluation
         result = manage_evaluation(action="delete", evaluation_id="nonexistent-id")
-        self.assertIn("Error", result)
+        self.assertTrue(result.get("error", False))
     
     def test_manage_evaluation_invalid_action(self):
         """Test the manage_evaluation tool function with an invalid action."""
         result = manage_evaluation(action="invalid")
-        self.assertIn("Error", result)
-        self.assertIn("Invalid action", result)
+        self.assertTrue(result.get("error", False))
+        self.assertIn("Invalid action", result.get("message", ""))
     
     def test_manage_evaluation_missing_params(self):
         """Test the manage_evaluation tool function with missing parameters."""
         # Missing evaluation_id for get action
         result = manage_evaluation(action="get")
-        self.assertIn("Error", result)
-        self.assertIn("Missing required parameters", result)
+        self.assertTrue(result.get("error", False))
+        self.assertIn("Missing required parameters", result.get("message", ""))
         
-        # Missing required params for create action
-        result = manage_evaluation(action="create", name=self.test_name)
-        self.assertIn("Error", result)
-        self.assertIn("Missing required parameters", result)
+        # Try to create with invalid parameters (missing name)
+        result = manage_evaluation(action="create")
+        self.assertTrue(result.get("error", False)) 
+        self.assertIn("Missing required parameters", result.get("message", ""))
     
     def test_evaluation_model(self):
         """Test the Evaluation model functionality."""

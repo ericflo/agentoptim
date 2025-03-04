@@ -20,6 +20,31 @@ DATASETS_DIR = os.path.join(DATA_DIR, "datasets")
 EXPERIMENTS_DIR = os.path.join(DATA_DIR, "experiments")
 RESULTS_DIR = os.path.join(DATA_DIR, "results")
 
+def get_data_path(subfolder: Optional[str] = None) -> str:
+    """
+    Get the path to the data directory or a subdirectory.
+    
+    Args:
+        subfolder: Optional subfolder within the data directory
+        
+    Returns:
+        Full path to the data directory or specified subfolder
+    """
+    if subfolder:
+        path = os.path.join(DATA_DIR, subfolder)
+        os.makedirs(path, exist_ok=True)
+        return path
+    return DATA_DIR
+
+def get_data_dir() -> str:
+    """
+    Get the path to the main data directory.
+    
+    Returns:
+        Full path to the data directory
+    """
+    return DATA_DIR
+
 # Ensure directories exist
 def ensure_data_directories():
     """Create all necessary data directories if they don't exist."""
