@@ -3,8 +3,15 @@
 import os
 import json
 import uuid
+import logging
+import functools
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, TypeVar, Callable
+
+from .errors import ValidationError, ResourceNotFoundError, OperationError, setup_logging
+
+# Set up module logger
+logger = logging.getLogger(__name__)
 
 # Define base directories for storage
 DATA_DIR = os.environ.get("AGENTOPTIM_DATA_DIR", os.path.expanduser("~/.agentoptim"))
@@ -14,8 +21,22 @@ EXPERIMENTS_DIR = os.path.join(DATA_DIR, "experiments")
 RESULTS_DIR = os.path.join(DATA_DIR, "results")
 
 # Ensure directories exist
-for directory in [DATA_DIR, EVALUATIONS_DIR, DATASETS_DIR, EXPERIMENTS_DIR, RESULTS_DIR]:
-    os.makedirs(directory, exist_ok=True)
+def ensure_data_directories():
+    """Create all necessary data directories if they don't exist."""
+    for directory in [DATA_DIR, EVALUATIONS_DIR, DATASETS_DIR, EXPERIMENTS_DIR, RESULTS_DIR]:
+        try:
+            os.makedirs(directory, exist_ok=True)
+            logger.debug(f"Ensured directory exists: {directory}")
+        except Exception as e:
+            logger.error(f"Failed to create directory {directory}: {str(e)}")
+            raise OperationError(
+                operation="directory_creation",
+                message=f"Failed to create data directory: {directory}",
+                resource_type="storage"
+            )
+
+# Initialize directories
+ensure_data_directories()
 
 
 def generate_id() -> str:
@@ -30,26 +51,76 @@ def save_json(data: Any, filepath: str) -> None:
     Args:
         data: The data to save
         filepath: Path to the JSON file
+        
+    Raises:
+        OperationError: If the save operation fails
     """
-    with open(filepath, "w") as f:
-        json.dump(data, f, indent=2)
+    try:
+        # Ensure parent directory exists
+        directory = os.path.dirname(filepath)
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
+            
+        with open(filepath, "w") as f:
+            json.dump(data, f, indent=2)
+            
+        logger.debug(f"Successfully saved data to {filepath}")
+    except Exception as e:
+        logger.error(f"Failed to save data to {filepath}: {str(e)}")
+        raise OperationError(
+            operation="save_json",
+            message=f"Failed to save data to {filepath}: {str(e)}",
+            resource_type="file",
+            resource_id=filepath
+        )
 
 
-def load_json(filepath: str) -> Any:
+def load_json(filepath: str, required: bool = False) -> Any:
     """
     Load data from a JSON file.
     
     Args:
         filepath: Path to the JSON file
+        required: Whether the file must exist
         
     Returns:
-        The loaded data
+        The loaded data, or None if the file doesn't exist and required=False
+        
+    Raises:
+        ResourceNotFoundError: If the file doesn't exist and required=True
+        OperationError: If the load operation fails
     """
     if not os.path.exists(filepath):
+        if required:
+            logger.error(f"Required file not found: {filepath}")
+            raise ResourceNotFoundError(
+                resource_type="file",
+                resource_id=filepath,
+                message=f"Required file not found: {filepath}"
+            )
         return None
     
-    with open(filepath, "r") as f:
-        return json.load(f)
+    try:
+        with open(filepath, "r") as f:
+            data = json.load(f)
+        logger.debug(f"Successfully loaded data from {filepath}")
+        return data
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON from {filepath}: {str(e)}")
+        raise OperationError(
+            operation="load_json", 
+            message=f"Failed to parse JSON from {filepath}: {str(e)}",
+            resource_type="file",
+            resource_id=filepath
+        )
+    except Exception as e:
+        logger.error(f"Failed to load data from {filepath}: {str(e)}")
+        raise OperationError(
+            operation="load_json",
+            message=f"Failed to load data from {filepath}: {str(e)}",
+            resource_type="file",
+            resource_id=filepath
+        )
 
 
 def list_json_files(directory: str) -> List[str]:
@@ -61,20 +132,38 @@ def list_json_files(directory: str) -> List[str]:
         
     Returns:
         List of filenames without the .json extension
+        
+    Raises:
+        OperationError: If the directory exists but cannot be read
     """
     if not os.path.exists(directory):
+        logger.debug(f"Directory does not exist: {directory}")
         return []
     
-    return [
-        os.path.splitext(filename)[0]
-        for filename in os.listdir(directory)
-        if filename.endswith(".json")
-    ]
-
-
-class ValidationError(Exception):
-    """Exception raised for data validation errors."""
-    pass
+    try:
+        files = [
+            os.path.splitext(filename)[0]
+            for filename in os.listdir(directory)
+            if filename.endswith(".json")
+        ]
+        logger.debug(f"Found {len(files)} JSON files in {directory}")
+        return files
+    except PermissionError as e:
+        logger.error(f"Permission denied when reading directory {directory}: {str(e)}")
+        raise OperationError(
+            operation="list_files",
+            message=f"Permission denied when reading directory: {directory}",
+            resource_type="directory",
+            resource_id=directory
+        )
+    except Exception as e:
+        logger.error(f"Failed to list files in directory {directory}: {str(e)}")
+        raise OperationError(
+            operation="list_files",
+            message=f"Failed to list files in directory: {directory}",
+            resource_type="directory",
+            resource_id=directory
+        )
 
 
 def validate_action(action: str, valid_actions: List[str]) -> None:
@@ -88,10 +177,18 @@ def validate_action(action: str, valid_actions: List[str]) -> None:
     Raises:
         ValidationError: If the action is not valid
     """
-    if action not in valid_actions:
+    from .validation import validate_one_of
+    
+    try:
+        validate_one_of(action, "action", valid_actions)
+    except ValidationError as e:
+        logger.error(f"Invalid action validation: {e.message}")
+        # Re-raise with appropriate error message for backward compatibility
         valid_actions_str = ", ".join(valid_actions)
         raise ValidationError(
-            f"Invalid action: '{action}'. Valid actions are: {valid_actions_str}"
+            f"Invalid action: '{action}'. Valid actions are: {valid_actions_str}",
+            field="action",
+            value=action
         )
 
 
@@ -109,22 +206,112 @@ def validate_required_params(params: Dict[str, Any], required: List[str]) -> Non
     missing = [param for param in required if param not in params or params[param] is None]
     if missing:
         missing_str = ", ".join(missing)
-        raise ValidationError(f"Missing required parameters: {missing_str}")
+        logger.error(f"Missing required parameters: {missing_str}")
+        raise ValidationError(
+            f"Missing required parameters: {missing_str}",
+            field="parameters"
+        )
 
 
-def format_error(message: str) -> str:
-    """Format an error message for consistent output."""
-    return f"Error: {message}"
-
-
-def format_success(message: str) -> str:
-    """Format a success message for consistent output."""
-    return f"Success: {message}"
-
-
-def format_list(items: List[Dict[str, Any]], name_field: str = "name") -> str:
+def format_error(message: str) -> Dict[str, Any]:
     """
-    Format a list of items for display.
+    Format an error message for consistent API output.
+    
+    Args:
+        message: The error message
+        
+    Returns:
+        A dictionary with error details formatted for API response
+    """
+    logger.debug(f"Formatting error message: {message}")
+    return {
+        "error": True,
+        "message": message
+    }
+
+
+def format_success(message: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Format a success message for consistent API output.
+    
+    Args:
+        message: The success message
+        data: Optional data to include in the response
+        
+    Returns:
+        A dictionary with success details formatted for API response
+    """
+    logger.debug(f"Formatting success message: {message}")
+    response = {
+        "error": False,
+        "message": message
+    }
+    
+    if data:
+        response["data"] = data
+        
+    return response
+
+
+def format_list(
+    items: List[Dict[str, Any]], 
+    name_field: str = "name",
+    include_fields: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """
+    Format a list of items for API response.
+    
+    Args:
+        items: List of item dictionaries
+        name_field: The field to use as the item name
+        include_fields: Optional list of fields to include in the response
+        
+    Returns:
+        Dictionary with formatted list data for API response
+    """
+    logger.debug(f"Formatting list of {len(items)} items")
+    
+    if not items:
+        return {
+            "error": False,
+            "message": "No items found.",
+            "items": [],
+            "count": 0
+        }
+    
+    formatted_items = []
+    for item in items:
+        name = item.get(name_field, "Unnamed")
+        id_value = item.get("id", "No ID")
+        
+        formatted_item = {
+            "id": id_value,
+            "name": name
+        }
+        
+        # Include description if present
+        if "description" in item and item["description"]:
+            formatted_item["description"] = item["description"]
+        
+        # Include additional requested fields
+        if include_fields:
+            for field in include_fields:
+                if field in item and field not in formatted_item:
+                    formatted_item[field] = item[field]
+        
+        formatted_items.append(formatted_item)
+    
+    return {
+        "error": False,
+        "message": f"Found {len(items)} items.",
+        "items": formatted_items,
+        "count": len(items)
+    }
+
+
+def format_list_text(items: List[Dict[str, Any]], name_field: str = "name") -> str:
+    """
+    Format a list of items for text display.
     
     Args:
         items: List of item dictionaries
@@ -148,3 +335,234 @@ def format_list(items: List[Dict[str, Any]], name_field: str = "name") -> str:
             result.append(f"- {name} (ID: {id_value})")
     
     return "\n".join(result)
+
+
+def get_resource_path(resource_type: str, resource_id: str, extension: str = "json") -> str:
+    """
+    Get the file path for a resource.
+    
+    Args:
+        resource_type: Type of resource (e.g., "evaluation", "dataset")
+        resource_id: ID of the resource
+        extension: File extension (default: "json")
+        
+    Returns:
+        Full file path to the resource
+        
+    Raises:
+        ValueError: If the resource type is unknown
+    """
+    directory_map = {
+        "evaluation": EVALUATIONS_DIR,
+        "dataset": DATASETS_DIR,
+        "experiment": EXPERIMENTS_DIR,
+        "result": RESULTS_DIR,
+        "analysis": os.path.join(RESULTS_DIR, "analyses"),
+    }
+    
+    if resource_type not in directory_map:
+        error_msg = f"Unknown resource type: {resource_type}"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+    
+    directory = directory_map[resource_type]
+    
+    # Ensure directory exists
+    os.makedirs(directory, exist_ok=True)
+    
+    return os.path.join(directory, f"{resource_id}.{extension}")
+
+
+def resource_exists(resource_type: str, resource_id: str) -> bool:
+    """
+    Check if a resource exists.
+    
+    Args:
+        resource_type: Type of resource (e.g., "evaluation", "dataset")
+        resource_id: ID of the resource
+        
+    Returns:
+        True if the resource exists, False otherwise
+    """
+    try:
+        path = get_resource_path(resource_type, resource_id)
+        return os.path.exists(path)
+    except ValueError:
+        return False
+
+
+def save_resource(
+    resource_type: str, 
+    resource_id: str, 
+    data: Dict[str, Any],
+    update_cache: bool = True
+) -> None:
+    """
+    Save a resource to storage.
+    
+    Args:
+        resource_type: Type of resource (e.g., "evaluation", "dataset")
+        resource_id: ID of the resource
+        data: The resource data to save
+        update_cache: Whether to update the cache with this resource
+        
+    Raises:
+        OperationError: If the save operation fails
+    """
+    path = get_resource_path(resource_type, resource_id)
+    save_json(data, path)
+    logger.info(f"Saved {resource_type} with ID {resource_id}")
+    
+    # Update cache if enabled
+    if update_cache:
+        from .cache import cache_resource
+        cache_resource(resource_type, resource_id, data)
+
+
+def load_resource(
+    resource_type: str, 
+    resource_id: str, 
+    required: bool = True,
+    use_cache: bool = True
+) -> Optional[Dict[str, Any]]:
+    """
+    Load a resource from storage.
+    
+    Args:
+        resource_type: Type of resource (e.g., "evaluation", "dataset")
+        resource_id: ID of the resource
+        required: Whether the resource must exist
+        use_cache: Whether to use the cache for this lookup
+        
+    Returns:
+        The resource data, or None if it doesn't exist and required=False
+        
+    Raises:
+        ResourceNotFoundError: If the resource doesn't exist and required=True
+        OperationError: If the load operation fails
+    """
+    # Check cache first if enabled
+    if use_cache:
+        from .cache import get_cached_resource
+        cached_data = get_cached_resource(resource_type, resource_id)
+        if cached_data is not None:
+            return cached_data
+    
+    # Cache miss or caching disabled, load from disk
+    path = get_resource_path(resource_type, resource_id)
+    data = load_json(path, required=False)
+    
+    if data is None and required:
+        logger.error(f"{resource_type.capitalize()} with ID {resource_id} not found")
+        raise ResourceNotFoundError(
+            resource_type=resource_type,
+            resource_id=resource_id
+        )
+    
+    # Cache the result if it exists and caching is enabled
+    if data is not None and use_cache:
+        from .cache import cache_resource
+        cache_resource(resource_type, resource_id, data)
+        
+    return data
+
+
+@functools.lru_cache(maxsize=32)
+def list_resources(resource_type: str, use_cache: bool = True) -> List[str]:
+    """
+    List all resources of a given type.
+    
+    Args:
+        resource_type: Type of resource (e.g., "evaluation", "dataset")
+        use_cache: Whether to use function caching for this list operation
+        
+    Returns:
+        List of resource IDs
+        
+    Raises:
+        OperationError: If the directory exists but cannot be read
+    """
+    # Implementation note: we're using Python's built-in LRU cache for the
+    # entire function rather than our custom cache, since this is more
+    # appropriate for the list operation which returns multiple IDs
+    
+    # Disable caching if requested (bypass the lru_cache decorator)
+    if not use_cache:
+        # Clear the cache for this function to force a refresh
+        list_resources.cache_clear()
+    
+    try:
+        directory_map = {
+            "evaluation": EVALUATIONS_DIR,
+            "dataset": DATASETS_DIR,
+            "experiment": EXPERIMENTS_DIR,
+            "result": RESULTS_DIR,
+            "analysis": os.path.join(RESULTS_DIR, "analyses"),
+        }
+        
+        if resource_type not in directory_map:
+            logger.error(f"Unknown resource type: {resource_type}")
+            return []
+            
+        directory = directory_map[resource_type]
+        resource_ids = list_json_files(directory)
+        
+        logger.debug(f"Listed {len(resource_ids)} resources of type {resource_type}")
+        return resource_ids
+    except Exception as e:
+        logger.error(f"Failed to list {resource_type} resources: {str(e)}")
+        return []
+
+
+def delete_resource(
+    resource_type: str, 
+    resource_id: str, 
+    required: bool = True,
+    clear_cache: bool = True
+) -> bool:
+    """
+    Delete a resource from storage.
+    
+    Args:
+        resource_type: Type of resource (e.g., "evaluation", "dataset")
+        resource_id: ID of the resource
+        required: Whether the resource must exist
+        clear_cache: Whether to remove the resource from cache
+        
+    Returns:
+        True if the resource was deleted, False if it didn't exist
+        
+    Raises:
+        ResourceNotFoundError: If the resource doesn't exist and required=True
+        OperationError: If the delete operation fails
+    """
+    path = get_resource_path(resource_type, resource_id)
+    
+    if not os.path.exists(path):
+        if required:
+            logger.error(f"{resource_type.capitalize()} with ID {resource_id} not found")
+            raise ResourceNotFoundError(
+                resource_type=resource_type,
+                resource_id=resource_id
+            )
+        return False
+    
+    try:
+        # Remove the resource from disk
+        os.remove(path)
+        logger.info(f"Deleted {resource_type} with ID {resource_id}")
+        
+        # Invalidate cache if enabled
+        if clear_cache:
+            from .cache import invalidate_resource
+            invalidate_resource(resource_type, resource_id)
+            
+        return True
+    except Exception as e:
+        logger.error(f"Failed to delete {resource_type} with ID {resource_id}: {str(e)}")
+        raise OperationError(
+            operation="delete_resource",
+            message=f"Failed to delete {resource_type} with ID {resource_id}: {str(e)}",
+            resource_type=resource_type,
+            resource_id=resource_id
+        )

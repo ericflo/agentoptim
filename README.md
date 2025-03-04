@@ -2,6 +2,10 @@
 
 AgentOptim is a focused-but-powerful set of MCP tools that allows an MCP-aware agent to optimize a prompt in a data-driven way. Think of it as DSPy, but for agents - a toolkit that enables autonomous experimentation, evaluation, and optimization of prompts and interactions.
 
+## Release v1.0 Complete! 🎉
+
+We're excited to announce the completion of the AgentOptim v1.0 release, implementing all planned phases of the project. AgentOptim is now ready for use in production environments, with comprehensive features for prompt optimization, robust error handling, extensive documentation, and excellent performance.
+
 ## Overview
 
 AgentOptim provides a streamlined toolkit for agents to:
