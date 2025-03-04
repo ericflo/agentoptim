@@ -664,6 +664,106 @@ class TestJobs(unittest.TestCase):
         # Mark that we're running with pytest so the async test knows whether to run
         self.pytest_is_running = True
         # The actual test is in test_process_single_task_async
+            
+    @pytest.mark.asyncio
+    async def test_call_judge_model_mock(self):
+        """Test call_judge_model with a mock model."""
+        from agentoptim.jobs import call_judge_model
+        
+        # Test with a mock model
+        result = await call_judge_model("Test prompt", "mock-model", {"temperature": 0.5})
+        
+        assert "mock response" in result
+        assert "Test prompt" in result
+    
+    @pytest.mark.asyncio
+    async def test_call_judge_model_regular(self):
+        """Test call_judge_model with a regular model."""
+        from agentoptim.jobs import call_judge_model
+        
+        # Test with a regular model
+        result = await call_judge_model("Test prompt", "gpt-4", {"temperature": 0.5})
+        
+        assert "Response from gpt-4" in result
+        assert "production" in result
+    
+    @pytest.mark.asyncio
+    async def test_call_judge_model_error(self):
+        """Test call_judge_model with an error."""
+        from agentoptim.jobs import call_judge_model
+        
+        # Create a mock sleep function that raises an exception
+        with patch('asyncio.sleep', side_effect=Exception("Test exception")):
+            with pytest.raises(Exception) as exc_info:
+                await call_judge_model("Test prompt", "test-model", {"temperature": 0.5})
+            
+            assert "Failed to call judge model" in str(exc_info.value)
+    
+    @patch('agentoptim.jobs.run_job')
+    def test_manage_job_run_missing_params(self, mock_run_job):
+        """Test manage_job run action with missing parameters."""
+        with self.assertRaises(ValueError):
+            manage_job(action="run")
+            
+    @patch('agentoptim.jobs.get_job')
+    @patch('agentoptim.jobs.update_job_status')
+    def test_run_job_not_pending(self, mock_update_status, mock_get_job):
+        """Test running a job that is not in pending status."""
+        from agentoptim.jobs import run_job, JobStatus
+        
+        # Set up a mock job that's already running
+        job = Job(
+            job_id="test-job-id",
+            experiment_id="test-experiment-id",
+            dataset_id="test-dataset-id",
+            evaluation_id="test-evaluation-id",
+            status=JobStatus.RUNNING
+        )
+        mock_get_job.return_value = job
+        
+        # Trying to run a job that's not pending should raise ValueError
+        with pytest.raises(ValueError) as exc_info:
+            asyncio.run(run_job("test-job-id"))
+        
+        assert "Cannot run job" in str(exc_info.value)
+        
+    @patch('agentoptim.jobs.get_job')
+    @patch('agentoptim.jobs.update_job_status')
+    @patch('agentoptim.jobs.get_experiment')
+    @patch('agentoptim.jobs.get_dataset')
+    @patch('agentoptim.jobs.get_evaluation')
+    @patch('agentoptim.jobs.process_single_task')
+    @patch('agentoptim.jobs.add_job_result')
+    async def test_run_job_error(self, mock_add_result, mock_process_task, mock_get_eval, 
+                                mock_get_dataset, mock_get_experiment, mock_update_status, mock_get_job):
+        """Test error handling in run_job."""
+        # Set up a pending job
+        job = Job(
+            job_id="test-job-id",
+            experiment_id="test-experiment-id",
+            dataset_id="test-dataset-id",
+            evaluation_id="test-evaluation-id",
+            status=JobStatus.PENDING
+        )
+        mock_get_job.return_value = job
+        
+        # Set up updated job (after status change)
+        running_job = job.model_copy()
+        running_job.status = JobStatus.RUNNING
+        mock_update_status.return_value = running_job
+        
+        # Make get_experiment raise an exception
+        mock_get_experiment.side_effect = Exception("Test exception")
+        
+        # Run the job (should catch the exception and update status to FAILED)
+        result_job = await run_job("test-job-id")
+        
+        # Verify that job status was updated to FAILED
+        assert result_job.status == JobStatus.FAILED
+        assert "Test exception" in result_job.error
+        
+        # Verify that the second update_job_status call was to mark as FAILED
+        mock_update_status.assert_called_with("test-job-id", JobStatus.FAILED, "Test exception")
 
 
 if __name__ == "__main__":

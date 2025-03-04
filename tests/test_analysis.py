@@ -380,3 +380,196 @@ def test_analyze_results_compare(mock_compare_analyses):
     assert "Analysis 2" in result["message"]
     assert "Best Overall Variants" in result["message"]
     assert "Performance by Criterion" in result["message"]
+
+
+# Additional tests to improve coverage
+
+@patch("agentoptim.analysis.get_analysis")
+def test_analyze_results_get_not_found(mock_get_analysis):
+    """Test getting a non-existent analysis."""
+    mock_get_analysis.return_value = None
+    
+    result = analyze_results(action="get", analysis_id="nonexistent")
+    
+    assert result["error"] == True
+    assert "not found" in result["message"]
+
+
+@patch("agentoptim.analysis.delete_analysis")
+def test_analyze_results_delete_not_found(mock_delete_analysis):
+    """Test deleting a non-existent analysis."""
+    mock_delete_analysis.return_value = False
+    
+    result = analyze_results(action="delete", analysis_id="nonexistent")
+    
+    assert result["error"] == True
+    assert "not found" in result["message"]
+
+
+def test_analyze_results_compare_validation():
+    """Test compare validation."""
+    # Test with missing analysis_ids
+    result = analyze_results(action="compare")
+    assert result["error"] == True
+    assert "required" in result["message"].lower()
+    
+    # Test with invalid analysis_ids (not a list)
+    result = analyze_results(action="compare", analysis_ids="not-a-list")
+    assert result["error"] == True
+    assert "must be a list" in result["message"]
+    
+    # Test with too few analysis_ids
+    result = analyze_results(action="compare", analysis_ids=["single-id"])
+    assert result["error"] == True
+    assert "at least two" in result["message"]
+
+
+@patch("agentoptim.analysis.get_experiment")
+def test_analyze_experiment_results_missing_experiment(mock_get_experiment):
+    """Test analyzing with a missing experiment."""
+    mock_get_experiment.return_value = None
+    
+    with pytest.raises(ValueError) as exc_info:
+        analyze_experiment_results("nonexistent")
+    
+    assert "not found" in str(exc_info.value)
+
+
+@patch("agentoptim.analysis.get_experiment")
+def test_analyze_experiment_results_no_results(mock_get_experiment, mock_experiment):
+    """Test analyzing an experiment with no results."""
+    # Create experiment with no results
+    experiment = mock_experiment
+    experiment.results = None
+    mock_get_experiment.return_value = experiment
+    
+    with pytest.raises(ValueError) as exc_info:
+        analyze_experiment_results("exp123")
+    
+    assert "no results" in str(exc_info.value)
+
+
+@patch("agentoptim.analysis.get_experiment")
+@patch("agentoptim.analysis.get_job")
+def test_analyze_experiment_results_job_not_found(mock_get_job, mock_get_experiment, mock_experiment):
+    """Test analyzing with a missing job."""
+    mock_get_experiment.return_value = mock_experiment
+    mock_get_job.return_value = None
+    
+    with pytest.raises(ValueError) as exc_info:
+        analyze_experiment_results("exp123", job_id="nonexistent")
+    
+    assert "not found" in str(exc_info.value)
+
+
+@patch("agentoptim.analysis.get_experiment")
+@patch("agentoptim.analysis.get_job")
+def test_analyze_experiment_results_job_wrong_experiment(mock_get_job, mock_get_experiment, mock_experiment, mock_job):
+    """Test analyzing with a job from a different experiment."""
+    mock_get_experiment.return_value = mock_experiment
+    
+    # Modify job to have different experiment_id
+    job = mock_job
+    job.experiment_id = "wrong-exp"
+    mock_get_job.return_value = job
+    
+    with pytest.raises(ValueError) as exc_info:
+        analyze_experiment_results("exp123", job_id="job123")
+    
+    assert "not associated" in str(exc_info.value)
+
+
+@patch("agentoptim.analysis.get_experiment")
+@patch("agentoptim.analysis.get_job")
+def test_analyze_experiment_results_job_no_results(mock_get_job, mock_get_experiment, mock_experiment, mock_job):
+    """Test analyzing a job with no results."""
+    mock_get_experiment.return_value = mock_experiment
+    
+    # Modify job to have no results
+    job = mock_job
+    job.results = []
+    mock_get_job.return_value = job
+    
+    with pytest.raises(ValueError) as exc_info:
+        analyze_experiment_results("exp123", job_id="job123")
+    
+    assert "no results" in str(exc_info.value)
+
+
+def test_compute_variant_statistics_empty():
+    """Test computing statistics with empty scores."""
+    # Test with empty dictionary
+    analysis = compute_variant_statistics("var1", "Variant 1", {})
+    assert analysis.variant_id == "var1"
+    assert analysis.variant_name == "Variant 1"
+    assert analysis.sample_size == 0
+    assert not analysis.average_scores
+    
+    # Test with dictionary with empty lists
+    analysis = compute_variant_statistics("var1", "Variant 1", {"criterion1": []})
+    assert analysis.variant_id == "var1"
+    assert analysis.variant_name == "Variant 1"
+    assert analysis.sample_size == 0
+    assert not analysis.average_scores
+
+
+@patch("agentoptim.analysis.os.path.exists")
+@patch("agentoptim.analysis.os.remove")
+def test_delete_analysis_success(mock_remove, mock_exists):
+    """Test successful deletion of an analysis."""
+    mock_exists.return_value = True
+    mock_remove.return_value = None
+    
+    result = delete_analysis("test123")
+    
+    assert result == True
+    mock_remove.assert_called_once()
+
+
+@patch("agentoptim.analysis.os.path.exists")
+def test_delete_analysis_not_found(mock_exists):
+    """Test deletion of a non-existent analysis."""
+    mock_exists.return_value = False
+    
+    result = delete_analysis("nonexistent")
+    
+    assert result == False
+
+
+def test_analyze_results_invalid_action():
+    """Test analyze_results with an invalid action."""
+    result = analyze_results(action="invalid")
+    
+    assert result["error"] == True
+    assert "Invalid action" in result["message"]
+
+
+def test_analyze_results_unexpected_error():
+    """Test analyze_results handles unexpected errors."""
+    with patch("agentoptim.analysis.validate_action", side_effect=Exception("Test exception")):
+        result = analyze_results(action="list")
+        
+        assert result["error"] == True
+        assert "Unexpected error" in result["message"]
+        assert "Test exception" in result["message"]
+
+
+def test_analyze_results_validation_error():
+    """Test analyze_results handles validation errors."""
+    # Missing required parameters for analyze
+    result = analyze_results(action="analyze")
+    
+    assert result["error"] == True
+    assert "required" in result["message"].lower()
+    
+    # Missing required parameters for get
+    result = analyze_results(action="get")
+    
+    assert result["error"] == True
+    assert "required" in result["message"].lower()
+    
+    # Missing required parameters for delete
+    result = analyze_results(action="delete")
+    
+    assert result["error"] == True
+    assert "required" in result["message"].lower()
