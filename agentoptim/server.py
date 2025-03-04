@@ -14,17 +14,25 @@ from agentoptim.experiment import manage_experiment
 from agentoptim.jobs import manage_job
 from agentoptim.analysis import analyze_results
 
+# Import necessary utilities
+from agentoptim.utils import DATA_DIR, ensure_data_directories
+
+# Ensure data directories exist
+ensure_data_directories()
+
 # Configure logging
+log_file_path = os.path.join(DATA_DIR, "agentoptim.log")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(os.path.join(os.getcwd(), "agentoptim.log")),
+        logging.FileHandler(log_file_path),
     ],
 )
 
 logger = logging.getLogger("agentoptim")
+logger.info(f"Logging to {log_file_path}")
 
 # Initialize FastMCP server
 mcp = FastMCP("agentoptim")
