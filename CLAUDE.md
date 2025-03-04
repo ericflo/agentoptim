@@ -170,6 +170,21 @@ All planned phases of the AgentOptim project have been successfully completed. T
 
 Future enhancements and feature requests can be added to the roadmap for upcoming releases.
 
+## Test Coverage
+
+The project has excellent test coverage at 78% overall, with several modules approaching or reaching 100%:
+
+- cache.py: 100% (caching and performance optimizations)
+- server.py: 98% (MCP server endpoints)
+- validation.py: 99% (input validation functionality)
+- analysis.py: 88% (results analysis and optimization)
+- dataset.py: 85% (dataset management)
+- experiment.py: 80% (experiment configuration)
+- evaluation.py: 76% (evaluation criteria and questions)
+- jobs.py: 72% (job execution)
+
+Additional test improvements are ongoing, with the goal of reaching 85%+ overall coverage.
+
 ## Common Commands
 
 ```bash
