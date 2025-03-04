@@ -176,23 +176,30 @@ Future enhancements and feature requests can be added to the roadmap for upcomin
 # Start the MCP server
 python -m agentoptim.server
 
-# Run tests
+# Run tests (coverage is enabled by default)
 venv/bin/pytest
 
 # Run specific test file
 venv/bin/pytest tests/test_evaluation.py
 
-# Run tests with coverage
-venv/bin/pytest --cov=agentoptim tests/
+# Run tests without coverage
+venv/bin/pytest -p no:cov
 
-# Run tests for specific module with coverage
-venv/bin/pytest --cov=agentoptim.dataset tests/test_dataset.py
+# Run tests for specific module
+venv/bin/pytest tests/test_dataset.py
 
 # Run tests with verbose output
 venv/bin/pytest -v
 
 # Run tests and see print statements
 venv/bin/pytest -v --capture=no
+
+# Generate HTML coverage report
+venv/bin/pytest --cov-report=html
+
+# Show missing coverage lines in console 
+# (This is enabled by default in pytest.ini)
+venv/bin/pytest --cov-report=term-missing
 
 # Check code style
 flake8 agentoptim
