@@ -382,13 +382,20 @@ async def call_judge_model(
             except Exception as e:
                 logger.warning(f"Failed to load config: {e}")
     
-    # Skip API key check for mock models or when using localhost
-    if not api_key and not "mock" in model.lower() and not "localhost" in api_base:
-        # Warn but don't fail when using localhost or mock models
-        if "localhost" in api_base:
-            logger.warning("No API key found, but connecting to localhost so continuing anyway")
-        else:
-            raise ValueError("API key not found. Set the AGENTOPTIM_API_KEY environment variable or add it to the config file.")
+    # Check if this is a local/development environment
+    is_local_env = ("localhost" in api_base or 
+                    "127.0.0.1" in api_base or
+                    ".local" in api_base or 
+                    api_base.startswith("http://0.0.0.0") or
+                    "mock" in model.lower())
+    
+    # Skip API key check for mock models or when using local development server
+    if not api_key and not is_local_env:
+        raise ValueError("API key not found. Set the AGENTOPTIM_API_KEY environment variable or add it to the config file.")
+        
+    # Log warning if using a local environment without a key
+    if not api_key and is_local_env:
+        logger.warning(f"No API key found, but connecting to a local/development environment ({api_base}). Continuing without authentication.")
     
     try:
         # Support for mock models for testing
@@ -408,7 +415,7 @@ async def call_judge_model(
         # Handle different API formats based on the model provider
         if "llama" in model.lower() or "mistral" in model.lower():
             # For open models via local API or providers like Fireworks/Together
-            if api_key and "localhost" not in api_base:
+            if api_key and not is_local_env:
                 headers["Authorization"] = f"Bearer {api_key}"
             payload = {
                 "model": model,
@@ -461,9 +468,9 @@ async def call_judge_model(
             endpoint = f"{api_base}/completions"
             response_handler = lambda r: r.json()["choices"][0]["text"]
         
-        # Special case for localhost without API key - use mock responses for development
-        if "localhost" in api_base and not api_key and not "mock" in model.lower():
-            logger.warning(f"Using development mock response for {model} with localhost")
+        # Special case for local/development environments without API key - use mock responses
+        if is_local_env and not api_key and not "mock" in model.lower():
+            logger.warning(f"Using development mock response for {model} with local environment ({api_base})")
             await asyncio.sleep(0.5) # Simulate API latency
             
             # Check if this is a scoring task - they typically ask for a numeric response
@@ -507,8 +514,8 @@ async def call_judge_model(
         error_message = str(e)
         logger.error(f"Error connecting to judge model API: {error_message}")
         
-        # Provide helpful message for localhost connection issues
-        if "localhost" in api_base and ("Connection refused" in error_message or "Failed to establish a new connection" in error_message):
+        # Provide helpful message for local connection issues
+        if is_local_env and ("Connection refused" in error_message or "Failed to establish a new connection" in error_message):
             raise Exception(
                 f"Could not connect to local model server at {api_base}. "
                 "Make sure your local model server is running, or set AGENTOPTIM_API_BASE "
@@ -522,7 +529,7 @@ async def call_judge_model(
         logger.error(f"Error calling judge model: {error_message}")
         
         # Add specific message for common errors
-        if "localhost" in api_base and ("refused" in error_message.lower() or "cannot connect" in error_message.lower()):
+        if is_local_env and ("refused" in error_message.lower() or "cannot connect" in error_message.lower()):
             raise Exception(
                 f"Failed to call local model server at {api_base}. "
                 "Make sure your local model server is running."

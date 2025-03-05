@@ -636,11 +636,18 @@ async def run_job_tool(
                 job = get_job(job_id)
                 model_info = f" using judge model '{job.judge_model}'"
                 
-                if "localhost" in os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234"):
-                    # Add a warning about localhost usage
+                # Check if this is a local/development environment
+                api_base = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234")
+                is_local_env = ("localhost" in api_base or 
+                               "127.0.0.1" in api_base or
+                               ".local" in api_base or 
+                               api_base.startswith("http://0.0.0.0"))
+                
+                if is_local_env:
+                    # Add a warning about local development usage
                     return (
                         f"Job {job_id} started{model_info}. "
-                        f"Make sure your local model server is running at {os.environ.get('AGENTOPTIM_API_BASE', 'http://localhost:1234')}. "
+                        f"Make sure your local model server is running at {api_base}. "
                         f"Use 'get' action to check progress and get results when complete."
                     )
                 else:
