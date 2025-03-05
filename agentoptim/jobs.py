@@ -366,8 +366,36 @@ async def call_judge_model(
     
     # Get API key from environment, with fallback to configuration file
     api_key = os.environ.get("AGENTOPTIM_API_KEY")
-    # api_base = os.environ.get("AGENTOPTIM_API_BASE", "https://api.anthropic.com/v1")
-    api_base = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234")
+    
+    # Get API base URL with better default for local LLM servers
+    # Determine default API base based on presence of API key and environment
+    if api_key:
+        # If API key is provided, default to Claude API (will be overridden if other model is specified)
+        default_api_base = "https://api.anthropic.com/v1"
+    else:
+        # No API key - assume local LLM server
+        # Support common local server ports with smart defaults
+        local_port = os.environ.get("AGENTOPTIM_PORT", "1234")
+        default_api_base = f"http://localhost:{local_port}/v1"
+    
+    # Get the actual API base from environment or config
+    api_base = os.environ.get("AGENTOPTIM_API_BASE", default_api_base)
+    
+    # Ensure api_base doesn't end with a slash
+    api_base = api_base.rstrip('/')
+    
+    # Log the API base being used (but mask the full URL if it contains an API key)
+    safe_api_base = api_base
+    if api_key and api_key in safe_api_base:
+        safe_api_base = safe_api_base.replace(api_key, "****")
+    logger.info(f"Using API base: {safe_api_base}")
+    
+    # Get preferred model type (for API format selection)
+    # This allows users to override the format detection
+    model_type = os.environ.get("AGENTOPTIM_MODEL_TYPE", "").lower()
+    
+    # Prefer longer timeout for local LLMs
+    timeout_seconds = float(os.environ.get("AGENTOPTIM_TIMEOUT", "120"))
     
     if not api_key:
         # Try to load from config file
@@ -379,6 +407,10 @@ async def call_judge_model(
                     api_key = config.get("api_key")
                     if "api_base" in config:
                         api_base = config.get("api_base")
+                    if "model_type" in config:
+                        model_type = config.get("model_type", "").lower()
+                    if "timeout" in config:
+                        timeout_seconds = float(config.get("timeout", 120))
             except Exception as e:
                 logger.warning(f"Failed to load config: {e}")
     
@@ -395,7 +427,7 @@ async def call_judge_model(
         
     # Log warning if using a local environment without a key
     if not api_key and is_local_env:
-        logger.warning(f"No API key found, but connecting to a local/development environment ({api_base}). Continuing without authentication.")
+        logger.info(f"Connecting to local LLM server at {api_base} without authentication.")
     
     try:
         # Support for mock models for testing
@@ -412,22 +444,28 @@ async def call_judge_model(
         
         payload = {}
         
+        # Use explicit model_type if provided, otherwise infer from model name
+        inferred_model_type = model_type
+        if not inferred_model_type:
+            if "llama" in model.lower():
+                # Most llama models use OpenAI-compatible API with chat completions
+                inferred_model_type = "gpt"
+            elif "mistral" in model.lower():
+                inferred_model_type = "gpt"
+            elif "claude" in model.lower():
+                inferred_model_type = "claude"
+            elif "gpt" in model.lower():
+                inferred_model_type = "gpt"
+            elif is_local_env:
+                # Default to "gpt" format for local LLM servers which typically use OpenAI-compatible APIs
+                inferred_model_type = "gpt"
+                logger.info(f"Using default 'gpt' API format for local LLM server. Override with AGENTOPTIM_MODEL_TYPE if needed.")
+            else:
+                # For unknown models, default to "gpt" as the most widely supported format
+                inferred_model_type = "gpt"
+        
         # Handle different API formats based on the model provider
-        if "llama" in model.lower() or "mistral" in model.lower():
-            # For open models via local API or providers like Fireworks/Together
-            if api_key and not is_local_env:
-                headers["Authorization"] = f"Bearer {api_key}"
-            payload = {
-                "model": model,
-                "prompt": prompt,
-                "max_tokens": parameters.get("max_tokens", 1024),
-                "temperature": parameters.get("temperature", 0.0),
-                "stop": parameters.get("stop", None)
-            }
-            endpoint = f"{api_base}/completions"
-            response_handler = lambda r: r.json()["choices"][0]["text"]
-            
-        elif "claude" in model.lower():
+        if inferred_model_type == "claude":
             # Anthropic Claude API
             if api_key:
                 headers["x-api-key"] = api_key
@@ -442,8 +480,9 @@ async def call_judge_model(
             endpoint = f"{api_base}/complete"
             response_handler = lambda r: r.json()["completion"]
             
-        elif "gpt" in model.lower():
-            # OpenAI GPT API
+        elif inferred_model_type == "gpt":
+            # OpenAI-compatible chat completions API
+            # This works with many local LLM servers that support OpenAI compatibility
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
             payload = {
@@ -453,25 +492,80 @@ async def call_judge_model(
                 "temperature": parameters.get("temperature", 0.0),
                 "stop": parameters.get("stop", None)
             }
-            endpoint = f"{api_base}/chat/completions"
+            
+            # Check if "/v1" is already in the api_base
+            if "/v1" in api_base:
+                # For API endpoints already including "/v1"
+                endpoint = f"{api_base}/chat/completions"
+            else:
+                # For older style API endpoints without "/v1"
+                endpoint = f"{api_base}/v1/chat/completions"
+                
             response_handler = lambda r: r.json()["choices"][0]["message"]["content"]
             
-        else:
-            # Default format for other API providers
+        elif inferred_model_type == "completions" or inferred_model_type == "text":
+            # Traditional completions API (text generation)
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
             payload = {
                 "model": model,
                 "prompt": prompt,
-                **parameters
+                "max_tokens": parameters.get("max_tokens", 1024),
+                "temperature": parameters.get("temperature", 0.0),
+                "stop": parameters.get("stop", None)
             }
-            endpoint = f"{api_base}/completions"
+            
+            # Check if "/v1" is already in the api_base
+            if "/v1" in api_base:
+                endpoint = f"{api_base}/completions"
+            else:
+                endpoint = f"{api_base}/v1/completions"
+                
             response_handler = lambda r: r.json()["choices"][0]["text"]
+            
+        else:
+            # Default to chat completions for local LLM servers and OpenAI compatibility
+            if is_local_env:
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                payload = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": parameters.get("max_tokens", 1024),
+                    "temperature": parameters.get("temperature", 0.0),
+                    "stop": parameters.get("stop", None)
+                }
+                
+                # Check if "/v1" is already in the api_base
+                if "/v1" in api_base:
+                    # For API endpoints already including "/v1"
+                    endpoint = f"{api_base}/chat/completions"
+                else:
+                    # For older style API endpoints without "/v1"
+                    endpoint = f"{api_base}/v1/chat/completions"
+                    
+                response_handler = lambda r: r.json()["choices"][0]["message"]["content"]
+                
+                # Log the endpoint being used
+                logger.info(f"Using chat completions endpoint: {endpoint}")
+            else:
+                # For unknown APIs in non-local environments, try basic completions format
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                payload = {
+                    "model": model,
+                    "prompt": prompt,
+                    **parameters
+                }
+                endpoint = f"{api_base}/completions"
+                response_handler = lambda r: r.json()["choices"][0]["text"]
         
-        # Special case for local/development environments without API key - use mock responses
-        if is_local_env and not api_key and not "mock" in model.lower():
-            logger.warning(f"Using development mock response for {model} with local environment ({api_base})")
-            await asyncio.sleep(0.5) # Simulate API latency
+        # Option to use mock responses (opt-in with environment variable)
+        # This is useful for development testing without a real API
+        # Replace the previous automatic mock logic with explicit opt-in
+        if os.environ.get("AGENTOPTIM_USE_MOCK", "").lower() in ["true", "1", "yes"]:
+            logger.info(f"Using development mock response for {model} as requested by AGENTOPTIM_USE_MOCK")
+            await asyncio.sleep(0.5)  # Simulate API latency
             
             # Check if this is a scoring task - they typically ask for a numeric response
             scoring_task = "score" in prompt.lower() and ("between" in prompt.lower() or "from" in prompt.lower() and "to" in prompt.lower())
@@ -480,19 +574,19 @@ async def call_judge_model(
                 # For scoring tasks, return a number from 1 to 5
                 import random
                 return str(random.randint(3, 5))  # Biased toward positive scores
-            # Regular task responses
-            elif "claude" in model.lower():
-                mock_text = f"This is a development mock response from Claude. The first part of your input was: '{prompt[:50]}...'"
+            # Regular task responses 
+            elif inferred_model_type == "claude":
+                mock_text = f"This is a mock response from Claude. The first part of your input was: '{prompt[:50]}...'"
                 return mock_text
-            elif "gpt" in model.lower():
-                mock_text = f"This is a development mock response from GPT. The first part of your input was: '{prompt[:50]}...'"
+            elif inferred_model_type == "gpt":
+                mock_text = f"This is a mock response from a chat model. The first part of your input was: '{prompt[:50]}...'"
                 return mock_text
             else:
-                mock_text = f"This is a development mock response from {model}. The first part of your input was: '{prompt[:50]}...'"
+                mock_text = f"This is a mock response from {model}. The first part of your input was: '{prompt[:50]}...'"
                 return mock_text
         
-        # Make the API call
-        timeout = httpx.Timeout(30.0)  # 30 seconds timeout
+        # Make the API call with configurable timeout
+        timeout = httpx.Timeout(timeout_seconds)
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 endpoint,
@@ -503,12 +597,58 @@ async def call_judge_model(
             if response.status_code != 200:
                 logger.error(f"API error: {response.status_code} {response.text}")
                 raise Exception(f"API error ({response.status_code}): {response.text}")
+            
+            try:
+                # Try to extract the response according to the expected format
+                result = response_handler(response)
+                return result
+            except (KeyError, IndexError, TypeError) as e:
+                # Handle response format errors gracefully
+                logger.error(f"Error parsing response from API: {str(e)}")
                 
-            return response_handler(response)
+                # If we're in a local environment, try to provide helpful debugging info
+                if is_local_env:
+                    try:
+                        # Log the actual response structure to help debug
+                        response_data = response.json()
+                        logger.info(f"Response format from local LLM server: {json.dumps(response_data)}")
+                        
+                        # Try alternate response formats
+                        if "choices" in response_data:
+                            # OpenAI-like format but might be structured differently
+                            choices = response_data["choices"]
+                            if choices and isinstance(choices, list) and len(choices) > 0:
+                                choice = choices[0]
+                                if "message" in choice and "content" in choice["message"]:
+                                    return choice["message"]["content"]
+                                elif "text" in choice:
+                                    return choice["text"]
+                                
+                        # Try to extract direct content if available
+                        if "content" in response_data:
+                            return response_data["content"]
+                        elif "text" in response_data:
+                            return response_data["text"]
+                        elif "response" in response_data:
+                            return response_data["response"]
+                        elif "output" in response_data:
+                            return response_data["output"]
+                        
+                        # If we can't find a standard format, just return the raw JSON as text
+                        logger.warning(f"Could not parse response from local LLM server - using raw response")
+                        return str(response_data)
+                        
+                    except Exception as parse_error:
+                        logger.error(f"Error while trying to recover response format: {str(parse_error)}")
+                        # If we can't parse JSON, return the raw text
+                        return response.text
+                
+                # For non-local environments, raise the original error
+                raise Exception(f"Unexpected API response format. Expected {inferred_model_type} format, but got: {str(e)}")
     
     except httpx.TimeoutException:
-        logger.error("Request to judge model timed out")
-        raise Exception("Request to judge model timed out after 30 seconds")
+        logger.error(f"Request to judge model timed out after {timeout_seconds} seconds")
+        raise Exception(f"Request to judge model timed out after {timeout_seconds} seconds. Consider increasing AGENTOPTIM_TIMEOUT for large local models.")
         
     except httpx.RequestError as e:
         error_message = str(e)
@@ -518,8 +658,10 @@ async def call_judge_model(
         if is_local_env and ("Connection refused" in error_message or "Failed to establish a new connection" in error_message):
             raise Exception(
                 f"Could not connect to local model server at {api_base}. "
-                "Make sure your local model server is running, or set AGENTOPTIM_API_BASE "
-                "to a different endpoint and provide an AGENTOPTIM_API_KEY."
+                "Make sure your local model server is running. "
+                "For a local LLM server, check that it's running on the correct port and endpoint. "
+                "Common OpenAI-compatible endpoints would be 'http://localhost:1234/v1/chat/completions' "
+                "Try running a simple HTTP request to your server to check compatibility."
             )
         else:
             raise Exception(f"Connection error: {error_message}")
@@ -534,6 +676,15 @@ async def call_judge_model(
                 f"Failed to call local model server at {api_base}. "
                 "Make sure your local model server is running."
             )
+        elif "Unexpected API response format" in error_message:
+            if is_local_env:
+                raise Exception(
+                    f"Your local LLM server API format doesn't match what was expected. "
+                    f"You can set AGENTOPTIM_MODEL_TYPE to override the format detection. "
+                    f"Try setting it to 'gpt' for OpenAI-compatible APIs or 'completions' for text completions APIs."
+                )
+            else:
+                raise Exception(error_message)
         else:
             raise Exception(f"Failed to call judge model: {error_message}")
 
@@ -599,20 +750,19 @@ async def process_single_task(
         scoring_prompt = f"""
 You are an expert evaluator. Your task is to score the following model output based on a specific criterion.
 
-Input prompt: {input_text}
+Input: {data_item.input if hasattr(data_item, 'input') else ''}
 
-Model output: {output_text}
+Response: {output_text}
 
 Criterion: {criterion.name}
-Description: {criterion.description}
 
-Scoring guidelines:
-{criterion.scoring_guidelines}
-
-Please provide a score from {criterion.min_score} to {criterion.max_score} for this criterion.
-Respond with ONLY A NUMBER between {criterion.min_score} and {criterion.max_score}. 
-Do not explain your reasoning or add any additional text.
+Please provide a score from 1 to 5 for this criterion.
+RESPOND WITH ONLY A NUMBER between 1 and 5. 
+DO NOT explain your reasoning or add any additional text.
 """
+
+        # Log the scoring prompt for debugging
+        logger.info(f"Scoring prompt for criterion '{criterion.name}':\n{scoring_prompt}")
 
         # Call the judge model with scoring parameters
         scoring_params = {
@@ -624,29 +774,36 @@ Do not explain your reasoning or add any additional text.
             # Get score from judge model
             score_response = await call_judge_model(scoring_prompt, judge_model, scoring_params)
             
+            # Log the raw score response
+            logger.info(f"Raw score response for criterion '{criterion.name}': {score_response}")
+            
             # Parse the score (extract first number from the response)
             import re
             score_match = re.search(r'(\d+(\.\d+)?)', score_response)
             if score_match:
                 try:
                     score = float(score_match.group(1))
-                    # Ensure score is within valid range
-                    score = max(criterion.min_score, min(criterion.max_score, score))
+                    # Ensure score is within valid range (using 1-5 scale if not specified)
+                    min_score = getattr(criterion, 'min_score', 1)
+                    max_score = getattr(criterion, 'max_score', 5)
+                    score = max(min_score, min(max_score, score))
                     scores[criterion.name] = round(score, 2)
+                    logger.info(f"Successfully parsed score for '{criterion.name}': {score}")
                 except ValueError:
                     # Fallback if parsing fails
                     logger.warning(f"Failed to parse score from response: {score_response}")
-                    scores[criterion.name] = (criterion.min_score + criterion.max_score) / 2
+                    scores[criterion.name] = 3.0  # Middle value on 1-5 scale
             else:
                 # No numeric score found
                 logger.warning(f"No score found in response: {score_response}")
-                scores[criterion.name] = (criterion.min_score + criterion.max_score) / 2
+                scores[criterion.name] = 3.0  # Middle value on 1-5 scale
                 
         except Exception as e:
-            # Handle errors in scoring
-            logger.error(f"Error scoring criterion {criterion.name}: {str(e)}")
+            logger.error(f"Error in scoring for criterion '{criterion.name}': {str(e)}")
             # Use middle value if scoring fails
-            scores[criterion.name] = (criterion.min_score + criterion.max_score) / 2
+            min_score = getattr(criterion, 'min_score', 1)
+            max_score = getattr(criterion, 'max_score', 5)
+            scores[criterion.name] = (min_score + max_score) / 2
     
     # Calculate aggregate score if multiple criteria
     if len(scores) > 0:
