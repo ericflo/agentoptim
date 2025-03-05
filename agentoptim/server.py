@@ -12,7 +12,7 @@ from mcp.server.fastmcp import FastMCP
 from agentoptim.evaluation import manage_evaluation
 from agentoptim.dataset import manage_dataset
 from agentoptim.experiment import manage_experiment
-from agentoptim.jobs import manage_job
+from agentoptim.jobs import manage_job, get_job
 from agentoptim.analysis import analyze_results
 
 # Import necessary utilities
@@ -631,9 +631,24 @@ async def run_job_tool(
         
         # Special handling for the "run" action to handle async execution
         if action == "run" and job_id:
-            # Start a background task to run the job
-            # The manage_job function already handles this properly
-            return f"Job {job_id} started. Use 'get' action to check progress and get results when complete."
+            # Get the job to include model information in the message
+            try:
+                job = get_job(job_id)
+                model_info = f" using judge model '{job.judge_model}'"
+                
+                if "localhost" in os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234"):
+                    # Add a warning about localhost usage
+                    return (
+                        f"Job {job_id} started{model_info}. "
+                        f"Make sure your local model server is running at {os.environ.get('AGENTOPTIM_API_BASE', 'http://localhost:1234')}. "
+                        f"Use 'get' action to check progress and get results when complete."
+                    )
+                else:
+                    # Standard response
+                    return f"Job {job_id} started{model_info}. Use 'get' action to check progress and get results when complete."
+            except:
+                # Fallback if we can't get job details
+                return f"Job {job_id} started. Use 'get' action to check progress and get results when complete."
         
         # If result is a dictionary with a formatted_message, return that for MCP
         if isinstance(result, dict) and "formatted_message" in result:

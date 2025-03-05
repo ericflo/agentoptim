@@ -752,32 +752,37 @@ async def test_call_judge_model_api_formats():
             mock_response.json.return_value = {"choices": [{"text": "Llama response"}]}
             mock_post.return_value = mock_response
             
-            response = await call_judge_model("Test prompt", "llama-3-8b")
-            assert response == "Llama response"
-            
-            # Check request format
-            args, kwargs = mock_post.call_args
-            assert kwargs["json"]["prompt"] == "Test prompt"
-            assert "Bearer test-key" in kwargs["headers"]["Authorization"]
+            # Set API base to non-localhost to ensure Authorization header is included
+            with patch.dict(os.environ, {"AGENTOPTIM_API_BASE": "https://api.example.com/v1"}):
+                response = await call_judge_model("Test prompt", "llama-3-8b")
+                assert response == "Llama response"
+                
+                # Check request format
+                args, kwargs = mock_post.call_args
+                assert kwargs["json"]["prompt"] == "Test prompt"
+                assert "Bearer test-key" in kwargs["headers"]["Authorization"]
             
             # Test Claude format
             mock_response.json.return_value = {"completion": "Claude response"}
-            response = await call_judge_model("Test prompt", "claude-3-sonnet")
-            assert response == "Claude response"
-            
-            # Check request format
-            args, kwargs = mock_post.call_args
-            assert "Human:" in kwargs["json"]["prompt"]
-            assert "x-api-key" in kwargs["headers"]
+            with patch.dict(os.environ, {"AGENTOPTIM_API_BASE": "https://api.anthropic.com/v1"}):
+                response = await call_judge_model("Test prompt", "claude-3-sonnet")
+                assert response == "Claude response"
+                
+                # Check request format
+                args, kwargs = mock_post.call_args
+                assert "Human:" in kwargs["json"]["prompt"]
+                assert "x-api-key" in kwargs["headers"]
             
             # Test GPT format
             mock_response.json.return_value = {"choices": [{"message": {"content": "GPT response"}}]}
-            response = await call_judge_model("Test prompt", "gpt-4")
-            assert response == "GPT response"
-            
-            # Check request format
-            args, kwargs = mock_post.call_args
-            assert kwargs["json"]["messages"][0]["content"] == "Test prompt"
+            with patch.dict(os.environ, {"AGENTOPTIM_API_BASE": "https://api.openai.com/v1"}):
+                response = await call_judge_model("Test prompt", "gpt-4")
+                assert response == "GPT response"
+                
+                # Check request format
+                args, kwargs = mock_post.call_args
+                assert kwargs["json"]["messages"][0]["content"] == "Test prompt"
+                assert "Bearer test-key" in kwargs["headers"]["Authorization"]
 
 
 @pytest.mark.asyncio
