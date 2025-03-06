@@ -939,9 +939,9 @@ async def run_job_tool(
                                         f"Error: {error_detail}\n\n"
                                         f"TROUBLESHOOTING:\n"
                                         f"1. Check if your LLM server is running at {api_base}\n"
-                                        f"2. Try testing with: curl {api_base}/chat/completions -H 'Content-Type: application/json' -d '{{\"model\":\"meta-llama-3.1-8b-instruct\",\"messages\":[{{\"role\":\"user\",\"content\":\"hello\"}}]}}'\n"
-                                        f"3. Set environment variables if needed:\n"
-                                        f"   export AGENTOPTIM_API_BASE=http://localhost:YOUR_PORT/v1"
+                                        f"2. Verify your LM Studio server is running and the API is enabled\n"
+                                        f"3. Test with curl: curl -X POST {api_base}/chat/completions -H 'Content-Type: application/json' -d '{{\"model\":\"meta-llama-3.1-8b-instruct\",\"messages\":[{{\"role\":\"user\",\"content\":\"hello\"}}]}}'\n"
+                                        f"4. Make sure your model is loaded and LM Studio 'Local Inference Server' is started"
                                     )
                                 else:
                                     completion_message = f"Job ended with status: {status} after {elapsed_time:.2f} seconds."

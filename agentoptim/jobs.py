@@ -395,10 +395,12 @@ async def call_judge_model(
     # This allows users to override the format detection
     model_type = os.environ.get("AGENTOPTIM_MODEL_TYPE", "").lower()
     
-    # Check for LM Studio specific model format
+    # Check for LM Studio specific model format and API settings
     if "lmstudio" in model.lower():
-        # LM Studio typically uses the full model name without the lmstudio prefix
-        # Extract actual model name after the slash
+        # Force OpenAI-compatible settings for LM Studio
+        model_type = "gpt"
+        
+        # Extract actual model name after the slash if needed
         if "/" in model:
             model = model.split("/", 1)[1]
             logger.info(f"Using model name '{model}' for LM Studio")
@@ -466,6 +468,9 @@ async def call_judge_model(
             elif "claude" in model.lower():
                 inferred_model_type = "claude"
             elif "gpt" in model.lower():
+                inferred_model_type = "gpt"
+            elif "lmstudio" in model.lower():
+                # LM Studio is always OpenAI-compatible
                 inferred_model_type = "gpt"
             elif is_local_env:
                 # Default to "gpt" format for local LLM servers which typically use OpenAI-compatible APIs
@@ -860,8 +865,14 @@ async def process_single_task(
     logger.info(f"Judge API base: {api_base}")
     
     # Generate curl command for debugging
-    curl_cmd = f"curl -X POST {api_base}/chat/completions -H \"Content-Type: application/json\" -d '{{\"model\":\"{judge_model}\",\"messages\":[{{\"role\":\"user\",\"content\":\"hello\"}}]}}'"
-    logger.info(f"Test command: {curl_cmd}")
+    # For LM Studio models, extract the model name without the provider prefix
+    if "lmstudio" in judge_model.lower() and "/" in judge_model:
+        model_name = judge_model.split('/')[-1]
+        curl_cmd = f"curl -X POST {api_base}/chat/completions -H \"Content-Type: application/json\" -d '{{\"model\":\"{model_name}\",\"messages\":[{{\"role\":\"user\",\"content\":\"hello\"}}]}}'"
+        logger.info(f"LM Studio test command (with extracted model name): {curl_cmd}")
+    else:
+        curl_cmd = f"curl -X POST {api_base}/chat/completions -H \"Content-Type: application/json\" -d '{{\"model\":\"{judge_model}\",\"messages\":[{{\"role\":\"user\",\"content\":\"hello\"}}]}}'"
+        logger.info(f"Test command: {curl_cmd}")
     
     # Yield to event loop to allow MCP stdio communication to continue
     # This is especially important for Claude Desktop which uses stdio transport
