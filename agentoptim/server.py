@@ -552,6 +552,28 @@ async def run_job_tool(
     by generating responses from each prompt variant for the dataset items, then
     evaluating those responses using the specified evaluation criteria.
     
+    QUICKSTART EXAMPLES:
+    
+    1. Create a new job (automatically starts running):
+       ```
+       run_job_tool(
+           action="create", 
+           experiment_id="9c8d...", 
+           dataset_id="8a7b...", 
+           evaluation_id="6f8d..."
+       )
+       ```
+       
+    2. Check a job's status:
+       ```
+       run_job_tool(action="get", job_id="7r6q...")
+       ```
+       
+    3. List all jobs:
+       ```
+       run_job_tool(action="list")
+       ```
+    
     Args:
         action: The operation to perform. Must be one of:
                - "create" - Create a new job and automatically start it (unless auto_start=False)
@@ -583,7 +605,7 @@ async def run_job_tool(
         judge_model: Name of the model to use for evaluation (acts as judge).
                     Optional for "create" action.
                     If not provided, the default judge model will be used.
-                    Example: "claude-3-haiku-20240307"
+                    Example: "claude-3-haiku-20240307" or "lmstudio-community/meta-llama-3.1-8b-instruct"
                     
         judge_parameters: Parameters for the judge model.
                          Optional for "create" action.
@@ -621,6 +643,32 @@ async def run_job_tool(
     Jobs are executed asynchronously. When a job is created, it automatically starts running
     (unless auto_start=False). Use the "get" action to check its progress. Jobs may take several 
     minutes to complete depending on the size of the dataset and the number of prompt variants.
+    
+    WORKFLOW EXAMPLES:
+    
+    1. Complete workflow from job creation to results analysis:
+       ```
+       # First create and start the job
+       job_result = run_job_tool(
+           action="create",
+           experiment_id="exp_id_here",
+           dataset_id="dataset_id_here",
+           evaluation_id="eval_id_here",
+           judge_model="lmstudio-community/meta-llama-3.1-8b-instruct"
+       )
+       
+       # Extract job_id from the result
+       job_id = job_result["job"]["job_id"]
+       
+       # Check job progress
+       job_status = run_job_tool(action="get", job_id=job_id)
+       
+       # When job completes, analyze the results
+       analysis = analyze_results_tool(
+           action="analyze",
+           experiment_id="exp_id_here"
+       )
+       ```
     """
     logger.info(f"run_job_tool called with action={action}")
     try:
@@ -738,41 +786,191 @@ async def run_job_tool(
         if "action" in error_msg and "valid actions" not in error_msg:
             return f"Error: Invalid action '{action}'. Valid actions are: create, list, get, delete, run, cancel\n\nExample: run_job_tool(action=\"create\", experiment_id=\"...\", dataset_id=\"...\", evaluation_id=\"...\")"
         elif "required parameters" in error_msg:
-            # Show different examples based on action
+            # Show different examples based on action with improved formatting
             if action == "create":
-                example = {
-                    "action": "create",
-                    "experiment_id": "9c8d7e6f-5g4h-3i2j-1k0l-9m8n7o6p5q4r",
-                    "dataset_id": "8a7b6c5d-4e3f-2g1h-0i9j-8k7l6m5n4o3p",
-                    "evaluation_id": "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
-                }
-                return f"Error: {error_msg}.\n\nThe 'create' action requires experiment_id, dataset_id, and evaluation_id parameters.\n\nExample: {json.dumps(example, indent=2)}"
+                example_code = """run_job_tool(
+    action="create",
+    experiment_id="9c8d7e6f-5g4h-3i2j-1k0l-9m8n7o6p5q4r",
+    dataset_id="8a7b6c5d-4e3f-2g1h-0i9j-8k7l6m5n4o3p",
+    evaluation_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
+)"""
+                return f"""Error: {error_msg}.
+
+The 'create' action requires experiment_id, dataset_id, and evaluation_id parameters.
+
+Example:
+```python
+{example_code}
+```
+
+First, make sure you've created:
+1. A dataset with manage_dataset_tool()
+2. An evaluation with manage_evaluation_tool()
+3. An experiment with manage_experiment_tool()
+
+Then use the IDs from those resources in the create action."""
             elif action in ["get", "delete", "run", "cancel"]:
-                example = {"action": action, "job_id": "7r6q5p4o-3n2m-1l0k-9j8i-7h6g5f4e3d2c"}
-                return f"Error: {error_msg}.\n\nThe '{action}' action requires the job_id parameter.\n\nExample: {json.dumps(example, indent=2)}"
+                example_code = f"""run_job_tool(
+    action="{action}",
+    job_id="7r6q5p4o-3n2m-1l0k-9j8i-7h6g5f4e3d2c"
+)"""
+                return f"""Error: {error_msg}.
+
+The '{action}' action requires the job_id parameter.
+
+Example:
+```python
+{example_code}
+```
+
+To get a list of available job IDs, first run:
+```python
+run_job_tool(action="list")
+```"""
             else:
-                return f"Error: {error_msg}. Please check the tool documentation for required parameters."
+                return f"""Error: {error_msg}.
+
+Please check the tool documentation for required parameters.
+
+Most common actions:
+- "create" - Creates and runs a new job
+- "get" - Gets details about an existing job
+- "list" - Lists all jobs"""
         elif "not found" in error_msg and "job" in error_msg:
-            return f"Error: {error_msg}.\n\nThe job_id you provided doesn't exist. Use run_job_tool(action=\"list\") to see available jobs."
+            return f"""Error: {error_msg}
+
+The job_id you provided doesn't exist. To see all available jobs:
+
+```python
+run_job_tool(action="list")
+```"""
         elif "not found" in error_msg and "experiment" in error_msg:
-            return f"Error: {error_msg}.\n\nPlease use manage_experiment_tool(action=\"list\") to see available experiments or create a new experiment first."
+            return f"""Error: {error_msg}
+
+You need to create an experiment first or use an existing one. To list available experiments:
+
+```python
+manage_experiment_tool(action="list")
+```
+
+To create a new experiment:
+
+```python
+manage_experiment_tool(
+    action="create",
+    name="My Experiment",
+    dataset_id="your_dataset_id",
+    evaluation_id="your_evaluation_id",
+    model_name="claude-3-opus-20240229",
+    prompt_variants=[...]
+)
+```"""
         elif "not found" in error_msg and "dataset" in error_msg:
-            return f"Error: {error_msg}.\n\nPlease use manage_dataset_tool(action=\"list\") to see available datasets or create a new dataset first."
+            return f"""Error: {error_msg}
+
+You need to create a dataset first or use an existing one. To list available datasets:
+
+```python
+manage_dataset_tool(action="list")
+```
+
+To create a new dataset:
+
+```python
+manage_dataset_tool(
+    action="create",
+    name="My Dataset",
+    items=[
+        {"input": "Example input 1"},
+        {"input": "Example input 2"}
+    ]
+)
+```"""
         elif "not found" in error_msg and "evaluation" in error_msg:
-            return f"Error: {error_msg}.\n\nPlease use manage_evaluation_tool(action=\"list\") to see available evaluations or create a new evaluation first."
+            return f"""Error: {error_msg}
+
+You need to create an evaluation first or use an existing one. To list available evaluations:
+
+```python
+manage_evaluation_tool(action="list")
+```
+
+To create a new evaluation:
+
+```python
+manage_evaluation_tool(
+    action="create",
+    name="My Evaluation",
+    template="Input: {input}\nResponse: {response}\nQuestion: {question}",
+    questions=["Is the response helpful?", "Is the response accurate?"]
+)
+```"""
         elif "already running" in error_msg:
-            return f"Error: Job {job_id} is already running.\n\nUse run_job_tool(action=\"get\", job_id=\"{job_id}\") to check its progress."
+            return f"""Error: Job {job_id} is already running.
+
+To check the job's progress:
+
+```python
+run_job_tool(action="get", job_id="{job_id}")
+```"""
         elif "status is" in error_msg and "because its" in error_msg:
             if "PENDING" in error_msg:
-                return f"Error: {error_msg}.\n\nUse run_job_tool(action=\"run\", job_id=\"{job_id}\") to start the job."
+                return f"""Error: {error_msg}
+
+This job is pending and needs to be started. To start the job:
+
+```python
+run_job_tool(action="run", job_id="{job_id}")
+```"""
             elif "COMPLETED" in error_msg or "FAILED" in error_msg:
-                return f"Error: {error_msg}.\n\nThis job has already finished. If you want to run it again, create a new job."
+                return f"""Error: {error_msg}
+
+This job has already finished. To analyze its results:
+
+```python
+# Get job details
+job = run_job_tool(action="get", job_id="{job_id}")
+
+# Analyze results for the experiment
+experiment_id = job["job"]["experiment_id"]
+analyze_results_tool(action="analyze", experiment_id=experiment_id)
+```
+
+If you want to run the experiment again, create a new job."""
             elif "CANCELLED" in error_msg:
-                return f"Error: {error_msg}.\n\nThis job was cancelled. If you want to run it again, create a new job."
+                return f"""Error: {error_msg}
+
+This job was cancelled. If you want to run it again, create a new job:
+
+```python
+# Get the original job to see its configuration
+job = run_job_tool(action="get", job_id="{job_id}")
+
+# Create a new job with the same parameters
+run_job_tool(
+    action="create",
+    experiment_id=job["job"]["experiment_id"],
+    dataset_id=job["job"]["dataset_id"],
+    evaluation_id=job["job"]["evaluation_id"]
+)
+```"""
             else:
                 return f"Error: {error_msg}"
         elif "max_parallel" in error_msg:
-            return f"Error: {error_msg}.\n\nThe max_parallel parameter must be a positive integer. Example: max_parallel=5"
+            return f"""Error: {error_msg}
+
+The max_parallel parameter must be a positive integer. This controls how many tasks run in parallel.
+
+Example:
+```python
+run_job_tool(
+    action="create",
+    experiment_id="...",
+    dataset_id="...",
+    evaluation_id="...",
+    max_parallel=5  # Process 5 tasks at a time
+)
+```"""
         else:
             return f"Error: {error_msg}"
 
@@ -794,6 +992,26 @@ async def analyze_results_tool(
     This tool helps you analyze the results of prompt optimization experiments
     to determine which prompt variants performed best, understand performance patterns,
     and generate optimized prompt versions based on what was learned.
+    
+    QUICKSTART EXAMPLES:
+    
+    1. Analyze experiment results:
+       ```
+       analyze_results_tool(
+           action="analyze", 
+           experiment_id="9c8d..."
+       )
+       ```
+       
+    2. Get details of a specific analysis:
+       ```
+       analyze_results_tool(action="get", analysis_id="5d4c...")
+       ```
+       
+    3. List all analyses:
+       ```
+       analyze_results_tool(action="list")
+       ```
     
     Args:
         action: The operation to perform. Must be one of:
@@ -850,6 +1068,67 @@ async def analyze_results_tool(
     The "analyze" action performs a detailed statistical analysis of experiment results,
     which can take a few seconds to complete for large experiments. The result includes
     both quantitative metrics and qualitative insights about each prompt variant's performance.
+    
+    COMPLETE WORKFLOW EXAMPLE:
+    
+    ```python
+    # 1. Create a dataset
+    dataset = manage_dataset_tool(
+        action="create",
+        name="Customer Service Messages",
+        items=[
+            {"input": "How do I reset my password?"},
+            {"input": "When will my order arrive?"}
+        ]
+    )
+    dataset_id = "extract_id_from_response"
+    
+    # 2. Create an evaluation
+    evaluation = manage_evaluation_tool(
+        action="create",
+        name="Response Quality Evaluation",
+        template="Input: {input}\nResponse: {response}\nQuestion: {question}",
+        questions=["Is the response helpful?", "Is the response clear?"]
+    )
+    evaluation_id = "extract_id_from_response"
+    
+    # 3. Create an experiment with different prompt variants
+    experiment = manage_experiment_tool(
+        action="create",
+        name="Tone Optimization",
+        dataset_id=dataset_id,
+        evaluation_id=evaluation_id,
+        model_name="claude-3-opus-20240229",
+        prompt_variants=[
+            {
+                "name": "formal_tone",
+                "type": "system",
+                "content": "Use a formal, professional tone."
+            },
+            {
+                "name": "casual_tone",
+                "type": "system",
+                "content": "Use a casual, friendly tone."
+            }
+        ]
+    )
+    experiment_id = "extract_id_from_response"
+    
+    # 4. Create and run a job
+    job = run_job_tool(
+        action="create",
+        experiment_id=experiment_id,
+        dataset_id=dataset_id,
+        evaluation_id=evaluation_id
+    )
+    
+    # 5. Once the job completes, analyze the results
+    analysis = analyze_results_tool(
+        action="analyze",
+        experiment_id=experiment_id,
+        name="Tone Optimization Analysis"
+    )
+    ```
     """
     logger.info(f"analyze_results_tool called with action={action}")
     try:
@@ -872,50 +1151,151 @@ async def analyze_results_tool(
         logger.error(f"Error in analyze_results_tool: {str(e)}", exc_info=True)
         error_msg = str(e)
         
-        # Enhance error messages for common problems
+        # Enhance error messages for common problems with improved formatting
         if "action" in error_msg and "valid actions" not in error_msg:
-            return f"Error: Invalid action '{action}'. Valid actions are: analyze, list, get, delete, compare\n\nExamples:\n- analyze_results_tool(action=\"analyze\", experiment_id=\"9c8d...\", name=\"My Analysis\")\n- analyze_results_tool(action=\"list\")\n- analyze_results_tool(action=\"get\", analysis_id=\"5d4c...\")"
+            return f"""Error: Invalid action '{action}'.
+
+Valid actions are: analyze, list, get, delete, compare
+
+Examples:
+```python
+# Analyze experiment results
+analyze_results_tool(action="analyze", experiment_id="9c8d...")
+
+# List all analyses
+analyze_results_tool(action="list")
+
+# Get a specific analysis
+analyze_results_tool(action="get", analysis_id="5d4c...")
+```"""
         elif "required parameters" in error_msg:
-            # Show different examples based on action
+            # Show different examples based on action with improved formatting
             if action == "analyze":
-                example = {
-                    "action": "analyze",
-                    "experiment_id": "9c8d7e6f-5g4h-3i2j-1k0l-9m8n7o6p5q4r",
-                    "name": "Tone Analysis Results",
-                    "description": "Analysis of different customer service tones"
-                }
-                return f"Error: {error_msg}.\n\nThe 'analyze' action requires the experiment_id parameter.\n\nExample:\n{json.dumps(example, indent=2)}"
+                example_code = """analyze_results_tool(
+    action="analyze",
+    experiment_id="9c8d7e6f-5g4h-3i2j-1k0l-9m8n7o6p5q4r",
+    name="Tone Analysis Results",  # Optional
+    description="Analysis of different customer service tones"  # Optional
+)"""
+                return f"""Error: {error_msg}.
+
+The 'analyze' action requires the experiment_id parameter.
+
+Example:
+```python
+{example_code}
+```
+
+NOTE: Make sure the experiment has finished running and has results before analysis."""
             elif action == "get" or action == "delete":
-                example = {"action": action, "analysis_id": "5d4c3b2a-1z0y-9x8w-7v6u-5t4s3r2q1p0o"}
-                return f"Error: {error_msg}.\n\nThe '{action}' action requires the analysis_id parameter.\n\nExample:\n{json.dumps(example, indent=2)}"
+                example_code = f"""analyze_results_tool(
+    action="{action}",
+    analysis_id="5d4c3b2a-1z0y-9x8w-7v6u-5t4s3r2q1p0o"
+)"""
+                return f"""Error: {error_msg}.
+
+The '{action}' action requires the analysis_id parameter.
+
+Example:
+```python
+{example_code}
+```
+
+To get a list of available analysis IDs, first run:
+```python
+analyze_results_tool(action="list")
+```"""
             elif action == "compare":
-                example = {
-                    "action": "compare",
-                    "analysis_ids": [
-                        "5d4c3b2a-1z0y-9x8w-7v6u-5t4s3r2q1p0o",
-                        "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p"
-                    ]
-                }
-                return f"Error: {error_msg}.\n\nThe 'compare' action requires the analysis_ids parameter (a list of analysis IDs).\n\nExample:\n{json.dumps(example, indent=2)}"
+                example_code = """analyze_results_tool(
+    action="compare",
+    analysis_ids=[
+        "5d4c3b2a-1z0y-9x8w-7v6u-5t4s3r2q1p0o",
+        "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p"
+    ]
+)"""
+                return f"""Error: {error_msg}.
+
+The 'compare' action requires the analysis_ids parameter (a list of at least two analysis IDs).
+
+Example:
+```python
+{example_code}
+```"""
             else:
-                return f"Error: {error_msg}. Please check the tool documentation for required parameters."
+                return f"""Error: {error_msg}.
+
+Please check the tool documentation for required parameters.
+
+Most common actions:
+- "analyze" - Analyzes an experiment's results
+- "get" - Gets details of a specific analysis
+- "list" - Lists all analyses"""
         elif "not found" in error_msg and "analysis" in error_msg:
-            return f"Error: {error_msg}.\n\nThe analysis_id you provided doesn't exist. Use analyze_results_tool(action=\"list\") to see available analyses."
+            return f"""Error: {error_msg}
+
+The analysis_id you provided doesn't exist. To see all available analyses:
+
+```python
+analyze_results_tool(action="list")
+```"""
         elif "not found" in error_msg and "experiment" in error_msg:
-            return f"Error: {error_msg}.\n\nPlease use manage_experiment_tool(action=\"list\") to see available experiments or create a new experiment first."
+            return f"""Error: {error_msg}
+
+The experiment_id you provided doesn't exist or can't be found. To list available experiments:
+
+```python
+manage_experiment_tool(action="list")
+```"""
         elif "not found" in error_msg and "job" in error_msg:
-            return f"Error: {error_msg}.\n\nPlease use run_job_tool(action=\"list\") to see available jobs or create a new job first."
-        elif "not been run" in error_msg or "results" in error_msg and "no" in error_msg:
-            return f"Error: The experiment has not been run yet or has no results.\n\nPlease use run_job_tool to run the experiment first with:\n1. run_job_tool(action=\"create\", experiment_id=\"{experiment_id}\", ...)\n2. run_job_tool(action=\"run\", job_id=\"...\")"
+            return f"""Error: {error_msg}
+
+The job_id you provided doesn't exist or can't be found. To list all available jobs:
+
+```python
+run_job_tool(action="list")
+```"""
+        elif "not been run" in error_msg or ("results" in error_msg and "no" in error_msg):
+            return f"""Error: The experiment has not been run yet or has no results.
+
+You need to create and run a job for this experiment first:
+
+```python
+# Create a job for the experiment
+job_result = run_job_tool(
+    action="create",
+    experiment_id="{experiment_id}",
+    dataset_id="dataset_id_here",
+    evaluation_id="evaluation_id_here"
+)
+
+# Job will automatically start running
+# Check the job's status to see when it completes
+job_status = run_job_tool(
+    action="get", 
+    job_id=job_result["job"]["job_id"]
+)
+```"""
         elif "analysis_ids" in error_msg:
-            example = {
-                "action": "compare",
-                "analysis_ids": [
-                    "5d4c3b2a-1z0y-9x8w-7v6u-5t4s3r2q1p0o",
-                    "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p"
-                ]
-            }
-            return f"Error: {error_msg}.\n\nThe 'compare' action requires a list of at least two valid analysis IDs.\n\nExample:\n{json.dumps(example, indent=2)}"
+            example_code = """analyze_results_tool(
+    action="compare",
+    analysis_ids=[
+        "5d4c3b2a-1z0y-9x8w-7v6u-5t4s3r2q1p0o",
+        "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p"
+    ]
+)"""
+            return f"""Error: {error_msg}
+
+The 'compare' action requires a list of at least two valid analysis IDs.
+
+Example:
+```python
+{example_code}
+```
+
+To get a list of available analysis IDs, run:
+```python
+analyze_results_tool(action="list")
+```"""
         else:
             return f"Error: {error_msg}"
 
