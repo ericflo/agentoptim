@@ -420,7 +420,9 @@ async def call_judge_model(
                     "127.0.0.1" in api_base or
                     ".local" in api_base or 
                     api_base.startswith("http://0.0.0.0") or
-                    "mock" in model.lower())
+                    "mock" in model.lower() or
+                    "llama" in model.lower() or  # Llama models are often run locally
+                    "lmstudio" in model.lower())  # LM Studio is always local
     
     # Skip API key check for mock models or when using local development server
     if not api_key and not is_local_env:
@@ -494,6 +496,7 @@ async def call_judge_model(
                 system_content = parts[0]
                 user_content = parts[1] if len(parts) > 1 else ""
                 
+                # Format correctly for chat APIs
                 messages = [
                     {"role": "system", "content": system_content},
                     {"role": "user", "content": user_content}
@@ -554,6 +557,7 @@ async def call_judge_model(
                     system_content = parts[0]
                     user_content = parts[1] if len(parts) > 1 else ""
                     
+                    # Format correctly for chat APIs
                     messages = [
                         {"role": "system", "content": system_content},
                         {"role": "user", "content": user_content}
@@ -785,6 +789,8 @@ async def process_single_task(
         prompt_type = variant.type
         if prompt_type == "system":
             # For system prompts, we need to provide both system and user messages
+            # Format in a way that will work with LLM APIs correctly
+            # This gets properly split in call_judge_model for API-specific formatting
             input_text = f"{template}\n\nCustomer query: {query}"
             logger.info(f"Formatted system prompt with customer query appended")
         elif prompt_type == "user":
@@ -838,7 +844,8 @@ async def process_single_task(
     # Call the judge model to get a response
     try:
         # Use a shorter timeout for the first call to quickly detect connection issues
-        first_call_timeout = 15.0  # Use a short timeout for the first API call to detect issues quickly
+        # This will fail fast if the LLM server isn't responding, preventing Claude Desktop from freezing
+        first_call_timeout = 15.0  
         output_text = await call_judge_model(
             input_text, 
             judge_model, 
@@ -893,9 +900,17 @@ DO NOT explain your reasoning or add any additional text.
             "max_tokens": 10     # We only need a short response
         }
         
+        # Yield control to event loop to allow MCP stdio communication to continue
+        await asyncio.sleep(0)
+        
         try:
-            # Get score from judge model
-            score_response = await call_judge_model(scoring_prompt, judge_model, scoring_params)
+            # Get score from judge model with shorter timeout for scoring
+            score_response = await call_judge_model(
+                scoring_prompt, 
+                judge_model, 
+                scoring_params, 
+                api_timeout_seconds=30  # Use shorter timeout for scoring
+            )
             
             # Log the raw score response
             logger.info(f"Raw score response for criterion '{criterion.name}': {score_response}")
