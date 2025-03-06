@@ -542,6 +542,7 @@ async def run_job_tool(
     judge_model: Optional[str] = None,
     judge_parameters: Optional[Dict[str, Any]] = None,
     max_parallel: Optional[int] = None,
+    auto_start: Optional[bool] = True,
 ) -> str:
     """
     Execute and manage jobs that run prompt optimization experiments.
@@ -553,7 +554,7 @@ async def run_job_tool(
     
     Args:
         action: The operation to perform. Must be one of:
-               - "create" - Create a new job
+               - "create" - Create a new job and automatically start it (unless auto_start=False)
                - "list" - List all available jobs
                - "get" - Get details and status of a specific job
                - "delete" - Delete a job
@@ -592,11 +593,16 @@ async def run_job_tool(
                      Optional for "create" and "run" actions.
                      Higher values may speed up execution but increase resource usage.
                      Example: 5
+                     
+        auto_start: Whether to automatically start the job after creation.
+                   Only applies to "create" action.
+                   Defaults to True.
+                   Example: True
     
     Returns:
         For "list" action: A formatted list of all jobs with their IDs and statuses
         For "get" action: Detailed information about the job including current status
-        For "create" action: Confirmation message with the new job ID
+        For "create" action: Confirmation message with the new job ID and that it has started
         For "run" action: Message confirming the job has started
         For "cancel" action: Message confirming the job has been cancelled
         For "delete" action: Confirmation message that the job was deleted
@@ -612,25 +618,75 @@ async def run_job_tool(
     - "Job is not in a runnable state"
     
     Important Note:
-    Jobs are executed asynchronously. After starting a job with the "run" action,
-    use the "get" action to check its progress. Jobs may take several minutes to 
-    complete depending on the size of the dataset and the number of prompt variants.
+    Jobs are executed asynchronously. When a job is created, it automatically starts running
+    (unless auto_start=False). Use the "get" action to check its progress. Jobs may take several 
+    minutes to complete depending on the size of the dataset and the number of prompt variants.
     """
     logger.info(f"run_job_tool called with action={action}")
     try:
-        result = manage_job(
-            action=action,
-            job_id=job_id,
-            experiment_id=experiment_id,
-            dataset_id=dataset_id,
-            evaluation_id=evaluation_id,
-            judge_model=judge_model,
-            judge_parameters=judge_parameters,
-            max_parallel=max_parallel,
-        )
-        
-        # Special handling for the "run" action to handle async execution
-        if action == "run" and job_id:
+        # If creating a job, handle the auto-start behavior
+        if action == "create":
+            # Create the job
+            result = manage_job(
+                action=action,
+                job_id=job_id,
+                experiment_id=experiment_id,
+                dataset_id=dataset_id,
+                evaluation_id=evaluation_id,
+                judge_model=judge_model,
+                judge_parameters=judge_parameters,
+                max_parallel=max_parallel,
+            )
+            
+            # If job creation was successful and auto_start is True, start it automatically
+            if isinstance(result, dict) and result.get("status") == "success" and auto_start:
+                new_job_id = result.get("job", {}).get("job_id")
+                if new_job_id:
+                    # Start the job
+                    run_result = manage_job(
+                        action="run",
+                        job_id=new_job_id,
+                        max_parallel=max_parallel
+                    )
+                    
+                    # Return a combined result message
+                    api_base = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234")
+                    is_local_env = ("localhost" in api_base or 
+                                   "127.0.0.1" in api_base or
+                                   ".local" in api_base or 
+                                   api_base.startswith("http://0.0.0.0"))
+                    
+                    model_info = f" using judge model '{result.get('job', {}).get('judge_model', 'unknown')}'"
+                    
+                    if is_local_env:
+                        success_message = (
+                            f"Job created with ID: {new_job_id} and started{model_info}.\n"
+                            f"Make sure your local model server is running at {api_base}.\n"
+                            f"Use run_job_tool(action=\"get\", job_id=\"{new_job_id}\") to check progress."
+                        )
+                    else:
+                        success_message = (
+                            f"Job created with ID: {new_job_id} and started{model_info}.\n"
+                            f"Use run_job_tool(action=\"get\", job_id=\"{new_job_id}\") to check progress."
+                        )
+                    
+                    # Include the job in the response
+                    return {
+                        "status": "success",
+                        "message": success_message,
+                        "job": result.get("job", {})
+                    }
+                
+            # Return the original result if auto_start is False or if something went wrong
+            return result
+        elif action == "run" and job_id:
+            # Run the job
+            result = manage_job(
+                action=action,
+                job_id=job_id,
+                max_parallel=max_parallel
+            )
+            
             # Get the job to include model information in the message
             try:
                 job = get_job(job_id)
@@ -656,12 +712,24 @@ async def run_job_tool(
             except:
                 # Fallback if we can't get job details
                 return f"Job {job_id} started. Use 'get' action to check progress and get results when complete."
-        
-        # If result is a dictionary with a formatted_message, return that for MCP
-        if isinstance(result, dict) and "formatted_message" in result:
-            return result["formatted_message"]
+        else:
+            # Handle all other actions normally
+            result = manage_job(
+                action=action,
+                job_id=job_id,
+                experiment_id=experiment_id,
+                dataset_id=dataset_id,
+                evaluation_id=evaluation_id,
+                judge_model=judge_model,
+                judge_parameters=judge_parameters,
+                max_parallel=max_parallel,
+            )
             
-        return result
+            # If result is a dictionary with a formatted_message, return that for MCP
+            if isinstance(result, dict) and "formatted_message" in result:
+                return result["formatted_message"]
+                
+            return result
     except Exception as e:
         logger.error(f"Error in run_job_tool: {str(e)}", exc_info=True)
         error_msg = str(e)
@@ -707,6 +775,7 @@ async def run_job_tool(
             return f"Error: {error_msg}.\n\nThe max_parallel parameter must be a positive integer. Example: max_parallel=5"
         else:
             return f"Error: {error_msg}"
+
 
 
 @mcp.tool()
@@ -849,6 +918,8 @@ async def analyze_results_tool(
             return f"Error: {error_msg}.\n\nThe 'compare' action requires a list of at least two valid analysis IDs.\n\nExample:\n{json.dumps(example, indent=2)}"
         else:
             return f"Error: {error_msg}"
+
+
 
 
 def main():

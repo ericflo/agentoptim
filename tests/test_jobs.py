@@ -748,12 +748,12 @@ async def test_call_judge_model_api_formats():
             mock_response = MagicMock()
             mock_response.status_code = 200
             
-            # Test llama format
+            # Test llama format (using completions)
             mock_response.json.return_value = {"choices": [{"text": "Llama response"}]}
             mock_post.return_value = mock_response
             
             # Set API base to non-localhost to ensure Authorization header is included
-            with patch.dict(os.environ, {"AGENTOPTIM_API_BASE": "https://api.example.com/v1"}):
+            with patch.dict(os.environ, {"AGENTOPTIM_API_BASE": "https://api.example.com/v1", "AGENTOPTIM_MODEL_TYPE": "completions"}):
                 response = await call_judge_model("Test prompt", "llama-3-8b")
                 assert response == "Llama response"
                 
@@ -764,7 +764,7 @@ async def test_call_judge_model_api_formats():
             
             # Test Claude format
             mock_response.json.return_value = {"completion": "Claude response"}
-            with patch.dict(os.environ, {"AGENTOPTIM_API_BASE": "https://api.anthropic.com/v1"}):
+            with patch.dict(os.environ, {"AGENTOPTIM_API_BASE": "https://api.anthropic.com/v1", "AGENTOPTIM_MODEL_TYPE": "claude"}):
                 response = await call_judge_model("Test prompt", "claude-3-sonnet")
                 assert response == "Claude response"
                 
@@ -775,7 +775,7 @@ async def test_call_judge_model_api_formats():
             
             # Test GPT format
             mock_response.json.return_value = {"choices": [{"message": {"content": "GPT response"}}]}
-            with patch.dict(os.environ, {"AGENTOPTIM_API_BASE": "https://api.openai.com/v1"}):
+            with patch.dict(os.environ, {"AGENTOPTIM_API_BASE": "https://api.openai.com/v1", "AGENTOPTIM_MODEL_TYPE": "gpt"}):
                 response = await call_judge_model("Test prompt", "gpt-4")
                 assert response == "GPT response"
                 
