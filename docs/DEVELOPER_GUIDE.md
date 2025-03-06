@@ -193,25 +193,23 @@ experiment = create_experiment(
 
 ### Running Jobs
 
-Jobs are executed in a multi-step process:
+Jobs are executed in a streamlined process:
 
-1. Create a job object with references to experiment, dataset, and evaluation
-2. Execute the job, potentially with parallel tasks
-3. Monitor progress and wait for completion
-4. Retrieve and analyze results
+1. Create a job object with references to experiment, dataset, and evaluation (job starts automatically by default)
+2. Monitor progress and wait for completion
+3. Retrieve and analyze results
 
 ```python
-# Create a job
+# Create and automatically start a job
 job = create_job(
     experiment_id=experiment.experiment_id,
     dataset_id=dataset.dataset_id,
-    evaluation_id=evaluation.evaluation_id
+    evaluation_id=evaluation.evaluation_id,
+    judge_model="llama-3-8b-instruct",  # Optional: specify judge model
+    auto_start=True  # Default behavior, can set to False if needed
 )
 
-# Run the job
-await run_job(job.job_id)
-
-# Get results
+# Get job status and results when complete
 job = get_job(job.job_id)
 ```
 

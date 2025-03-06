@@ -121,7 +121,7 @@ result = manage_experiment_tool(
 ### Running a job
 
 ```python
-# Example: Creating and running a job
+# Example: Creating and automatically running a job (auto_start=True by default)
 job_result = run_job_tool(
     action="create",
     experiment_id="9c8d7e6f-5g4h-3i2j-1k0l-9m8n7o6p5q4r",  # ID from manage_experiment_tool
@@ -132,13 +132,7 @@ job_result = run_job_tool(
 )
 
 # Extract job_id from the result
-job_id = "7r6q5p4o-3n2m-1l0k-9j8i-7h6g5f4e3d2c"  # This would be extracted from job_result
-
-# Start the job execution
-run_result = run_job_tool(
-    action="run",
-    job_id=job_id
-)
+job_id = job_result["job"]["job_id"]  # Jobs now start automatically
 
 # Check job status (may need to wait for completion)
 status_result = run_job_tool(

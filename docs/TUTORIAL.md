@@ -226,21 +226,17 @@ Let's run our experiment to test all prompt variations against our dataset:
 # Add after the experiment creation
 
 # Step 4: Create and run a job
-print("\n4. Creating job to run the experiment...")
+print("\n4. Creating and running the experiment job...")
 job = create_job(
     experiment_id=experiment.experiment_id,
     dataset_id=dataset.dataset_id,
     evaluation_id=evaluation.evaluation_id,
-    judge_model="mock-model"  # Replace with actual judge model in production
+    judge_model="mock-model",  # Replace with actual judge model in production
+    auto_start=True  # Job automatically starts running (this is the default)
 )
-print(f"Job created with ID: {job.job_id}")
-
-print("\n5. Running job...")
+print(f"Job created and started with ID: {job.job_id}")
 print("This will evaluate all prompt variants across all math problems")
 print("Total tasks to process:", job.progress["total"])
-
-# Start the job
-job_task = asyncio.create_task(run_job(job.job_id, max_parallel=2))
 
 # Monitor job progress
 start_time = time.time()
@@ -262,8 +258,7 @@ while True:
     # Wait before checking again
     await asyncio.sleep(0.5)
 
-# Wait for job task to complete
-await job_task
+# Job has already started and completed based on status check
 ```
 
 Don't forget to add the missing imports:

@@ -554,14 +554,16 @@ async def run_job_tool(
     
     QUICKSTART EXAMPLES:
     
-    1. Create a new job (automatically starts running):
+    1. Create and auto-start a new job:
        ```
-       run_job_tool(
+       job_result = run_job_tool(
            action="create", 
            experiment_id="9c8d...", 
            dataset_id="8a7b...", 
            evaluation_id="6f8d..."
        )
+       # Job starts automatically! Extract job_id if needed:
+       # job_id = job_result["job"]["job_id"]
        ```
        
     2. Check a job's status:
@@ -1114,13 +1116,16 @@ async def analyze_results_tool(
     )
     experiment_id = "extract_id_from_response"
     
-    # 4. Create and run a job
+    # 4. Create and run a job (automatically starts)
     job = run_job_tool(
         action="create",
         experiment_id=experiment_id,
         dataset_id=dataset_id,
         evaluation_id=evaluation_id
     )
+    
+    # The job is already running! Check status if needed:
+    # job_status = run_job_tool(action="get", job_id=job["job"]["job_id"])
     
     # 5. Once the job completes, analyze the results
     analysis = analyze_results_tool(
