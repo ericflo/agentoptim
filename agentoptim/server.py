@@ -543,6 +543,8 @@ async def run_job_tool(
     judge_parameters: Optional[Dict[str, Any]] = None,
     max_parallel: Optional[int] = None,
     auto_start: Optional[bool] = True,
+    wait: Optional[bool] = False,
+    poll_interval: Optional[int] = 5,
 ) -> str:
     """
     Execute and manage jobs that run prompt optimization experiments.
@@ -564,6 +566,18 @@ async def run_job_tool(
        )
        # Job starts automatically! Extract job_id if needed:
        # job_id = job_result["job"]["job_id"]
+       ```
+       
+    1b. Create a job and wait for completion:
+       ```
+       job_result = run_job_tool(
+           action="create", 
+           experiment_id="9c8d...", 
+           dataset_id="8a7b...", 
+           evaluation_id="6f8d...",
+           wait=True  # This blocks until job completes
+       )
+       # Job is already complete! Results available immediately
        ```
        
     2. Check a job's status:
@@ -622,12 +636,25 @@ async def run_job_tool(
                    Only applies to "create" action.
                    Defaults to True.
                    Example: True
+                   
+        wait: Whether to block and wait for the job to complete before returning.
+              Only applies to "create" and "run" actions when auto_start is True.
+              Defaults to False.
+              If True, the function will poll the job status until completion.
+              Example: True
+              
+        poll_interval: Seconds to wait between status checks when wait=True.
+                      Only applies when wait=True.
+                      Defaults to 5 seconds.
+                      Example: 10
     
     Returns:
         For "list" action: A formatted list of all jobs with their IDs and statuses
         For "get" action: Detailed information about the job including current status
-        For "create" action: Confirmation message with the new job ID and that it has started
-        For "run" action: Message confirming the job has started
+        For "create" action with wait=False (default): Confirmation message with the new job ID and that it has started
+        For "create" action with wait=True: Complete job results after waiting for job completion
+        For "run" action with wait=False (default): Message confirming the job has started
+        For "run" action with wait=True: Complete job results after waiting for job completion
         For "cancel" action: Message confirming the job has been cancelled
         For "delete" action: Confirmation message that the job was deleted
         
@@ -642,9 +669,22 @@ async def run_job_tool(
     - "Job is not in a runnable state"
     
     Important Note:
-    Jobs are executed asynchronously. When a job is created, it automatically starts running
-    (unless auto_start=False). Use the "get" action to check its progress. Jobs may take several 
-    minutes to complete depending on the size of the dataset and the number of prompt variants.
+    Jobs are executed asynchronously by default. When a job is created, it automatically starts running
+    (unless auto_start=False). You can choose between two execution modes:
+    
+    1. Asynchronous mode (default, wait=False): 
+       - Job starts and the tool returns immediately
+       - Use the "get" action later to check progress
+       - Better for larger jobs that may take a long time
+    
+    2. Synchronous mode (wait=True):
+       - Job starts and the tool blocks until job completes
+       - Returns complete results when finished
+       - Useful for smaller jobs or when you need immediate results
+       - Specify poll_interval to control how often status is checked
+    
+    Jobs may take several minutes to complete depending on the size of the dataset and 
+    the number of prompt variants.
     
     WORKFLOW EXAMPLES:
     
@@ -666,6 +706,26 @@ async def run_job_tool(
        job_status = run_job_tool(action="get", job_id=job_id)
        
        # When job completes, analyze the results
+       analysis = analyze_results_tool(
+           action="analyze",
+           experiment_id="exp_id_here"
+       )
+       ```
+       
+    2. Simplified workflow with waiting:
+       ```
+       # Create job and wait for it to complete
+       job_result = run_job_tool(
+           action="create",
+           experiment_id="exp_id_here",
+           dataset_id="dataset_id_here",
+           evaluation_id="eval_id_here",
+           judge_model="lmstudio-community/meta-llama-3.1-8b-instruct",
+           wait=True,  # Block until job completes
+           poll_interval=10  # Check status every 10 seconds
+       )
+       
+       # Job is already complete! Analyze results immediately
        analysis = analyze_results_tool(
            action="analyze",
            experiment_id="exp_id_here"
@@ -720,7 +780,68 @@ async def run_job_tool(
                             f"Use run_job_tool(action=\"get\", job_id=\"{new_job_id}\") to check progress."
                         )
                     
-                    # Include the job in the response
+                    # If wait=True, wait for the job to complete
+                    if wait:
+                        # Get a reference to the job
+                        job_data = result.get("job", {})
+                        job_id = new_job_id
+                        
+                        # Poll for job completion
+                        logger.info(f"Waiting for job {job_id} to complete (poll_interval={poll_interval}s)")
+                        import time
+                        
+                        start_time = time.time()
+                        while True:
+                            # Get current job status
+                            try:
+                                job = get_job(job_id)
+                                status = job.status
+                                progress = job.progress
+                                
+                                # Check if job is done
+                                if status in ["COMPLETED", "FAILED", "CANCELLED"]:
+                                    elapsed_time = time.time() - start_time
+                                    logger.info(f"Job {job_id} completed with status {status} in {elapsed_time:.2f}s")
+                                    
+                                    # Return completed job data
+                                    if status == "COMPLETED":
+                                        completion_message = (
+                                            f"Job completed successfully in {elapsed_time:.2f} seconds.\n"
+                                            f"Processed {progress.get('completed', 0)} tasks with "
+                                            f"{job.results.get('succeeded', 0)} successes and "
+                                            f"{job.results.get('failed', 0)} failures."
+                                        )
+                                    else:
+                                        completion_message = f"Job ended with status: {status} after {elapsed_time:.2f} seconds."
+                                        
+                                    return {
+                                        "status": "success",
+                                        "message": completion_message,
+                                        "job": {
+                                            "job_id": job_id,
+                                            "status": status,
+                                            "progress": progress,
+                                            "results": job.results,
+                                            "experiment_id": job.experiment_id,
+                                            "dataset_id": job.dataset_id,
+                                            "evaluation_id": job.evaluation_id,
+                                            "judge_model": job.judge_model,
+                                            "elapsed_time": elapsed_time
+                                        }
+                                    }
+                                
+                                # Sleep before next check
+                                time.sleep(poll_interval)
+                            except Exception as e:
+                                logger.error(f"Error polling job status: {str(e)}")
+                                # Return what we know so far
+                                return {
+                                    "status": "error",
+                                    "message": f"Error while waiting for job to complete: {str(e)}",
+                                    "job": job_data
+                                }
+                    
+                    # Include the job in the response (if not waiting)
                     return {
                         "status": "success",
                         "message": success_message,
@@ -749,6 +870,64 @@ async def run_job_tool(
                                ".local" in api_base or 
                                api_base.startswith("http://0.0.0.0"))
                 
+                # If wait is True, poll until completion
+                if wait:
+                    # Poll for job completion
+                    logger.info(f"Waiting for job {job_id} to complete (poll_interval={poll_interval}s)")
+                    import time
+                    
+                    start_time = time.time()
+                    while True:
+                        # Get current job status
+                        try:
+                            current_job = get_job(job_id)
+                            status = current_job.status
+                            progress = current_job.progress
+                            
+                            # Check if job is done
+                            if status in ["COMPLETED", "FAILED", "CANCELLED"]:
+                                elapsed_time = time.time() - start_time
+                                logger.info(f"Job {job_id} completed with status {status} in {elapsed_time:.2f}s")
+                                
+                                # Return completed job data
+                                if status == "COMPLETED":
+                                    completion_message = (
+                                        f"Job completed successfully in {elapsed_time:.2f} seconds.\n"
+                                        f"Processed {progress.get('completed', 0)} tasks with "
+                                        f"{current_job.results.get('succeeded', 0)} successes and "
+                                        f"{current_job.results.get('failed', 0)} failures."
+                                    )
+                                else:
+                                    completion_message = f"Job ended with status: {status} after {elapsed_time:.2f} seconds."
+                                    
+                                return {
+                                    "status": "success",
+                                    "message": completion_message,
+                                    "job": {
+                                        "job_id": job_id,
+                                        "status": status,
+                                        "progress": progress,
+                                        "results": current_job.results,
+                                        "experiment_id": current_job.experiment_id,
+                                        "dataset_id": current_job.dataset_id,
+                                        "evaluation_id": current_job.evaluation_id,
+                                        "judge_model": current_job.judge_model,
+                                        "elapsed_time": elapsed_time
+                                    }
+                                }
+                            
+                            # Sleep before next check
+                            time.sleep(poll_interval)
+                        except Exception as e:
+                            logger.error(f"Error polling job status: {str(e)}")
+                            # Return error
+                            return {
+                                "status": "error",
+                                "message": f"Error while waiting for job to complete: {str(e)}",
+                                "job": {"job_id": job_id}
+                            }
+                
+                # If not waiting, return standard response
                 if is_local_env:
                     # Add a warning about local development usage
                     return (
@@ -759,8 +938,9 @@ async def run_job_tool(
                 else:
                     # Standard response
                     return f"Job {job_id} started{model_info}. Use 'get' action to check progress and get results when complete."
-            except:
+            except Exception as e:
                 # Fallback if we can't get job details
+                logger.error(f"Error getting job details for {job_id}: {str(e)}")
                 return f"Job {job_id} started. Use 'get' action to check progress and get results when complete."
         else:
             # Handle all other actions normally

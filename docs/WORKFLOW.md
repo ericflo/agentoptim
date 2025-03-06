@@ -66,21 +66,20 @@ experiment = manage_experiment_tool(
 )
 experiment_id = experiment["experiment"]["experiment_id"]
 
-# 4. Create and run a job (auto-starts by default)
+# 4. Create and run a job with wait=True to block until completion
 job = run_job_tool(
     action="create",
     experiment_id=experiment_id,
     dataset_id=dataset_id,
     evaluation_id=evaluation_id,
-    judge_model="llama-3-8b-instruct"
+    judge_model="llama-3-8b-instruct",
+    wait=True,  # This blocks until the job completes
+    poll_interval=5  # Check status every 5 seconds
 )
+# No need to poll for completion - job is already complete!
 job_id = job["job"]["job_id"]
-
-# Check job status (wait until complete)
-status = run_job_tool(action="get", job_id=job_id)
-while status["job"]["status"] not in ["COMPLETED", "FAILED", "CANCELLED"]:
-    time.sleep(5)
-    status = run_job_tool(action="get", job_id=job_id)
+print(f"Job completed with status: {job['job']['status']}")
+print(f"Job took {job['job']['elapsed_time']:.2f} seconds")
 
 # 5. Analyze results to find the best prompt variant
 analysis = analyze_results_tool(
@@ -96,9 +95,13 @@ print(f"Variant scores: {analysis['variant_scores']}")
 
 ## Key Workflow Improvements
 
-### 1. Auto-Starting Jobs
+### 1. Auto-Starting and Waiting for Jobs
 
-Jobs now automatically start when created. This eliminates the need for a separate "run" step:
+Jobs now have two major workflow improvements:
+
+#### Auto-Starting
+
+Jobs automatically start when created. This eliminates the need for a separate "run" step:
 
 ```python
 # Old multi-step workflow
@@ -123,6 +126,48 @@ job = run_job_tool(
     auto_start=False
 )
 ```
+
+#### Wait for Completion
+
+You can now choose to wait for job completion by setting `wait=True`:
+
+```python
+# Create job and wait for it to complete (blocks until done)
+job_result = run_job_tool(
+    action="create",
+    experiment_id="123",
+    dataset_id="456",
+    evaluation_id="789",
+    wait=True  # This blocks until job completes
+)
+
+# Job is already complete! Results available immediately
+print(f"Job completed with status: {job_result['job']['status']}")
+print(f"Job took {job_result['job']['elapsed_time']:.2f} seconds")
+
+# You can also customize the polling interval (in seconds)
+job_result = run_job_tool(
+    action="create",
+    experiment_id="123",
+    dataset_id="456",
+    evaluation_id="789",
+    wait=True,
+    poll_interval=10  # Check status every 10 seconds
+)
+```
+
+This creates two different execution modes to choose from:
+
+1. **Asynchronous mode (default, wait=False):** 
+   - Job starts and the tool returns immediately
+   - Use the "get" action later to check progress
+   - Better for larger jobs that may take a long time
+
+2. **Synchronous mode (wait=True):**
+   - Job starts and the tool blocks until job completes
+   - Returns complete results when finished
+   - Useful for smaller jobs or when you need immediate results
+   - Specify poll_interval to control how often status is checked
 
 ### 2. Enhanced Example Documentation
 
@@ -243,22 +288,26 @@ experiment = manage_experiment_tool(
 )
 experiment_id = experiment["experiment"]["experiment_id"]
 
-# 4. Create and run a job (auto-starts by default)
+# 4. Create and run a job with wait=True (blocks until completion)
+import time
+start_time = time.time()
+print("Starting job and waiting for completion...")
 job = run_job_tool(
     action="create",
     experiment_id=experiment_id,
     dataset_id=dataset_id,
-    evaluation_id=evaluation_id
+    evaluation_id=evaluation_id,
+    wait=True,
+    poll_interval=5  # Check status every 5 seconds
 )
+elapsed_time = time.time() - start_time
 job_id = job["job"]["job_id"]
 
-# 5. Check job status until complete
-import time
-status = run_job_tool(action="get", job_id=job_id)
-while status["job"]["status"] not in ["COMPLETED", "FAILED", "CANCELLED"]:
-    print(f"Progress: {status['job']['progress']['percentage']}%")
-    time.sleep(5)
-    status = run_job_tool(action="get", job_id=job_id)
+# Job is already complete!
+print(f"Job completed with status: {job['job']['status']}")
+print(f"Job completed in {elapsed_time:.2f} seconds")
+print(f"Tasks processed: {job['job']['progress']['completed']}/{job['job']['progress']['total']}")
+print(f"Success rate: {job['job']['results'].get('succeeded', 0)}/{job['job']['progress']['completed']} tasks")
 
 # 6. Analyze the results
 analysis = analyze_results_tool(
