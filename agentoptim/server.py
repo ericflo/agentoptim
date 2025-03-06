@@ -543,7 +543,7 @@ async def run_job_tool(
     judge_parameters: Optional[Dict[str, Any]] = None,
     max_parallel: Optional[int] = None,
     auto_start: Optional[bool] = True,
-    wait: Optional[bool] = False,
+    wait: Optional[bool] = True,
     poll_interval: Optional[int] = 5,
 ) -> str:
     """
@@ -556,7 +556,7 @@ async def run_job_tool(
     
     QUICKSTART EXAMPLES:
     
-    1. Create and auto-start a new job:
+    1. Create a job, run it, and wait for completion (default behavior):
        ```
        job_result = run_job_tool(
            action="create", 
@@ -564,20 +564,25 @@ async def run_job_tool(
            dataset_id="8a7b...", 
            evaluation_id="6f8d..."
        )
-       # Job starts automatically! Extract job_id if needed:
-       # job_id = job_result["job"]["job_id"]
+       # Job completes and returns results automatically!
+       status = job_result["job"]["status"]  # Will be "COMPLETED"
+       results = job_result["job"]["results"]  # Contains all job results
        ```
        
-    1b. Create a job and wait for completion:
+    1b. Create a job without waiting (asynchronous mode):
        ```
        job_result = run_job_tool(
            action="create", 
            experiment_id="9c8d...", 
            dataset_id="8a7b...", 
            evaluation_id="6f8d...",
-           wait=True  # This blocks until job completes
+           wait=False  # Return immediately without waiting
        )
-       # Job is already complete! Results available immediately
+       # Job started but not yet complete
+       job_id = job_result["job"]["job_id"]
+       
+       # Check status later:
+       status = run_job_tool(action="get", job_id=job_id)
        ```
        
     2. Check a job's status:
@@ -639,9 +644,9 @@ async def run_job_tool(
                    
         wait: Whether to block and wait for the job to complete before returning.
               Only applies to "create" and "run" actions when auto_start is True.
-              Defaults to False.
-              If True, the function will poll the job status until completion.
-              Example: True
+              Defaults to True.
+              If False, the function will return immediately without waiting.
+              Example: False
               
         poll_interval: Seconds to wait between status checks when wait=True.
                       Only applies when wait=True.
@@ -669,34 +674,54 @@ async def run_job_tool(
     - "Job is not in a runnable state"
     
     Important Note:
-    Jobs are executed asynchronously by default. When a job is created, it automatically starts running
-    (unless auto_start=False). You can choose between two execution modes:
+    Jobs are executed synchronously by default. When a job is created, it automatically starts running
+    and waits for completion (unless configured otherwise). You can choose between two execution modes:
     
-    1. Asynchronous mode (default, wait=False): 
-       - Job starts and the tool returns immediately
-       - Use the "get" action later to check progress
-       - Better for larger jobs that may take a long time
-    
-    2. Synchronous mode (wait=True):
+    1. Synchronous mode (default, wait=True):
        - Job starts and the tool blocks until job completes
        - Returns complete results when finished
-       - Useful for smaller jobs or when you need immediate results
+       - Provides the simplest workflow - create job and get results in one step
        - Specify poll_interval to control how often status is checked
+    
+    2. Asynchronous mode (wait=False): 
+       - Job starts and the tool returns immediately
+       - Use the "get" action later to check progress
+       - Better for larger jobs that may take a long time to complete
     
     Jobs may take several minutes to complete depending on the size of the dataset and 
     the number of prompt variants.
     
     WORKFLOW EXAMPLES:
     
-    1. Complete workflow from job creation to results analysis:
+    1. Complete workflow with synchronous execution (default):
        ```
-       # First create and start the job
+       # Create job and wait for completion in one step
        job_result = run_job_tool(
            action="create",
            experiment_id="exp_id_here",
            dataset_id="dataset_id_here",
            evaluation_id="eval_id_here",
-           judge_model="lmstudio-community/meta-llama-3.1-8b-instruct"
+           judge_model="lmstudio-community/meta-llama-3.1-8b-instruct",
+           poll_interval=10  # Check status every 10 seconds
+       )
+       
+       # Job is already complete! Analyze results immediately
+       analysis = analyze_results_tool(
+           action="analyze",
+           experiment_id="exp_id_here"
+       )
+       ```
+       
+    2. Asynchronous workflow option:
+       ```
+       # Create job without waiting
+       job_result = run_job_tool(
+           action="create",
+           experiment_id="exp_id_here",
+           dataset_id="dataset_id_here",
+           evaluation_id="eval_id_here",
+           judge_model="lmstudio-community/meta-llama-3.1-8b-instruct",
+           wait=False  # Don't wait for completion
        )
        
        # Extract job_id from the result
@@ -706,26 +731,6 @@ async def run_job_tool(
        job_status = run_job_tool(action="get", job_id=job_id)
        
        # When job completes, analyze the results
-       analysis = analyze_results_tool(
-           action="analyze",
-           experiment_id="exp_id_here"
-       )
-       ```
-       
-    2. Simplified workflow with waiting:
-       ```
-       # Create job and wait for it to complete
-       job_result = run_job_tool(
-           action="create",
-           experiment_id="exp_id_here",
-           dataset_id="dataset_id_here",
-           evaluation_id="eval_id_here",
-           judge_model="lmstudio-community/meta-llama-3.1-8b-instruct",
-           wait=True,  # Block until job completes
-           poll_interval=10  # Check status every 10 seconds
-       )
-       
-       # Job is already complete! Analyze results immediately
        analysis = analyze_results_tool(
            action="analyze",
            experiment_id="exp_id_here"

@@ -66,14 +66,13 @@ experiment = manage_experiment_tool(
 )
 experiment_id = experiment["experiment"]["experiment_id"]
 
-# 4. Create and run a job with wait=True to block until completion
+# 4. Create and run a job (waits for completion by default)
 job = run_job_tool(
     action="create",
     experiment_id=experiment_id,
     dataset_id=dataset_id,
     evaluation_id=evaluation_id,
     judge_model="llama-3-8b-instruct",
-    wait=True,  # This blocks until the job completes
     poll_interval=5  # Check status every 5 seconds
 )
 # No need to poll for completion - job is already complete!
@@ -129,21 +128,30 @@ job = run_job_tool(
 
 #### Wait for Completion
 
-You can now choose to wait for job completion by setting `wait=True`:
+Jobs wait for completion by default, but you can opt out by setting `wait=False`:
 
 ```python
-# Create job and wait for it to complete (blocks until done)
+# Create job and wait for it to complete (default behavior)
 job_result = run_job_tool(
     action="create",
     experiment_id="123",
     dataset_id="456",
-    evaluation_id="789",
-    wait=True  # This blocks until job completes
+    evaluation_id="789"
+    # wait=True is the default, so job will complete before returning
 )
 
 # Job is already complete! Results available immediately
 print(f"Job completed with status: {job_result['job']['status']}")
 print(f"Job took {job_result['job']['elapsed_time']:.2f} seconds")
+
+# For async mode, use wait=False to return immediately
+async_job_result = run_job_tool(
+    action="create",
+    experiment_id="123",
+    dataset_id="456",
+    evaluation_id="789",
+    wait=False  # Return immediately without waiting
+)
 
 # You can also customize the polling interval (in seconds)
 job_result = run_job_tool(
@@ -151,23 +159,22 @@ job_result = run_job_tool(
     experiment_id="123",
     dataset_id="456",
     evaluation_id="789",
-    wait=True,
-    poll_interval=10  # Check status every 10 seconds
+    poll_interval=10  # Check status every 10 seconds (wait=True is default)
 )
 ```
 
 This creates two different execution modes to choose from:
 
-1. **Asynchronous mode (default, wait=False):** 
-   - Job starts and the tool returns immediately
-   - Use the "get" action later to check progress
-   - Better for larger jobs that may take a long time
-
-2. **Synchronous mode (wait=True):**
+1. **Synchronous mode (default, wait=True):**
    - Job starts and the tool blocks until job completes
    - Returns complete results when finished
-   - Useful for smaller jobs or when you need immediate results
+   - Provides the simplest workflow - create job and get results in one step
    - Specify poll_interval to control how often status is checked
+
+2. **Asynchronous mode (wait=False):** 
+   - Job starts and the tool returns immediately
+   - Use the "get" action later to check progress
+   - Better for larger jobs that may take a long time to complete
 
 ### 2. Enhanced Example Documentation
 
@@ -209,7 +216,7 @@ manage_evaluation_tool(
 ### Creating and Running a Job
 
 ```python
-# Create and automatically run the job
+# Create a job and wait for completion (default behavior)
 job_result = run_job_tool(
     action="create",
     experiment_id="exp_id_123",
@@ -218,18 +225,25 @@ job_result = run_job_tool(
     judge_model="claude-3-haiku-20240307"
 )
 
+# Job is already complete when it returns!
 job_id = job_result["job"]["job_id"]
-print(f"Job started with ID: {job_id}")
+status = job_result["job"]["status"]
+elapsed_time = job_result["job"]["elapsed_time"]
+print(f"Job completed with ID: {job_id}")
+print(f"Final status: {status}")
+print(f"Completed in {elapsed_time:.2f} seconds")
+print(f"Tasks processed: {job_result['job']['progress']['completed']}/{job_result['job']['progress']['total']}")
 
-# Check job status (polls until complete)
-import time
-status = run_job_tool(action="get", job_id=job_id)
-while status["job"]["status"] not in ["COMPLETED", "FAILED", "CANCELLED"]:
-    print(f"Job status: {status['job']['status']}, Progress: {status['job']['progress']['percentage']}%")
-    time.sleep(10)
-    status = run_job_tool(action="get", job_id=job_id)
-
-print(f"Job completed with status: {status['job']['status']}")
+# For async mode (no waiting), use wait=False:
+async_job = run_job_tool(
+    action="create",
+    experiment_id="exp_id_123",
+    dataset_id="dataset_id_456",
+    evaluation_id="eval_id_789",
+    wait=False  # Return immediately without waiting
+)
+async_job_id = async_job["job"]["job_id"]
+print(f"Async job started with ID: {async_job_id}")
 ```
 
 ## Full Workflow Example: Optimizing a Math Problem Solver
@@ -288,7 +302,7 @@ experiment = manage_experiment_tool(
 )
 experiment_id = experiment["experiment"]["experiment_id"]
 
-# 4. Create and run a job with wait=True (blocks until completion)
+# 4. Create and run a job (waits for completion by default)
 import time
 start_time = time.time()
 print("Starting job and waiting for completion...")
@@ -297,7 +311,6 @@ job = run_job_tool(
     experiment_id=experiment_id,
     dataset_id=dataset_id,
     evaluation_id=evaluation_id,
-    wait=True,
     poll_interval=5  # Check status every 5 seconds
 )
 elapsed_time = time.time() - start_time
