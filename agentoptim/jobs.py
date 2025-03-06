@@ -395,6 +395,14 @@ async def call_judge_model(
     # This allows users to override the format detection
     model_type = os.environ.get("AGENTOPTIM_MODEL_TYPE", "").lower()
     
+    # Check for LM Studio specific model format
+    if "lmstudio" in model.lower():
+        # LM Studio typically uses the full model name without the lmstudio prefix
+        # Extract actual model name after the slash
+        if "/" in model:
+            model = model.split("/", 1)[1]
+            logger.info(f"Using model name '{model}' for LM Studio")
+    
     # Prefer longer timeout for local LLMs
     timeout_seconds = float(os.environ.get("AGENTOPTIM_TIMEOUT", "120"))
     
@@ -582,6 +590,10 @@ async def call_judge_model(
                 else:
                     # For older style API endpoints without "/v1"
                     endpoint = f"{api_base}/v1/chat/completions"
+                
+                # Debug logging for LM Studio connections
+                logger.info(f"Using endpoint: {endpoint} for model: {model}")
+                logger.info(f"Messages structure: {json.dumps(messages)}")
                     
                 response_handler = lambda r: r.json()["choices"][0]["message"]["content"]
                 
@@ -632,13 +644,23 @@ async def call_judge_model(
             logger.info(f"Using explicit API timeout: {timeout_seconds} seconds")
             
         logger.info(f"API call initiating to {endpoint} with timeout {timeout_seconds}s")
+        logger.info(f"API payload: {json.dumps(payload)[:200]}...")
         timeout = httpx.Timeout(timeout_seconds)
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                endpoint,
-                json=payload,
-                headers=headers
-            )
+            try:
+                # Log request details right before making the request
+                logger.info(f"Sending POST request to {endpoint} with model={model}")
+                response = await client.post(
+                    endpoint,
+                    json=payload,
+                    headers=headers
+                )
+                # Log response immediately
+                logger.info(f"Received response: status={response.status_code}, content_length={len(response.text)}")
+            except Exception as e:
+                logger.error(f"Error during API request: {str(e)}")
+                # Re-raise for outer handler
+                raise
             
             if response.status_code != 200:
                 logger.error(f"API error: {response.status_code} {response.text}")
@@ -833,9 +855,13 @@ async def process_single_task(
     # Log what we're about to send to the judge model
     logger.info(f"Calling judge model '{judge_model}' with input text: {input_text[:100]}...")
     
-    # Log API settings
+    # Log API settings and create a test command
     api_base = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234/v1")
     logger.info(f"Judge API base: {api_base}")
+    
+    # Generate curl command for debugging
+    curl_cmd = f"curl -X POST {api_base}/chat/completions -H \"Content-Type: application/json\" -d '{{\"model\":\"{judge_model}\",\"messages\":[{{\"role\":\"user\",\"content\":\"hello\"}}]}}'"
+    logger.info(f"Test command: {curl_cmd}")
     
     # Yield to event loop to allow MCP stdio communication to continue
     # This is especially important for Claude Desktop which uses stdio transport
