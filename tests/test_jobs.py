@@ -742,6 +742,34 @@ async def test_call_judge_model_api_formats():
     """Test call_judge_model with different API formats."""
     # Test with different model types
     with patch.dict(os.environ, {"AGENTOPTIM_API_KEY": "test-key"}):
+        
+        # Test system+user prompt parsing 
+        with patch("httpx.AsyncClient.post") as mock_post:
+            # Set up mock response for the system+user test
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"choices": [{"message": {"content": "Paris"}}]}
+            mock_post.return_value = mock_response
+            
+            # Create a prompt with the system+user format we use
+            system_user_prompt = "You are a helpful assistant.\n\nCustomer query: What is the capital of France?"
+            
+            # Test with GPT format (which should handle system+user correctly)
+            with patch.dict(os.environ, {"AGENTOPTIM_API_BASE": "https://api.openai.com/v1", "AGENTOPTIM_MODEL_TYPE": "gpt"}):
+                response = await call_judge_model(system_user_prompt, "gpt-4")
+                
+                # Check that message formatting was correct
+                args, kwargs = mock_post.call_args
+                messages = kwargs["json"]["messages"]
+                
+                # Should have 2 messages - system and user
+                assert len(messages) == 2, "Should split system and user messages correctly"
+                assert messages[0]["role"] == "system"
+                assert messages[0]["content"] == "You are a helpful assistant."
+                assert messages[1]["role"] == "user"
+                assert messages[1]["content"] == "What is the capital of France?"
+        
+        # Continue with other API format tests
         # Test with httpx client patched to avoid actual API calls
         with patch("httpx.AsyncClient.post") as mock_post:
             # Set up mock response
@@ -821,6 +849,8 @@ async def test_process_single_task():
     
     This test avoids coroutine warnings by using a custom async function to 
     return values rather than AsyncMock which can cause coroutine warnings.
+    
+    It tests the standalone variant type which doesn't need special formatting.
     """
     import warnings
     
@@ -865,7 +895,7 @@ async def test_process_single_task():
     )
     
     # Create a custom async function to return test values
-    async def mock_judge_call(prompt, model_name, judge_parameters=None):
+    async def mock_judge_call(prompt, model_name, judge_parameters=None, api_timeout_seconds=None):
         if "criterion: accuracy" in prompt.lower():
             return "4.5"
         elif "criterion: clarity" in prompt.lower():
@@ -898,6 +928,84 @@ async def test_process_single_task():
         assert "output_tokens" in result.metadata
         assert "average_score" in result.metadata
         assert result.metadata["average_score"] == 4.1  # (4.5 + 3.7) / 2
+
+
+@pytest.mark.asyncio
+async def test_process_single_task_system_prompt():
+    """Test process_single_task function with system prompt formatting.
+    
+    This tests our fix for handling system prompts correctly, where we need
+    to properly format the system prompt + user query for LLM APIs.
+    """
+    import warnings
+    
+    # Disable the RuntimeWarning about coroutines
+    warnings.filterwarnings("ignore", message="coroutine '.*' was never awaited")
+    
+    # Create test objects with a SYSTEM prompt type
+    variant = PromptVariant(
+        id="test-system-variant",
+        name="Test System Variant",
+        type=PromptVariantType.SYSTEM,  # Use SYSTEM type which needs special handling
+        template="You are a helpful assistant. Be concise and accurate.",
+        variables=[]
+    )
+    
+    data_item = DataItem(
+        id="test-item",
+        input="What is the capital of France?",
+        expected_output="Paris",
+        metadata={}
+    )
+    
+    evaluation = Evaluation(
+        id="test-eval",
+        name="Test Evaluation",
+        criteria=[
+            EvaluationCriterion(
+                name="accuracy",
+                description="Test accuracy criterion",
+                scoring_guidelines="Rate from 1-5",
+                min_score=1,
+                max_score=5
+            )
+        ]
+    )
+    
+    # Create a custom async function that checks for proper formatting
+    # of system prompts when passed to the LLM API
+    format_correct = False
+    
+    async def mock_judge_call(prompt, model_name, judge_parameters=None, api_timeout_seconds=None):
+        nonlocal format_correct
+        
+        # Verify the prompt has system + user format 
+        if "You are a helpful assistant" in prompt and "Customer query: What is the capital of France?" in prompt:
+            format_correct = True
+            
+        if "criterion: accuracy" in prompt.lower():
+            return "4.5"
+        else:
+            return "Paris"
+    
+    # Mock call_judge_model with our async function
+    with patch("agentoptim.jobs.call_judge_model", side_effect=mock_judge_call):
+        # Process the task
+        result = await process_single_task(
+            variant=variant,
+            data_item=data_item,
+            evaluation=evaluation,
+            judge_model="test-model",
+            judge_parameters={"temperature": 0.5}
+        )
+        
+        # Check that system prompts were properly formatted
+        assert format_correct, "System prompt was not correctly formatted with user query"
+        
+        # Check the result
+        assert result.variant_id == "test-system-variant"
+        assert result.output_text == "Paris"
+        assert result.scores["accuracy"] == 4.5
 
 
 @pytest.mark.asyncio
@@ -942,7 +1050,7 @@ async def test_process_single_task_error_handling():
     # Test error handling in scoring with a custom async function
     call_count = 0
     
-    async def mock_judge_call_with_error(prompt, model_name, judge_parameters=None):
+    async def mock_judge_call_with_error(prompt, model_name, judge_parameters=None, api_timeout_seconds=None):
         nonlocal call_count
         call_count += 1
         

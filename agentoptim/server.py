@@ -545,6 +545,8 @@ async def run_job_tool(
     auto_start: Optional[bool] = True,
     wait: Optional[bool] = True,
     poll_interval: Optional[int] = 5,
+    timeout_minutes: Optional[int] = 10,
+    stdio_friendly: Optional[bool] = True,
 ) -> str:
     """
     Execute and manage jobs that run prompt optimization experiments.
@@ -652,6 +654,17 @@ async def run_job_tool(
                       Only applies when wait=True.
                       Defaults to 5 seconds.
                       Example: 10
+                      
+        timeout_minutes: Maximum time in minutes to wait before declaring a job as failed.
+                        Optional, defaults to 10 minutes.
+                        Jobs that show no progress may be stuck due to LLM connectivity issues.
+                        Example: 30
+                        
+        stdio_friendly: Whether to optimize job execution for stdio-based MCP transport.
+                      Only applies when wait=True.
+                      Defaults to True (recommended for Claude Desktop).
+                      Set to False for HTTP-based MCP transport for slightly better performance.
+                      Example: True
     
     Returns:
         For "list" action: A formatted list of all jobs with their IDs and statuses
@@ -816,6 +829,20 @@ async def run_job_tool(
                                             f"{job.results.get('succeeded', 0)} successes and "
                                             f"{job.results.get('failed', 0)} failures."
                                         )
+                                    elif status == "FAILED":
+                                        # Provide helpful error message if the job failed
+                                        error_detail = job.error or "Unknown error"
+                                        api_base = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234/v1")
+                                        
+                                        completion_message = (
+                                            f"Job FAILED after {elapsed_time:.2f} seconds.\n"
+                                            f"Error: {error_detail}\n\n"
+                                            f"TROUBLESHOOTING:\n"
+                                            f"1. Check if your LLM server is running at {api_base}\n"
+                                            f"2. Try testing with: curl {api_base}/chat/completions -H 'Content-Type: application/json' -d '{{\"model\":\"meta-llama-3.1-8b-instruct\",\"messages\":[{{\"role\":\"user\",\"content\":\"hello\"}}]}}'\n"
+                                            f"3. Set environment variables if needed:\n"
+                                            f"   export AGENTOPTIM_API_BASE=http://localhost:YOUR_PORT/v1"
+                                        )
                                     else:
                                         completion_message = f"Job ended with status: {status} after {elapsed_time:.2f} seconds."
                                         
@@ -901,6 +928,20 @@ async def run_job_tool(
                                         f"Processed {progress.get('completed', 0)} tasks with "
                                         f"{current_job.results.get('succeeded', 0)} successes and "
                                         f"{current_job.results.get('failed', 0)} failures."
+                                    )
+                                elif status == "FAILED":
+                                    # Provide helpful error message if the job failed
+                                    error_detail = current_job.error or "Unknown error"
+                                    api_base = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234/v1")
+                                    
+                                    completion_message = (
+                                        f"Job FAILED after {elapsed_time:.2f} seconds.\n"
+                                        f"Error: {error_detail}\n\n"
+                                        f"TROUBLESHOOTING:\n"
+                                        f"1. Check if your LLM server is running at {api_base}\n"
+                                        f"2. Try testing with: curl {api_base}/chat/completions -H 'Content-Type: application/json' -d '{{\"model\":\"meta-llama-3.1-8b-instruct\",\"messages\":[{{\"role\":\"user\",\"content\":\"hello\"}}]}}'\n"
+                                        f"3. Set environment variables if needed:\n"
+                                        f"   export AGENTOPTIM_API_BASE=http://localhost:YOUR_PORT/v1"
                                     )
                                 else:
                                     completion_message = f"Job ended with status: {status} after {elapsed_time:.2f} seconds."

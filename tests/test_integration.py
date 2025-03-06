@@ -177,7 +177,7 @@ class TestFullWorkflow:
             
             return job_with_results
         
-        def patched_run_job(job_id, max_parallel=5):
+        def patched_run_job(job_id, max_parallel=5, timeout_minutes=30, stdio_friendly=True):
             # Just return a completed job
             job_with_results.status = JobStatus.COMPLETED
             job_with_results.completed_at = datetime.now().isoformat()
@@ -341,7 +341,7 @@ class TestParallelProcessing:
             
             return job_with_results
         
-        def patched_run_job(job_id, max_parallel=5):
+        def patched_run_job(job_id, max_parallel=5, timeout_minutes=30, stdio_friendly=True):
             # Just return a completed job
             job_with_results.status = JobStatus.COMPLETED
             job_with_results.completed_at = datetime.now().isoformat()

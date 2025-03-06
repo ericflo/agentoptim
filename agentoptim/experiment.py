@@ -146,7 +146,9 @@ def create_experiment(
         
         # Handle content field - map to template if needed
         if "content" in variant_dict and "template" not in variant_dict:
+            # Legacy code expected "template" but we're getting "content"
             variant_dict["template"] = variant_dict.pop("content")
+            print(f"Mapped 'content' to 'template': {variant_dict['template'][:50]}...")
         
         # Default type if not provided
         if "type" not in variant_dict:

@@ -334,7 +334,8 @@ def add_job_result(job_id: str, result: JobResult) -> Job:
 async def call_judge_model(
     prompt: str, 
     model: str = "llama-3.1-8b-instruct", 
-    parameters: Optional[Dict[str, Any]] = None
+    parameters: Optional[Dict[str, Any]] = None,
+    api_timeout_seconds: Optional[float] = None
 ) -> str:
     """
     Call a judge model to evaluate a prompt.
@@ -459,7 +460,7 @@ async def call_judge_model(
             elif is_local_env:
                 # Default to "gpt" format for local LLM servers which typically use OpenAI-compatible APIs
                 inferred_model_type = "gpt"
-                logger.info(f"Using default 'gpt' API format for local LLM server. Override with AGENTOPTIM_MODEL_TYPE if needed.")
+                logger.info(f"Using default 'gpt' API format for local LLM server at {api_base}. Override with AGENTOPTIM_MODEL_TYPE if needed.")
             else:
                 # For unknown models, default to "gpt" as the most widely supported format
                 inferred_model_type = "gpt"
@@ -485,9 +486,26 @@ async def call_judge_model(
             # This works with many local LLM servers that support OpenAI compatibility
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
+                
+            # Check if the prompt has multiple components (which would indicate a system+user combination)
+            if "\n\nCustomer query: " in prompt:
+                # Split at the customer query marker (from our system prompt handling)
+                parts = prompt.split("\n\nCustomer query: ", 1)
+                system_content = parts[0]
+                user_content = parts[1] if len(parts) > 1 else ""
+                
+                messages = [
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": user_content}
+                ]
+                logger.info(f"Using system+user message format - system: {system_content[:30]}... user: {user_content[:30]}...")
+            else:
+                # Regular single message prompt
+                messages = [{"role": "user", "content": prompt}]
+            
             payload = {
                 "model": model,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": messages,
                 "max_tokens": parameters.get("max_tokens", 1024),
                 "temperature": parameters.get("temperature", 0.0),
                 "stop": parameters.get("stop", None)
@@ -528,9 +546,26 @@ async def call_judge_model(
             if is_local_env:
                 if api_key:
                     headers["Authorization"] = f"Bearer {api_key}"
+                
+                # Check if the prompt has multiple components (which would indicate a system+user combination)
+                if "\n\nCustomer query: " in prompt:
+                    # Split at the customer query marker (from our system prompt handling)
+                    parts = prompt.split("\n\nCustomer query: ", 1)
+                    system_content = parts[0]
+                    user_content = parts[1] if len(parts) > 1 else ""
+                    
+                    messages = [
+                        {"role": "system", "content": system_content},
+                        {"role": "user", "content": user_content}
+                    ]
+                    logger.info(f"Using system+user message format (local) - system: {system_content[:30]}... user: {user_content[:30]}...")
+                else:
+                    # Regular single message prompt
+                    messages = [{"role": "user", "content": prompt}]
+                
                 payload = {
                     "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": messages,
                     "max_tokens": parameters.get("max_tokens", 1024),
                     "temperature": parameters.get("temperature", 0.0),
                     "stop": parameters.get("stop", None)
@@ -546,8 +581,9 @@ async def call_judge_model(
                     
                 response_handler = lambda r: r.json()["choices"][0]["message"]["content"]
                 
-                # Log the endpoint being used
+                # Log the endpoint and payload for debugging
                 logger.info(f"Using chat completions endpoint: {endpoint}")
+                logger.info(f"Payload: model={model}, messages={json.dumps(messages)[:200]}...")
             else:
                 # For unknown APIs in non-local environments, try basic completions format
                 if api_key:
@@ -586,6 +622,12 @@ async def call_judge_model(
                 return mock_text
         
         # Make the API call with configurable timeout
+        # Override with explicit API timeout if provided
+        if api_timeout_seconds is not None:
+            timeout_seconds = api_timeout_seconds
+            logger.info(f"Using explicit API timeout: {timeout_seconds} seconds")
+            
+        logger.info(f"API call initiating to {endpoint} with timeout {timeout_seconds}s")
         timeout = httpx.Timeout(timeout_seconds)
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
@@ -656,12 +698,18 @@ async def call_judge_model(
         
         # Provide helpful message for local connection issues
         if is_local_env and ("Connection refused" in error_message or "Failed to establish a new connection" in error_message):
+            # This is the most common error - check the server URL and add more detailed help
+            server_port = api_base.split(":")[-1].split("/")[0] if ":" in api_base else "1234"
+            
             raise Exception(
-                f"Could not connect to local model server at {api_base}. "
-                "Make sure your local model server is running. "
-                "For a local LLM server, check that it's running on the correct port and endpoint. "
-                "Common OpenAI-compatible endpoints would be 'http://localhost:1234/v1/chat/completions' "
-                "Try running a simple HTTP request to your server to check compatibility."
+                f"CONNECTION ERROR: Could not connect to local model server at {api_base}. "
+                f"\n\nTROUBLESHOOTING:"
+                f"\n1. Verify your LLM server is running on port {server_port}"
+                f"\n2. Check that it supports OpenAI compatible endpoint at: {api_base}/chat/completions"
+                f"\n3. For LM Studio, make sure Local Inference Server is started and API access is enabled"
+                f"\n4. Try curl -X GET {api_base}/models to see if your server responds"
+                f"\n\nYou may need to configure a different port or API base with:"
+                f"\nexport AGENTOPTIM_API_BASE=http://localhost:YOUR_PORT/v1"
             )
         else:
             raise Exception(f"Connection error: {error_message}")
@@ -696,6 +744,8 @@ async def process_single_task(
     judge_model: str,
     judge_parameters: Dict[str, Any]
 ) -> JobResult:
+    """Process a single task with detailed logging for debugging."""
+    logger.info(f"Starting process_single_task for variant {variant.id} with judge_model={judge_model}")
     """
     Process a single task (variant + data_item) and return a result.
     
@@ -710,12 +760,53 @@ async def process_single_task(
         The job result
     """
     # Replace variables in the prompt template
-    input_text = variant.template  # Use template instead of prompt
+    logger.info(f"Preparing task - variant={variant.name}")
+    
+    # Check what's available in the variant
+    if hasattr(variant, 'template'):
+        # Found template
+        template = variant.template  # Use template if available
+        logger.info("Using variant.template")
+    elif hasattr(variant, 'content') and variant.content:
+        # Fallback to content
+        template = variant.content
+        logger.info("Using variant.content (fallback for PromptVariant)")
+    else:
+        # Diagnostic info about variant
+        variant_attrs = [attr for attr in dir(variant) if not attr.startswith('_')]
+        logger.warning(f"Variant missing template and content! Available attributes: {variant_attrs}")
+        template = f"Respond to this customer query: {{input}}"
+    
+    # Get the data item's input
+    query = data_item.input if hasattr(data_item, 'input') else "No input provided"
+    
+    # For system/user prompt types, we need to format properly
+    if hasattr(variant, 'type'):
+        prompt_type = variant.type
+        if prompt_type == "system":
+            # For system prompts, we need to provide both system and user messages
+            input_text = f"{template}\n\nCustomer query: {query}"
+            logger.info(f"Formatted system prompt with customer query appended")
+        elif prompt_type == "user":
+            # For user prompts, use as direct input
+            input_text = template.replace("{input}", query)
+            logger.info(f"Formatted user prompt with input replacement")
+        else:
+            # Default/standalone format
+            input_text = template
+            logger.info(f"Using prompt as-is (type={prompt_type})")
+    else:
+        # No type specified, just use template directly
+        input_text = template
+        logger.info(f"No prompt type specified, using direct template")
+        
+    logger.info(f"Initial template: {input_text[:50]}...")
     
     # Replace dataset item variables - DataItems are Pydantic models
     # Access their attributes directly instead of treating them as dictionaries
     if hasattr(data_item, 'input'):
         input_text = input_text.replace("{input}", data_item.input)
+        logger.info(f"Replaced {{input}} with: {data_item.input[:30]}...")
     if hasattr(data_item, 'expected_output') and data_item.expected_output:
         input_text = input_text.replace("{expected_output}", data_item.expected_output)
     
@@ -733,8 +824,40 @@ async def process_single_task(
             if var.options and len(var.options) > 0:
                 input_text = input_text.replace(f"{{{var.name}}}", var.options[0])
     
+    # Log what we're about to send to the judge model
+    logger.info(f"Calling judge model '{judge_model}' with input text: {input_text[:100]}...")
+    
+    # Log API settings
+    api_base = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234/v1")
+    logger.info(f"Judge API base: {api_base}")
+    
+    # Yield to event loop to allow MCP stdio communication to continue
+    # This is especially important for Claude Desktop which uses stdio transport
+    await asyncio.sleep(0)
+    
     # Call the judge model to get a response
-    output_text = await call_judge_model(input_text, judge_model, judge_parameters)
+    try:
+        # Use a shorter timeout for the first call to quickly detect connection issues
+        first_call_timeout = 15.0  # Use a short timeout for the first API call to detect issues quickly
+        output_text = await call_judge_model(
+            input_text, 
+            judge_model, 
+            judge_parameters,
+            api_timeout_seconds=first_call_timeout
+        )
+        logger.info(f"Received response from judge model: {output_text[:100]}...")
+    except Exception as e:
+        logger.error(f"Error calling judge model: {str(e)}")
+        # Add detailed error for API connection issues
+        error_msg = str(e)
+        # Only handle timeout errors for real timeout exceptions, not for test mocks
+        if "timeout" in error_msg.lower() and ("connection" in error_msg.lower() or "httpx.timeout" in error_msg.lower()):
+            api_base = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234/v1")
+            logger.error(f"CONNECTION TIMEOUT: Could not connect to LLM server at {api_base} within {first_call_timeout} seconds")
+            logger.error(f"Please check that your LLM server is running and accessible at {api_base}")
+            raise Exception(f"CONNECTION TIMEOUT: Could not connect to LLM server at {api_base}. Check if server is running.")
+        # Re-raise to be handled by caller
+        raise
     
     # Create scoring prompts based on evaluation criteria
     scores = {}
@@ -825,13 +948,16 @@ DO NOT explain your reasoning or add any additional text.
     )
 
 
-async def run_job(job_id: str, max_parallel: int = 5) -> Job:
+async def run_job(job_id: str, max_parallel: int = 5, timeout_minutes: int = 30, stdio_friendly: bool = True) -> Job:
     """
     Run a job asynchronously.
     
     Args:
         job_id: ID of the job to run
         max_parallel: Maximum number of parallel tasks
+        timeout_minutes: Maximum time to wait for job completion
+        stdio_friendly: If True, periodically yield control back to event loop
+                       to allow stdio-based MCP communication (important for Claude Desktop)
         
     Returns:
         The completed job
@@ -912,20 +1038,93 @@ async def run_job(job_id: str, max_parallel: int = 5) -> Job:
         pending = set()
         results = []
         
-        # Create a task for checking job status
+        # Create a task for checking job status and timeout
         async def check_job_status():
+            # Track start time for timeout
+            import time
+            start_time = time.time()
+            last_progress = 0
+            stall_detected = False
+            timeout_seconds = timeout_minutes * 60
+            
             while True:
-                await asyncio.sleep(5)  # Check every 5 seconds
+                # Use shorter sleep intervals to allow stdio-based MCP to work
+                if stdio_friendly:
+                    # For stdio transport (like Claude Desktop), yield more frequently
+                    for _ in range(5):  # 5 mini-sleeps of 1 second = 5 seconds total
+                        await asyncio.sleep(1)
+                        # Yield control back to event loop so it can process stdio
+                        await asyncio.sleep(0)
+                        if cancel_event.is_set():
+                            return
+                else:
+                    # Standard sleep for HTTP-based MCP
+                    await asyncio.sleep(5)  # Check every 5 seconds
+                
                 if cancel_event.is_set():
                     return
+                
+                # Check for timeout
+                elapsed_seconds = time.time() - start_time
+                if elapsed_seconds > timeout_seconds:
+                    logger.error(f"Job {job_id} timeout after {elapsed_seconds:.2f} seconds")
+                    cancel_event.set()
+                    return
                     
-                # Reload job to see if it's been cancelled externally
+                # Check for stalled job with no progress
                 try:
                     current_job = get_job(job_id)
+                    
+                    # Check if job is cancelled externally
                     if current_job.status == JobStatus.CANCELLED:
                         logger.info(f"Job {job_id} cancelled externally")
                         cancel_event.set()
                         return
+                    
+                    # Check for no progress after a minute
+                    current_progress = current_job.progress.get("completed", 0)
+                    if (current_progress == 0 and 
+                        current_job.status == JobStatus.RUNNING and 
+                        elapsed_seconds > 60 and 
+                        not stall_detected):
+                        stall_detected = True
+                        api_base = os.environ.get('AGENTOPTIM_API_BASE', 'http://localhost:1234/v1')
+                        logger.warning(f"Job {job_id} appears stalled - no progress after 60 seconds. Possible connectivity issue to LLM server.")
+                        logger.warning(f"Check that your LLM server is running at {api_base}")
+                        
+                        # Send a test request to check LLM availability
+                        try:
+                            # Import here to avoid circular import
+                            from agentoptim.jobs import call_judge_model
+                            asyncio.create_task(
+                                call_judge_model(
+                                    "quick test message",
+                                    model=current_job.judge_model,
+                                    parameters={"temperature": 0},
+                                    api_timeout_seconds=5  # short timeout
+                                )
+                            )
+                            logger.info("Sent test request to LLM server")
+                        except Exception as e:
+                            logger.warning(f"Failed to send test request: {e}")
+                    
+                    # Fail the job if stalled too long (after 3 minutes with no progress)
+                    if (current_progress == 0 and 
+                        current_job.status == JobStatus.RUNNING and 
+                        elapsed_seconds > 180 and 
+                        stall_detected):
+                        logger.error(f"Job {job_id} has been stalled for too long (3 minutes) - failing the job")
+                        api_base = os.environ.get('AGENTOPTIM_API_BASE', 'http://localhost:1234/v1')
+                        error_message = f"Job timed out after 3 minutes with no progress. Check if LLM server is running at {api_base}"
+                        update_job_status(job_id, JobStatus.FAILED, error_message)
+                        cancel_event.set()
+                        return
+                    
+                    # Reset stall detection if progress happens
+                    if current_progress > last_progress:
+                        stall_detected = False
+                        last_progress = current_progress
+                        
                 except Exception as e:
                     logger.error(f"Error checking job status: {str(e)}")
         
@@ -945,11 +1144,45 @@ async def run_job(job_id: str, max_parallel: int = 5) -> Job:
         
         # Process all tasks with proper backpressure
         while pending and not cancel_event.is_set():
-            done, pending = await asyncio.wait(
-                pending, 
-                return_when=asyncio.FIRST_COMPLETED,
-                timeout=1.0  # Add timeout to allow checking cancel_event
-            )
+            # Use different wait approach based on transport type
+            if stdio_friendly:
+                # For Claude Desktop / stdio transport - use manual yielding
+                # This prevents blocking the event loop for too long and allows
+                # MCP stdio communication to continue during job execution
+                completed_tasks = set()
+                
+                for _ in range(max(1, len(pending))):
+                    # Yield control to the event loop briefly to allow stdio messages to be processed
+                    await asyncio.sleep(0)
+                    
+                    # Check for completed tasks
+                    for pending_task in list(pending):
+                        if pending_task.done():
+                            pending.remove(pending_task)
+                            completed_tasks.add(pending_task)
+                            break
+                    
+                    # Exit if we found a completed task
+                    if completed_tasks:
+                        break
+                
+                # Check cancellation
+                if cancel_event.is_set():
+                    break
+                
+                # Add a brief sleep if no tasks were done
+                if not completed_tasks:
+                    await asyncio.sleep(0.1)
+                
+                # Set done to our completed tasks
+                done = completed_tasks
+            else:
+                # Standard asyncio.wait approach for HTTP transport
+                done, pending = await asyncio.wait(
+                    pending, 
+                    return_when=asyncio.FIRST_COMPLETED,
+                    timeout=1.0  # Add timeout to allow checking cancel_event
+                )
             
             # Handle completed tasks
             for task in done:
@@ -974,16 +1207,25 @@ async def run_job(job_id: str, max_parallel: int = 5) -> Job:
         except asyncio.CancelledError:
             pass
         
-        # Check if job was cancelled
+        # Check if job was cancelled or timed out
         if cancel_event.is_set():
             # Cancel all pending tasks
             for task in pending:
                 task.cancel()
-                
-            # Update job status to cancelled
-            job = update_job_status(job_id, JobStatus.CANCELLED)
-            logger.info(f"Job {job_id} cancelled with {len(results)} tasks completed")
-            return job
+            
+            # Get current job to see if it's a timeout
+            current_job = get_job(job_id)
+            if current_job.status == JobStatus.RUNNING and current_job.progress["completed"] == 0:
+                # Job has made no progress - likely a connection issue to LLM
+                error_message = "Job timed out with no progress. Check if your LLM server is running correctly on localhost."
+                logger.error(f"Job {job_id} failed: {error_message}")
+                job = update_job_status(job_id, JobStatus.FAILED, error_message)
+                return job
+            else:
+                # Regular cancellation
+                job = update_job_status(job_id, JobStatus.CANCELLED)
+                logger.info(f"Job {job_id} cancelled with {len(results)} tasks completed")
+                return job
             
         # Final job update
         job = update_job_status(job_id, JobStatus.COMPLETED)
@@ -1031,7 +1273,8 @@ def manage_job(action: str, **kwargs) -> Dict[str, Any]:
     
     Args:
         action: The action to perform (create, get, list, delete, run, cancel, status)
-        **kwargs: Action-specific arguments
+        **kwargs: Action-specific arguments including:
+            timeout_minutes: Maximum time to wait for a job before timing out (default: 10)
         
     Returns:
         A dictionary with the result of the action
@@ -1200,7 +1443,16 @@ def manage_job(action: str, **kwargs) -> Dict[str, Any]:
             # In a production environment, we might use a task queue system
             loop = asyncio.get_event_loop()
             max_parallel = int(kwargs.get("max_parallel", 5))
-            task = loop.create_task(run_job(kwargs["job_id"], max_parallel=max_parallel))
+            timeout_minutes = int(kwargs.get("timeout_minutes", 10))
+            stdio_friendly = bool(kwargs.get("stdio_friendly", True))
+            
+            # Set default stdio_friendly=True for Claude Desktop MCP
+            task = loop.create_task(run_job(
+                kwargs["job_id"], 
+                max_parallel=max_parallel, 
+                timeout_minutes=timeout_minutes,
+                stdio_friendly=stdio_friendly
+            ))
             
             return {
                 "status": "success", 
