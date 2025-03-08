@@ -5,6 +5,8 @@ import json
 import httpx
 import asyncio
 import logging
+import math
+import re
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 import jinja2
@@ -51,6 +53,8 @@ class EvalResult(BaseModel):
     question: str
     judgment: Optional[bool] = None
     logprob: Optional[float] = None
+    confidence: Optional[float] = None
+    reasoning: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -120,9 +124,17 @@ async def call_llm_api(
                         "properties": {
                             "judgment": {
                                 "type": "boolean"
+                            },
+                            "confidence": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                            },
+                            "reasoning": {
+                                "type": "string"
                             }
                         },
-                        "required": ["judgment"]
+                        "required": ["judgment", "confidence"]
                     }
                 }
             }
@@ -295,8 +307,32 @@ async def evaluate_question(
             # We'll use it to strictly enforce the response format
             
             # We can keep the JSON instructions in the prompt
-            # Add a clear note about the expected format
-            rendered_prompt += "\n\nIMPORTANT: Please respond with a JSON object containing a 'judgment' field. Use true for 'Yes' and false for 'No'."
+            # Add a clear note about the expected format with confidence estimation
+            # Based on the verbalized-uq research, this format is shown to be more effective
+            rendered_prompt += """
+
+IMPORTANT: Provide your judgment and the probability that it is correct (0.0 to 1.0) for this question.
+Give ONLY the judgment and probability in JSON format. Take your uncertainty in the prompt, the task difficulty, 
+your knowledge availability, and other sources of uncertainty into account.
+
+For example:
+```
+{
+  "judgment": true,  // true for Yes, false for No
+  "confidence": 0.85,  // probability between 0.0 and 1.0 that your judgment is correct
+  "reasoning": "Optional brief explanation of your reasoning"
+}
+```
+
+For the confidence field, estimate your confidence as accurately as possible:
+- 1.0 = perfect certainty (100% confident)
+- 0.9 = very high confidence (90% confident)
+- 0.7 = moderately confident (70% confident)
+- 0.5 = equally likely to be right or wrong (50% confident)
+- 0.3 = not very confident (30% confident)
+- 0.1 = highly uncertain (10% confident)
+
+Your confidence should reflect how certain you are about your judgment based on the evidence provided."""
             
             # LM Studio needs simpler prompts sometimes
             if len(rendered_prompt) > 2000:
@@ -306,11 +342,20 @@ async def evaluate_question(
 
 Question: {question}
 
-Respond with a JSON object like {"judgment": true} for Yes or {"judgment": false} for No."""
+Provide your judgment (Yes/No) and the probability that it is correct (0.0 to 1.0).
+Give ONLY the judgment and probability in JSON format, with no other words or explanation.
+
+Example for a confident Yes:
+{{"judgment": true, "confidence": 0.85}}
+
+Example for an uncertain No:
+{{"judgment": false, "confidence": 0.6}}
+
+Consider carefully and provide your best calibrated estimate of confidence."""
                 
             # Add system prompt for better control - our testing shows system prompts work well
             messages = [
-                {"role": "system", "content": "You are an evaluation assistant that provides judgments in JSON format with a boolean 'judgment' field."},
+                {"role": "system", "content": "You are an evaluation assistant that provides objective judgments in JSON format. Include: 1) a boolean 'judgment' field (true/false), 2) a 'confidence' field (0.0-1.0) indicating the probability your judgment is correct, and 3) optional 'reasoning'. Provide well-calibrated confidence scores based on uncertainty, task difficulty, and available information."},
                 {"role": "user", "content": rendered_prompt}
             ]
         else:
@@ -368,6 +413,18 @@ Respond with a JSON object like {"judgment": true} for Yes or {"judgment": false
             
             # Default judgment to True for simplified testing if needed
             judgment = True
+            confidence = None
+            reasoning = None
+            
+            # Define regex patterns for extracting values from non-JSON responses (fallback)
+            judgment_patterns = [
+                re.compile(r"judgment.*?[=:]\s*(?P<judgment>true|false)", re.IGNORECASE),
+                re.compile(r"answer.*?[=:]\s*(?P<judgment>yes|no)", re.IGNORECASE)
+            ]
+            confidence_patterns = [
+                re.compile(r"confidence.*?[=:]\s*(?P<confidence>\d*\.?\d+)", re.IGNORECASE),
+                re.compile(r"probability.*?[=:]\s*(?P<confidence>\d*\.?\d+)", re.IGNORECASE)
+            ]
             
             # Try to parse JSON response - with improved parsing for LM Studio
             try:
@@ -377,7 +434,27 @@ Respond with a JSON object like {"judgment": true} for Yes or {"judgment": false
                     
                     # Check for judgment field with proper boolean handling
                     if isinstance(judgment_obj, dict) and "judgment" in judgment_obj:
-                        # Handle boolean value directly
+                        # Extract confidence if provided
+                        confidence = None
+                        reasoning = None
+                        
+                        # Get confidence score from model if available
+                        if "confidence" in judgment_obj:
+                            try:
+                                conf_val = judgment_obj["confidence"]
+                                if isinstance(conf_val, (int, float)):
+                                    confidence = min(max(float(conf_val), 0.0), 1.0)  # Clamp to 0-1
+                                elif isinstance(conf_val, str):
+                                    # Try to parse string as number
+                                    confidence = min(max(float(conf_val), 0.0), 1.0)  # Clamp to 0-1
+                            except (ValueError, TypeError):
+                                logger.warning(f"Invalid confidence value: {judgment_obj.get('confidence')}")
+                        
+                        # Get reasoning if available
+                        if "reasoning" in judgment_obj and isinstance(judgment_obj["reasoning"], str):
+                            reasoning = judgment_obj["reasoning"]
+                        
+                        # Handle boolean judgment value directly
                         if isinstance(judgment_obj["judgment"], bool):
                             judgment = judgment_obj["judgment"]
                         # Handle string representations of boolean
@@ -408,18 +485,43 @@ Respond with a JSON object like {"judgment": true} for Yes or {"judgment": false
                                    "1" in lower_content or 
                                    "correct" in lower_content)
                 except json.JSONDecodeError:
-                    # Handle case when it's a direct response instead of JSON
-                    if content.lower() in ["true", "yes", "1"]:
-                        judgment = True
-                    elif content.lower() in ["false", "no", "0"]:
-                        judgment = False
-                    else:
-                        # If it's not parseable JSON or a direct boolean, analyze text
-                        lower_content = content.lower()
-                        judgment = ("yes" in lower_content or 
-                                   "true" in lower_content or 
-                                   "1" in lower_content or 
-                                   "correct" in lower_content)
+                    # Try to parse using regex patterns if JSON parsing fails
+                    # First try to extract judgment
+                    for pattern in judgment_patterns:
+                        match = pattern.search(content)
+                        if match:
+                            judgment_str = match.group("judgment").lower()
+                            if judgment_str in ["true", "yes", "1"]:
+                                judgment = True
+                            elif judgment_str in ["false", "no", "0"]:
+                                judgment = False
+                            break
+                    
+                    # Then try to extract confidence
+                    for pattern in confidence_patterns:
+                        match = pattern.search(content)
+                        if match:
+                            try:
+                                conf_str = match.group("confidence")
+                                confidence = min(max(float(conf_str), 0.0), 1.0)  # Clamp to 0-1
+                                break
+                            except ValueError:
+                                pass
+                    
+                    # If patterns didn't match, fall back to simple content analysis
+                    if judgment is None:
+                        # Handle case when it's a direct response instead of JSON
+                        if content.lower() in ["true", "yes", "1"]:
+                            judgment = True
+                        elif content.lower() in ["false", "no", "0"]:
+                            judgment = False
+                        else:
+                            # If it's not parseable JSON or a direct boolean, analyze text
+                            lower_content = content.lower()
+                            judgment = ("yes" in lower_content or 
+                                      "true" in lower_content or 
+                                      "1" in lower_content or 
+                                      "correct" in lower_content)
             except Exception as e:
                 # Fallback to basic text analysis
                 logger.warning(f"Error parsing judgment: {str(e)}")
@@ -482,10 +584,31 @@ Respond with a JSON object like {"judgment": true} for Yes or {"judgment": false
             
             logger.info(f"Evaluation result: {judgment} (logprob: {logprob})")
             
+            # If we got a confidence from the model but no logprob, use the verbalized confidence
+            final_confidence = None
+            
+            if logprob is not None:
+                # If we have logprobs, convert to confidence score (0-1)
+                # Logprobs are typically negative values, so we use exp to convert to probability
+                # This gives us the probability of the token
+                if logprob < 0:
+                    final_confidence = min(max(float(math.exp(logprob)), 0.0), 1.0)
+                else:
+                    # Handle positive logprobs (unlikely but possible)
+                    final_confidence = min(max(float(logprob), 0.0), 1.0)
+                
+                logger.info(f"Using logprob-derived confidence: {final_confidence:.4f} from logprob {logprob:.4f}")
+            elif confidence is not None:
+                # If no logprobs but we have a verbalized confidence, use that
+                final_confidence = confidence
+                logger.info(f"Using verbalized confidence: {final_confidence:.4f}")
+            
             return EvalResult(
                 question=question,
                 judgment=judgment,
-                logprob=logprob
+                logprob=logprob,
+                confidence=final_confidence,
+                reasoning=reasoning
             )
         
         except (KeyError, IndexError, json.JSONDecodeError) as e:
@@ -493,7 +616,9 @@ Respond with a JSON object like {"judgment": true} for Yes or {"judgment": false
             logger.error(f"Response: {json.dumps(response)}")
             return EvalResult(
                 question=question,
-                error=f"Error parsing response: {str(e)}"
+                error=f"Error parsing response: {str(e)}",
+                confidence=None,
+                reasoning=None
             )
     
     except Exception as e:
@@ -571,13 +696,27 @@ async def run_evalset(
         else:
             yes_percentage = 0
         
+        # Calculate mean confidence for valid results
+        valid_confidences = [r.confidence for r in successful_evals if r.confidence is not None]
+        mean_confidence = sum(valid_confidences) / len(valid_confidences) if valid_confidences else None
+        
+        # Calculate confidence statistics for Yes and No answers separately
+        yes_confidences = [r.confidence for r in successful_evals if r.judgment is True and r.confidence is not None]
+        no_confidences = [r.confidence for r in successful_evals if r.judgment is False and r.confidence is not None]
+        
+        mean_yes_confidence = sum(yes_confidences) / len(yes_confidences) if yes_confidences else None
+        mean_no_confidence = sum(no_confidences) / len(no_confidences) if no_confidences else None
+        
         summary = {
             "total_questions": total_questions,
             "successful_evaluations": len(successful_evals),
             "yes_count": yes_count,
             "no_count": no_count,
             "error_count": error_count,
-            "yes_percentage": round(yes_percentage, 2)
+            "yes_percentage": round(yes_percentage, 2),
+            "mean_confidence": round(mean_confidence, 2) if mean_confidence is not None else None,
+            "mean_yes_confidence": round(mean_yes_confidence, 2) if mean_yes_confidence is not None else None,
+            "mean_no_confidence": round(mean_no_confidence, 2) if mean_no_confidence is not None else None
         }
         
         # Create results object
@@ -602,6 +741,16 @@ async def run_evalset(
         
         formatted_results.append(f"- Yes responses: {yes_count} ({round(yes_percentage, 2)}%)")
         formatted_results.append(f"- No responses: {no_count} ({round(100 - yes_percentage, 2)}%)")
+        
+        # Add confidence information to summary if available
+        if summary["mean_confidence"] is not None:
+            formatted_results.append(f"- Mean confidence: {summary['mean_confidence']:.2f}")
+            
+            # Add yes/no confidence breakdowns if available
+            if summary["mean_yes_confidence"] is not None and yes_count > 0:
+                formatted_results.append(f"- Mean confidence in Yes responses: {summary['mean_yes_confidence']:.2f}")
+            if summary["mean_no_confidence"] is not None and no_count > 0:
+                formatted_results.append(f"- Mean confidence in No responses: {summary['mean_no_confidence']:.2f}")
         formatted_results.append("")
         
         formatted_results.append(f"## Detailed Results")
@@ -612,10 +761,26 @@ async def run_evalset(
             else:
                 judgment_text = "Yes" if result.judgment else "No"
                 formatted_results.append(f"{i}. **Q**: {result.question}")
-                if result.logprob is not None:
-                    formatted_results.append(f"   **A**: {judgment_text} (logprob: {result.logprob:.4f})")
+                # Format the display based on available confidence/logprob information
+                confidence_display = ""
+                
+                # If we have a confidence value, display it
+                if result.confidence is not None:
+                    confidence_display = f"(confidence: {result.confidence:.2f})"
+                # Otherwise if we have a logprob, show it as a fallback
+                elif result.logprob is not None:
+                    confidence_display = f"(logprob: {result.logprob:.4f})"
                 else:
-                    formatted_results.append(f"   **A**: {judgment_text} (logprob: N/A)")
+                    confidence_display = "(confidence: N/A)"
+                
+                # Format the result with confidence and optional reasoning
+                formatted_results.append(f"   **A**: {judgment_text} {confidence_display}")
+                
+                # Include reasoning if available
+                if result.reasoning:
+                    # Limit reasoning to 200 chars and add ellipsis if needed
+                    reasoning_text = result.reasoning[:200] + ("..." if len(result.reasoning) > 200 else "")
+                    formatted_results.append(f"   **Reasoning**: {reasoning_text}")
         
         return {
             "status": "success",
