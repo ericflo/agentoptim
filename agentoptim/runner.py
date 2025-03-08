@@ -352,11 +352,20 @@ async def evaluate_question(
         Evaluation result for the question
     """
     try:
+        # Format the conversation for better readability
+        formatted_conversation = ""
+        for message in conversation:
+            role = message.get("role", "").capitalize()
+            content = message.get("content", "")
+            formatted_conversation += f"{role}: {content}\n\n"
+            
         # Render the template with Jinja2
         jinja_env = jinja2.Environment()
         jinja_template = jinja_env.from_string(template)
         rendered_prompt = jinja_template.render(
-            conversation=json.dumps(conversation, ensure_ascii=False),
+            conversation=formatted_conversation,
+            # Also provide raw conversation in case templates need JSON format
+            conversation_json=json.dumps(conversation, ensure_ascii=False),
             eval_question=question
         )
         
