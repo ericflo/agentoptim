@@ -353,20 +353,28 @@ async def evaluate_question(
     """
     try:
         # Format the conversation for better readability
-        formatted_conversation = ""
+        formatted_conversation = "### BEGIN CONVERSATION ###\n\n"
         for message in conversation:
             role = message.get("role", "").capitalize()
             content = message.get("content", "")
             formatted_conversation += f"{role}: {content}\n\n"
+        formatted_conversation += "### END CONVERSATION ###\n\n"
             
+        # Create a fresh Jinja environment for each evaluation to prevent state leakage
+        jinja_env = jinja2.Environment(autoescape=True)
+        
+        # Add a unique evaluation ID to help track this specific evaluation
+        eval_id = str(uuid.uuid4())[:8]
+        logger.debug(f"Evaluation ID {eval_id} for question: {question}")
+        
         # Render the template with Jinja2
-        jinja_env = jinja2.Environment()
         jinja_template = jinja_env.from_string(template)
         rendered_prompt = jinja_template.render(
             conversation=formatted_conversation,
             # Also provide raw conversation in case templates need JSON format
             conversation_json=json.dumps(conversation, ensure_ascii=False),
-            eval_question=question
+            eval_question=question,
+            eval_id=eval_id  # Add the evaluation ID to the context
         )
         
         # Add specific formatting guidance for LM Studio
@@ -381,14 +389,16 @@ async def evaluate_question(
 
 IMPORTANT INSTRUCTIONS FOR EVALUATION:
 
-Think carefully about the question and analyze the conversation thoroughly before answering. Respond ONLY in the valid JSON format specified below.
+CAREFULLY ANALYZE THE EXACT CONVERSATION PROVIDED ABOVE between ### BEGIN CONVERSATION ### and ### END CONVERSATION ### markers. Respond ONLY in the valid JSON format specified below.
+
+Your evaluation must be based ONLY on this specific conversation. Do not reference any other conversations, scenarios, or prior knowledge. Only evaluate what is explicitly present in this conversation.
 
 Your JSON response MUST include these THREE fields:
 
 1. "reasoning": (REQUIRED)
    • Provide a thorough explanation (3-5 sentences)
-   • Include specific evidence from the conversation
-   • Explain your evaluation criteria and thought process
+   • Include specific evidence from the EXACT conversation provided
+   • Quote relevant parts of the conversation to support your judgment
    • Be objective and focus on observable elements in the response
 
 2. "judgment": (REQUIRED)
@@ -424,30 +434,56 @@ CRITICAL: Your response MUST be valid JSON that can be parsed. Incorrect formats
             if len(rendered_prompt) > 2000:
                 # Shorten if necessary
                 logger.info("Prompt is very long, shortening for LM Studio compatibility")
-                rendered_prompt = f"""Please evaluate the following question about a conversation:
+                rendered_prompt = f"""Please evaluate the following question about the SPECIFIC conversation provided below:
+
+### BEGIN CONVERSATION ###
+{formatted_conversation}
+### END CONVERSATION ###
 
 QUESTION: {question}
 
-Analyze the question carefully and provide your evaluation in JSON format with these THREE REQUIRED fields:
+IMPORTANT: Analyze ONLY the conversation provided between the ### BEGIN CONVERSATION ### and ### END CONVERSATION ### markers. Do not reference any other conversations or prior knowledge.
 
-1. "reasoning": A detailed explanation of your reasoning (3-5 sentences)
+You MUST provide your evaluation in JSON format with these THREE REQUIRED fields:
+
+1. "reasoning": A detailed explanation of your reasoning (3-5 sentences), quoting specific parts of the conversation
 2. "judgment": true for Yes, false for No (must be JSON boolean: true/false)
 3. "confidence": Number from 0.0 to 1.0 showing your confidence level
 
 Example of CORRECT format:
 ```json
 {{
-  "reasoning": "The assistant's response directly addresses the user's question by providing specific instructions. The information is clear, accurate, and would enable the user to successfully complete their task without further assistance.",
+  "reasoning": "The assistant's response directly addresses the user's question by providing specific instructions. The assistant says 'To reset your password, go to settings and click on the Reset button.' This information is clear, accurate, and would enable the user to successfully complete their task without further assistance.",
   "judgment": true,
   "confidence": 0.88
 }}
 ```
 
-CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or strings) for the judgment field to avoid errors. Include detailed reasoning with specific evidence."""
+CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or strings) for the judgment field to avoid errors. Include detailed reasoning with specific evidence from THIS conversation."""
                 
-            # Add system prompt for better control - our testing shows system prompts work well
+            # Create system prompt without f-string issues
+            system_content = "You are an expert evaluation assistant that provides detailed, thoughtful judgments in valid JSON format. "
+            system_content += f"Your evaluation ID is {eval_id}. "
+            system_content += "You analyze ONLY the specific conversation provided to you in each request, not referring to any other conversations or knowledge.\n\n"
+            system_content += "You MUST ONLY evaluate the exact conversation provided between the ### BEGIN CONVERSATION ### and ### END CONVERSATION ### markers. "
+            system_content += "Do not reference details from outside this specific conversation or make assumptions based on other knowledge.\n\n"
+            system_content += "Your responses MUST include all THREE of these required fields:\n\n"
+            system_content += "1) 'reasoning': A thorough explanation (3-5 sentences) that clearly justifies your judgment with specific evidence from the provided conversation. "
+            system_content += "Quote relevant parts of the conversation to support your judgment. Explain your thought process and the criteria you used.\n\n"
+            system_content += "2) 'judgment': A boolean true/false value (using proper JSON literals: true or false, NOT True/False or strings). "
+            system_content += "Use true for 'yes' answers and false for 'no' answers to the evaluation question.\n\n"
+            system_content += "3) 'confidence': A well-calibrated number between 0.0 and 1.0 indicating your confidence level. "
+            system_content += "Use 0.9+ for near certainty, 0.7-0.8 for strong confidence, 0.5-0.6 for moderate confidence, and below 0.5 for low confidence. Avoid overconfidence.\n\n"
+            system_content += "CRITICAL: Always use valid JSON syntax with proper JSON boolean literals (true/false). "
+            system_content += "Do not use Python style True/False or quoted strings like 'true'/'false'. The response MUST be parseable as JSON. "
+            system_content += "NEVER return a response that is missing any of the three required fields.\n\n"
+            system_content += "FORMAT EXAMPLE:\n```json\n"
+            system_content += '{\n  "reasoning": "The response clearly addresses the user\'s concern by providing step-by-step instructions to solve their problem. The assistant says to resolve the issue by taking specific steps. This demonstrates clear guidance. The tone is professional yet friendly, and the information is accurate and concise.",\n'
+            system_content += '  "judgment": true,\n'
+            system_content += '  "confidence": 0.85\n}\n```'
+            
             messages = [
-                {"role": "system", "content": "You are an expert evaluation assistant that provides detailed, thoughtful judgments in valid JSON format. You analyze conversations and answer specific evaluation questions with nuanced reasoning.\n\nYour responses MUST include all THREE of these required fields:\n\n1) 'reasoning': A thorough explanation (3-5 sentences) that clearly justifies your judgment with specific evidence from the conversation. Explain your thought process and the criteria you used.\n\n2) 'judgment': A boolean true/false value (using proper JSON literals: true or false, NOT True/False or strings). Use true for 'yes' answers and false for 'no' answers to the evaluation question.\n\n3) 'confidence': A well-calibrated number between 0.0 and 1.0 indicating your confidence level. Use 0.9+ for near certainty, 0.7-0.8 for strong confidence, 0.5-0.6 for moderate confidence, and below 0.5 for low confidence. Avoid overconfidence.\n\nCRITICAL: Always use valid JSON syntax with proper JSON boolean literals (true/false). Do not use Python style True/False or quoted strings like \"true\"/\"false\". The response MUST be parseable as JSON. NEVER return a response that is missing any of the three required fields.\n\nFORMAT EXAMPLE:\n```json\n{\n  \"reasoning\": \"The response clearly addresses the user's concern by providing step-by-step instructions to solve their problem. The tone is professional yet friendly, and the information is accurate and concise.\",\n  \"judgment\": true,\n  \"confidence\": 0.85\n}\n```"},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": rendered_prompt}
             ]
         else:
