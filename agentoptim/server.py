@@ -5,7 +5,7 @@ import sys
 import json
 import logging
 import asyncio
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 
 from mcp.server.fastmcp import FastMCP
 
@@ -59,73 +59,148 @@ async def manage_evalset_tool(
     description: Optional[str] = None,
 ) -> dict:
     """
-    Manage EvalSet definitions for assessing conversation quality.
+    Manage evaluation criteria sets (EvalSets) for systematically assessing conversation quality.
     
-    This tool helps manage EvalSets, which define a set of yes/no questions and a template
-    for evaluating conversations. The template formats the conversation and evaluation question
-    for the judge model.
+    ## Overview
+    This tool allows you to create, retrieve, update, and delete "EvalSets" - collections of 
+    evaluation criteria for judging the quality of conversational responses. Each EvalSet contains:
     
-    Args:
-        action: The operation to perform. Must be one of:
-               - "create" - Create a new EvalSet
-               - "list" - List all available EvalSets
-               - "get" - Get details of a specific EvalSet
-               - "update" - Update an existing EvalSet
-               - "delete" - Delete an EvalSet
-               
-        evalset_id: The unique identifier of the EvalSet.
-                  Required for "get", "update", and "delete" actions.
-                  Example: "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
-                  
-        name: The name of the EvalSet.
-              Required for "create" action.
-              Example: "Response Quality Evaluation"
+    1. A set of yes/no evaluation questions (e.g., "Is the response helpful?")
+    2. A template with formatting instructions for the evaluation model
+    3. Metadata like name and description
+    
+    ## Creating Effective EvalSets
+    
+    To create a high-quality EvalSet:
+    
+    - Use specific, measurable questions (e.g., "Does the response provide a step-by-step solution?")
+    - Include diverse evaluation criteria (helpfulness, accuracy, clarity, etc.)
+    - Maintain consistent evaluation standards across questions
+    - Write clear templates with proper JSON formatting instructions
+    
+    ## Arguments
+    
+    action: The operation to perform. Must be one of:
+           - "create" - Create a new EvalSet with evaluation criteria
+           - "list" - List all available EvalSets in the system
+           - "get" - Get complete details of a specific EvalSet by ID
+           - "update" - Modify an existing EvalSet's properties
+           - "delete" - Permanently remove an EvalSet
+           
+    evalset_id: The unique identifier of the EvalSet (UUID format).
+              Required for "get", "update", and "delete" actions.
+              Example: "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
               
-        template: The template string that formats the input for the judge model.
-                 Required for "create" action, optional for "update".
-                 Must include placeholders for {{ conversation }} and {{ eval_question }}.
-                 Example: "Given this conversation: {{ conversation }}\n\nPlease answer this question about the final response: {{ eval_question }}"
-                 
-        questions: A list of yes/no questions to evaluate responses against.
-                  Required for "create" action, optional for "update".
-                  Each question should be answerable with yes/no.
-                  Example: ["Is the response clear and concise?", "Does the response answer the question?"]
-                  
-        description: Optional description of the EvalSet purpose.
-                    Example: "Evaluates responses for clarity, conciseness, and helpfulness"
+    name: A descriptive name for the EvalSet.
+          Required for "create" action, optional for "update".
+          Should be specific to the evaluation purpose.
+          Example: "Technical Support Response Quality Evaluation"
+          
+    template: A Jinja2 template string that formats inputs for the judge model.
+             Required for "create" action, optional for "update".
+             MUST include placeholders {{ conversation }} and {{ eval_question }}.
+             Should include clear instructions for JSON output format with reasoning, judgment, and confidence.
+             Example: See "Creating Templates" section below.
+             
+    questions: A list of yes/no evaluation questions to assess responses.
+              Required for "create" action, optional for "update".
+              Each question must be clear, specific, and answerable with yes/no.
+              Example: ["Does the response directly address the user's question?",
+                       "Is the response clear and easy to understand?",
+                       "Does the response provide complete information?"]
+              
+    description: A detailed explanation of the EvalSet's purpose and criteria.
+                Optional for "create" and "update" actions.
+                Should explain what aspects of conversation quality are being measured.
+                Example: "Evaluates technical support responses for clarity, helpfulness, accuracy, and completeness."
     
-    Returns:
-        For "list" action: A formatted list of all EvalSets with their IDs and names
-        For "get" action: Detailed information about the specified EvalSet
-        For "create" action: Confirmation message with the new EvalSet ID
-        For "update" action: Confirmation message that the EvalSet was updated
-        For "delete" action: Confirmation message that the EvalSet was deleted
+    ## Creating Templates
     
-    Example:
-        ```python
-        # Create an EvalSet
-        evalset = manage_evalset_tool(
-            action="create",
-            name="Response Quality Evaluation",
-            template='''
-            Given this conversation:
-            {{ conversation }}
-            
-            Please answer the following yes/no question about the final assistant response:
-            {{ eval_question }}
-            
-            Return a JSON object with the following format:
-            {"judgment": 1} for yes or {"judgment": 0} for no.
-            ''',
-            questions=[
-                "Does the response directly address the user's question?",
-                "Is the response polite and professional?",
-                "Does the response provide a complete solution?",
-                "Is the response clear and easy to understand?"
-            ],
-            description="Evaluation criteria for response quality"
-        )
+    Your template should include:
+    
+    1. Instructions to use the {{ conversation }} and {{ eval_question }} variables
+    2. Clear directions for JSON output format with these fields:
+       - "reasoning": Detailed explanation for the judgment
+       - "judgment": Boolean true/false for yes/no answers
+       - "confidence": Number between 0 and 1 indicating confidence level
+    3. Format examples showing proper JSON syntax
+    
+    ## Return Values
+    
+    For "list" action: Dictionary with "evalsets" key containing all available EvalSets
+    For "get" action: Dictionary with "evalset" key containing the complete EvalSet data
+    For "create" action: Dictionary with "evalset" key containing the new EvalSet with generated ID
+    For "update" action: Dictionary with "evalset" key containing the updated EvalSet
+    For "delete" action: Dictionary with "status" and "message" confirming deletion
+    
+    ## Usage Examples
+    
+    ### Creating a New EvalSet
+    
+    ```python
+    # Create a comprehensive EvalSet for technical support evaluation
+    evalset = manage_evalset_tool(
+        action="create",
+        name="Technical Support Quality Evaluation",
+        template='''
+        Given this conversation:
+        {{ conversation }}
+        
+        Please answer the following yes/no question about the final assistant response:
+        {{ eval_question }}
+        
+        IMPORTANT INSTRUCTIONS FOR EVALUATION:
+        
+        Analyze the conversation thoroughly before answering. Respond ONLY in valid JSON format with these THREE required fields:
+        
+        1. "reasoning": Provide a detailed explanation (3-5 sentences) with specific evidence from the conversation
+        2. "judgment": Boolean true for Yes, false for No (must use JSON boolean literals: true/false)
+        3. "confidence": Number between 0.0 and 1.0 indicating your certainty
+        
+        Example format:
+        ```json
+        {
+          "reasoning": "The assistant's response directly addresses the user's question by providing specific instructions. The information is clear, accurate, and would enable the user to accomplish their task without further assistance.",
+          "judgment": true,
+          "confidence": 0.92
+        }
         ```
+        ''',
+        questions=[
+            "Does the response directly address the user's specific question?",
+            "Is the response clear and easy to understand?",
+            "Does the response provide complete step-by-step instructions?",
+            "Is the response accurate and technically correct?",
+            "Does the response use appropriate technical terminology?",
+            "Is the tone of the response professional and helpful?",
+            "Would the response likely resolve the user's issue without further assistance?"
+        ],
+        description="Comprehensive evaluation criteria for assessing technical support responses across dimensions of clarity, accuracy, completeness, and helpfulness."
+    )
+    
+    # List all available EvalSets
+    evalsets = manage_evalset_tool(action="list")
+    
+    # Get a specific EvalSet by ID
+    evalset_details = manage_evalset_tool(
+        action="get",
+        evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
+    )
+    
+    # Update an existing EvalSet
+    updated_evalset = manage_evalset_tool(
+        action="update",
+        evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+        name="Enhanced Technical Support Quality Evaluation",
+        questions=["New question 1", "New question 2"]
+    )
+    
+    # Delete an EvalSet
+    delete_result = manage_evalset_tool(
+        action="delete",
+        evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
+    )
+    ```
     """
     logger.info(f"manage_evalset_tool called with action={action}")
     try:
@@ -167,7 +242,7 @@ async def manage_evalset_tool(
                 example = {
                     "action": "create",
                     "name": "Response Quality Evaluation",
-                    "template": "Given this conversation: {{ conversation }}\n\nPlease answer this question about the final response: {{ eval_question }}\n\nReturn a JSON object with the following format:\n{\"judgment\": 1} for yes or {\"judgment\": 0} for no.",
+                    "template": "Given this conversation: {{ conversation }}\n\nPlease answer this question about the final response: {{ eval_question }}\n\nReturn a JSON object with the following format:\n{\"reasoning\": \"Your reasoning here\", \"judgment\": true, \"confidence\": 0.9} for yes or {\"reasoning\": \"Your reasoning here\", \"judgment\": false, \"confidence\": 0.7} for no.",
                     "questions": [
                         "Is the response clear and concise?",
                         "Does the response fully answer the question?",
@@ -212,62 +287,151 @@ async def manage_evalset_tool(
 async def run_evalset_tool(
     evalset_id: str,
     conversation: List[Dict[str, str]],
-    model: str = "meta-llama-3.1-8b-instruct",
+    model: Optional[str] = None,  # Will use judge_model from options if not provided
     max_parallel: int = 3
 ) -> dict:
     """
-    Run an EvalSet evaluation on a conversation.
+    Execute a comprehensive evaluation of conversation quality using an EvalSet's criteria.
     
-    This tool evaluates a conversation against an EvalSet's yes/no questions,
-    returning detailed results and a summary of the evaluation.
+    ## Overview
+    This tool systematically evaluates a conversation against a predefined set of criteria (an EvalSet),
+    using an LLM as a judge. It provides detailed insights into conversation quality with reasoned 
+    judgments, confidence scores, and summary statistics.
     
-    Args:
-        evalset_id: The unique identifier of the EvalSet to use.
-                   Must reference an existing EvalSet created with manage_evalset_tool.
-                   Example: "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
-                  
-        conversation: List of conversation messages in the format:
-                     [{"role": "system", "content": "..."}, 
-                      {"role": "user", "content": "..."},
-                      {"role": "assistant", "content": "..."}]
-                     Each message must have at least "role" and "content" fields.
-                    
-        model: Name of the model to use for evaluation (acts as judge).
-               Optional, defaults to "meta-llama-3.1-8b-instruct".
-               Example: "claude-3-haiku-20240307" or "lmstudio-community/meta-llama-3.1-8b-instruct"
-               
-        max_parallel: Maximum number of questions to evaluate in parallel.
-                     Optional, defaults to 3.
-                     Higher values may speed up execution but increase resource usage.
-                     Example: 5
+    ## How It Works
+    1. The tool loads the specified EvalSet and its evaluation questions
+    2. For each question, it prompts an LLM judge model to evaluate the conversation
+    3. The judge model provides a reasoned judgment, confidence score, and yes/no determination
+    4. Results are aggregated into detailed per-question results and summary statistics
     
-    Returns:
-        Detailed results of the evaluation, including:
-        - Summary statistics (success rate, yes/no percentages)
-        - Detailed results for each question
-        - Judgment (yes/no) and logprob for each question
+    ## Arguments
     
-    Example:
-        ```python
-        # Run an evaluation on a conversation
-        results = run_evalset_tool(
+    evalset_id: The unique identifier (UUID) of the EvalSet to use.
+              REQUIRED. Must reference an existing EvalSet created with manage_evalset_tool.
+              Example: "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
+             
+    conversation: A chronological list of conversation messages to evaluate.
+                REQUIRED. Each message must be a dictionary with "role" and "content" fields.
+                Valid roles include: "system", "user", "assistant"
+                Example: [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": "How do I reset my password?"},
+                    {"role": "assistant", "content": "Go to the login page and click 'Forgot Password'."}
+                ]
+                
+    model: The LLM to use as the evaluation judge.
+          OPTIONAL. If not provided, will use:
+          1. First, the "judge_model" option from client configuration if available
+          2. Otherwise, falls back to "meta-llama-3.1-8b-instruct"
+          Should be a model capable of reasoning about conversations and following instructions.
+          Example: "meta-llama-3.1-8b-instruct", "gpt-4o-mini", or "anthropic/claude-3-sonnet"
+          
+    max_parallel: Maximum number of evaluation questions to process simultaneously.
+                OPTIONAL. Defaults to 3.
+                Higher values can improve speed but increase resource requirements.
+                Recommended range: 1-5 (depending on your hardware)
+                Example: 5 for faster evaluation on powerful systems
+    
+    ## Return Value
+    
+    The tool returns a comprehensive evaluation result with these components:
+    
+    - status: Success/error status of the evaluation
+    - id: Unique ID for this evaluation run
+    - evalset_id: ID of the EvalSet used
+    - evalset_name: Name of the EvalSet used
+    - model: Name of the judge model used
+    - results: List of detailed results for each evaluation question, including:
+      - question: The evaluation question
+      - judgment: Boolean true/false indicating yes/no answer
+      - confidence: Number between 0-1 indicating confidence level
+      - reasoning: The judge's explanation for their judgment
+    - summary: Aggregated statistics including:
+      - total_questions: Number of questions evaluated
+      - successful_evaluations: Number of questions successfully evaluated
+      - yes_count & no_count: Counts of yes/no judgments
+      - yes_percentage: Percentage of yes responses
+      - mean_confidence: Average confidence across all judgments
+      - mean_yes_confidence & mean_no_confidence: Average confidence for yes/no judgments
+    - result: A formatted markdown report of the evaluation results
+    
+    ## Usage Examples
+    
+    ### Basic Usage
+    
+    ```python
+    # Evaluate a simple password reset conversation
+    results = run_evalset_tool(
+        evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+        conversation=[
+            {"role": "system", "content": "You are a helpful technical support assistant."},
+            {"role": "user", "content": "I forgot my password and can't log in. How do I reset it?"},
+            {"role": "assistant", "content": "To reset your password, please follow these steps:\n\n1. Go to the login page\n2. Click on the 'Forgot Password' link below the login form\n3. Enter the email address associated with your account\n4. Check your email for a password reset link\n5. Click the link and follow the instructions to create a new password\n\nIf you don't receive the email within a few minutes, please check your spam folder."}
+        ],
+        model="meta-llama-3.1-8b-instruct",
+        max_parallel=2
+    )
+    
+    # Get the overall success rate
+    success_rate = results["summary"]["yes_percentage"]
+    print(f"Response quality score: {success_rate}%")
+    
+    # Get mean confidence score
+    mean_confidence = results["summary"]["mean_confidence"]
+    print(f"Mean confidence: {mean_confidence:.2f}")
+    
+    # Access individual evaluation results
+    for result in results["results"]:
+        print(f"Q: {result['question']}")
+        print(f"A: {'Yes' if result['judgment'] else 'No'} (confidence: {result['confidence']:.2f})")
+        print(f"Reasoning: {result['reasoning']}\n")
+    
+    # Compare multiple conversation strategies
+    def evaluate_response(response_text):
+        return run_evalset_tool(
             evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
             conversation=[
-                {"role": "system", "content": "You are a helpful AI assistant."},
                 {"role": "user", "content": "How do I reset my password?"},
-                {"role": "assistant", "content": "To reset your password, please go to the login page and click on 'Forgot Password'. You'll receive an email with instructions to create a new password."}
-            ],
-            model="meta-llama-3.1-8b-instruct"
-        )
-        ```
+                {"role": "assistant", "content": response_text}
+            ]
+        )["summary"]["yes_percentage"]
+    
+    response1_score = evaluate_response("Go to Settings > Account > Reset Password.")
+    response2_score = evaluate_response("To reset your password, go to the login page and click 'Forgot Password'.")
+    response3_score = evaluate_response("To reset your password, follow these steps:\n1. Go to the login page\n2. Click 'Forgot Password'\n3. Follow the on-screen instructions")
+    
+    print(f"Response 1: {response1_score}%")
+    print(f"Response 2: {response2_score}%")
+    print(f"Response 3: {response3_score}%")
+    ```
     """
     logger.info(f"run_evalset_tool called with evalset_id={evalset_id}")
     try:
+        # Check for judge_model in options (passed from client config)
+        judge_model = None
+        try:
+            if hasattr(mcp, '_mcp_server'):
+                request_context = mcp._mcp_server.request_context
+                
+                if request_context and hasattr(request_context, 'init_options'):
+                    options = request_context.init_options or {}
+                    if 'judge_model' in options:
+                        judge_model = options['judge_model']
+                        logger.info(f"Using judge_model from client options: {judge_model}")
+        except (AttributeError, LookupError) as e:
+            # This can happen during tests or when no request context is available
+            logger.debug(f"Could not access request context: {e}")
+        
+        # Use model parameter if provided, otherwise use judge_model from options,
+        # or fall back to default model
+        eval_model = model or judge_model or "meta-llama-3.1-8b-instruct"
+        logger.info(f"Evaluating with model: {eval_model}")
+                
         # Call the async function and await its result
         result = await run_evalset(
             evalset_id=evalset_id,
             conversation=conversation,
-            model=model,
+            model=eval_model,
             max_parallel=max_parallel
         )
         
@@ -290,21 +454,57 @@ async def run_evalset_tool(
         error_msg = str(e)
         error_response = {"error": error_msg}
         
-        # Enhance error messages for common problems
+        # Enhanced error messages with detailed troubleshooting information
         if "evalset_id" in error_msg and "not found" in error_msg:
-            error_response["details"] = "The evalset_id you provided doesn't exist. Use manage_evalset_tool(action=\"list\") to see available EvalSets."
+            error_response["details"] = "The evalset_id you provided doesn't exist in the system."
+            error_response["troubleshooting"] = [
+                "First, use manage_evalset_tool(action=\"list\") to see all available EvalSets",
+                "Check that you've copied the EvalSet ID correctly, including all hyphens",
+                "If you need to create a new EvalSet, use manage_evalset_tool(action=\"create\", ...)",
+                "EvalSet IDs are case-sensitive UUIDs in the format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            ]
         elif "conversation" in error_msg:
             example_conversation = [
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": "Hello, how are you?"},
                 {"role": "assistant", "content": "I'm doing well! How can I help you today?"}
             ]
-            error_response["details"] = "The conversation parameter must be a list of message objects, each with 'role' and 'content' fields."
+            error_response["details"] = "The conversation parameter has an invalid format."
+            error_response["troubleshooting"] = [
+                "Ensure conversation is a list of dictionaries (not a string or other type)",
+                "Each message must have both 'role' and 'content' fields",
+                "Valid roles are: 'system', 'user', 'assistant'",
+                "The conversation should include at least one 'user' and one 'assistant' message",
+                "Check for typos in field names (e.g., 'role' not 'roles')",
+                "Make sure content fields are strings"
+            ]
             error_response["example"] = example_conversation
         elif "max_parallel" in error_msg:
-            error_response["details"] = "The max_parallel parameter must be a positive integer that controls how many evaluations to run in parallel."
+            error_response["details"] = "The max_parallel parameter has an invalid value."
+            error_response["troubleshooting"] = [
+                "max_parallel must be a positive integer",
+                "Recommended values are between 1 and 5",
+                "Too high values may cause memory or rate-limit issues",
+                "Try max_parallel=1 if you're experiencing stability problems"
+            ]
         elif "model" in error_msg:
-            error_response["details"] = "The model parameter must be a valid model identifier. Make sure your LLM server supports this model."
+            error_response["details"] = "The specified model is invalid or unavailable."
+            error_response["troubleshooting"] = [
+                "Check that the model name is spelled correctly",
+                "Ensure your LLM server or provider supports this model",
+                "Verify that the model can understand and follow instructions",
+                "The default model 'meta-llama-3.1-8b-instruct' should work with LM Studio",
+                "For cloud APIs, make sure your API key has access to the requested model"
+            ]
+        else:
+            # Generic troubleshooting for other errors
+            error_response["troubleshooting"] = [
+                "Check that your LLM server is running and accessible",
+                "Verify that the EvalSet exists and has valid questions",
+                "Try with a simpler conversation to diagnose the issue",
+                "Check for proper JSON formatting in your template",
+                "Try setting AGENTOPTIM_DEBUG=1 for more verbose logs"
+            ]
         
         return error_response
 
