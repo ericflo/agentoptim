@@ -71,7 +71,7 @@ async def call_llm_api(
     prompt: Optional[str] = None,
     model: str = "meta-llama-3.1-8b-instruct",
     temperature: float = 0.0,
-    max_tokens: int = 50,
+    max_tokens: int = 1024,  # Increased to 1024 to ensure complete responses
     logit_bias: Optional[Dict[int, float]] = None,
     messages: Optional[List[Dict[str, str]]] = None
 ) -> Dict[str, Any]:
@@ -82,7 +82,7 @@ async def call_llm_api(
         prompt: The prompt to send to the model (legacy parameter)
         model: LLM model to use
         temperature: Sampling temperature
-        max_tokens: Maximum tokens to generate
+        max_tokens: Maximum tokens to generate (default: 1024 to ensure complete responses)
         logit_bias: Optional logit bias to apply
         messages: List of message objects with role and content (preferred over prompt)
     
