@@ -121,10 +121,6 @@ async def call_llm_api(
                     "schema": {
                         "type": "object",
                         "properties": {
-                            "reasoning": {
-                                "type": "string",
-                                "description": "Provide a clear, detailed explanation justifying your judgment. Include relevant evidence from the conversation and specific reasoning that led to your conclusion. This field should help others understand exactly why you determined the response was helpful or not helpful."
-                            },
                             "judgment": {
                                 "type": "boolean", 
                                 "description": "Your yes/no judgment as a boolean value: true if the answer to the evaluation question is 'yes', false if the answer is 'no'. Must be a proper JSON boolean literal (true or false, not True/False)."
@@ -134,9 +130,13 @@ async def call_llm_api(
                                 "minimum": 0,
                                 "maximum": 1,
                                 "description": "A number between 0.0 and 1.0 indicating how confident you are in your judgment. Use 0.9-1.0 for very high confidence, 0.7-0.8 for moderate confidence, 0.5-0.6 for medium confidence, and below 0.5 for low confidence. Be well-calibrated - don't simply use 1.0 for everything."
-                            }
+                            },
+                            **({"reasoning": {
+                                "type": "string",
+                                "description": "Provide a clear, detailed explanation justifying your judgment. Include relevant evidence from the conversation and specific reasoning that led to your conclusion. This field should help others understand exactly why you determined the response was helpful or not helpful."
+                            }} if not omit_reasoning else {})
                         },
-                        "required": ["reasoning", "judgment", "confidence"],
+                        "required": ["judgment", "confidence"] + (["reasoning"] if not omit_reasoning else []),
                         "additionalProperties": False
                     }
                 }
@@ -337,7 +337,8 @@ async def evaluate_question(
     conversation: List[Dict[str, str]],
     question: str,
     template: str,
-    model: str = "meta-llama-3.1-8b-instruct"
+    model: str = "meta-llama-3.1-8b-instruct",
+    omit_reasoning: bool = False
 ) -> EvalResult:
     """
     Evaluate a single question against a conversation.
@@ -347,6 +348,7 @@ async def evaluate_question(
         question: The evaluation question
         template: The evaluation template
         model: LLM model to use
+        omit_reasoning: If True, don't generate or include reasoning in results
     
     Returns:
         Evaluation result for the question
@@ -385,7 +387,46 @@ async def evaluate_question(
             # We can keep the JSON instructions in the prompt
             # Add a clear note about the expected format with confidence estimation
             # Based on the verbalized-uq research, this format is shown to be more effective
-            rendered_prompt += """
+            if omit_reasoning:
+                rendered_prompt += """
+
+IMPORTANT INSTRUCTIONS FOR EVALUATION:
+
+CAREFULLY ANALYZE THE EXACT CONVERSATION PROVIDED ABOVE between ### BEGIN CONVERSATION ### and ### END CONVERSATION ### markers. Respond ONLY in the valid JSON format specified below.
+
+Your evaluation must be based ONLY on this specific conversation. Do not reference any other conversations, scenarios, or prior knowledge. Only evaluate what is explicitly present in this conversation.
+
+Your JSON response MUST include these TWO fields:
+
+1. "judgment": (REQUIRED)
+   • Must be a boolean value: true for Yes, false for No
+   • Must use JSON boolean literals (true/false)
+   • Do NOT use Python booleans (True/False)
+   • Do NOT use strings (like "true"/"false")
+   • This field must be JSON parseable
+
+2. "confidence": (REQUIRED)
+   • A number between 0.0 and 1.0
+   • Indicates how certain you are in your judgment
+   • Be well-calibrated - don't just use 1.0 for everything
+   • Use this scale:
+     - 0.95-1.0: Virtually certain (overwhelming evidence)
+     - 0.85-0.94: Very confident (strong evidence)
+     - 0.70-0.84: Moderately confident (good evidence)
+     - 0.50-0.69: Somewhat confident (mixed evidence)
+     - Below 0.5: Limited confidence (weak evidence)
+
+EXAMPLE OF CORRECT FORMAT:
+```json
+{
+  "judgment": true,
+  "confidence": 0.92
+}
+```
+
+CRITICAL: Your response MUST be valid JSON that can be parsed. Incorrect formats will cause errors."""
+            else:
+                rendered_prompt += """
 
 IMPORTANT INSTRUCTIONS FOR EVALUATION:
 
@@ -434,7 +475,9 @@ CRITICAL: Your response MUST be valid JSON that can be parsed. Incorrect formats
             if len(rendered_prompt) > 2000:
                 # Shorten if necessary
                 logger.info("Prompt is very long, shortening for LM Studio compatibility")
-                rendered_prompt = f"""Please evaluate the following question about the SPECIFIC conversation provided below:
+                
+                # Base prompt structure that's common for both with/without reasoning
+                shortened_base = f"""Please evaluate the following question about the SPECIFIC conversation provided below:
 
 ### BEGIN CONVERSATION ###
 {formatted_conversation}
@@ -444,7 +487,25 @@ QUESTION: {question}
 
 IMPORTANT: Analyze ONLY the conversation provided between the ### BEGIN CONVERSATION ### and ### END CONVERSATION ### markers. Do not reference any other conversations or prior knowledge.
 
-You MUST provide your evaluation in JSON format with these THREE REQUIRED fields:
+You MUST provide your evaluation in JSON format with """
+                
+                if omit_reasoning:
+                    rendered_prompt = shortened_base + """these TWO REQUIRED fields:
+
+1. "judgment": true for Yes, false for No (must be JSON boolean: true/false)
+2. "confidence": Number from 0.0 to 1.0 showing your confidence level
+
+Example of CORRECT format:
+```json
+{{
+  "judgment": true,
+  "confidence": 0.88
+}}
+```
+
+CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or strings) for the judgment field to avoid errors."""
+                else:
+                    rendered_prompt = shortened_base + """these THREE REQUIRED fields:
 
 1. "reasoning": A detailed explanation of your reasoning (3-5 sentences), quoting specific parts of the conversation
 2. "judgment": true for Yes, false for No (must be JSON boolean: true/false)
@@ -467,20 +528,38 @@ CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or st
             system_content += "You analyze ONLY the specific conversation provided to you in each request, not referring to any other conversations or knowledge.\n\n"
             system_content += "You MUST ONLY evaluate the exact conversation provided between the ### BEGIN CONVERSATION ### and ### END CONVERSATION ### markers. "
             system_content += "Do not reference details from outside this specific conversation or make assumptions based on other knowledge.\n\n"
-            system_content += "Your responses MUST include all THREE of these required fields:\n\n"
-            system_content += "1) 'reasoning': A thorough explanation (3-5 sentences) that clearly justifies your judgment with specific evidence from the provided conversation. "
-            system_content += "Quote relevant parts of the conversation to support your judgment. Explain your thought process and the criteria you used.\n\n"
-            system_content += "2) 'judgment': A boolean true/false value (using proper JSON literals: true or false, NOT True/False or strings). "
-            system_content += "Use true for 'yes' answers and false for 'no' answers to the evaluation question.\n\n"
-            system_content += "3) 'confidence': A well-calibrated number between 0.0 and 1.0 indicating your confidence level. "
-            system_content += "Use 0.9+ for near certainty, 0.7-0.8 for strong confidence, 0.5-0.6 for moderate confidence, and below 0.5 for low confidence. Avoid overconfidence.\n\n"
+            
+            # Adjust the required fields based on omit_reasoning
+            if omit_reasoning:
+                system_content += "Your responses MUST include both of these required fields:\n\n"
+                system_content += "1) 'judgment': A boolean true/false value (using proper JSON literals: true or false, NOT True/False or strings). "
+                system_content += "Use true for 'yes' answers and false for 'no' answers to the evaluation question.\n\n"
+                system_content += "2) 'confidence': A well-calibrated number between 0.0 and 1.0 indicating your confidence level. "
+                system_content += "Use 0.9+ for near certainty, 0.7-0.8 for strong confidence, 0.5-0.6 for moderate confidence, and below 0.5 for low confidence. Avoid overconfidence.\n\n"
+            else:
+                system_content += "Your responses MUST include all THREE of these required fields:\n\n"
+                system_content += "1) 'reasoning': A thorough explanation (3-5 sentences) that clearly justifies your judgment with specific evidence from the provided conversation. "
+                system_content += "Quote relevant parts of the conversation to support your judgment. Explain your thought process and the criteria you used.\n\n"
+                system_content += "2) 'judgment': A boolean true/false value (using proper JSON literals: true or false, NOT True/False or strings). "
+                system_content += "Use true for 'yes' answers and false for 'no' answers to the evaluation question.\n\n"
+                system_content += "3) 'confidence': A well-calibrated number between 0.0 and 1.0 indicating your confidence level. "
+                system_content += "Use 0.9+ for near certainty, 0.7-0.8 for strong confidence, 0.5-0.6 for moderate confidence, and below 0.5 for low confidence. Avoid overconfidence.\n\n"
+            
             system_content += "CRITICAL: Always use valid JSON syntax with proper JSON boolean literals (true/false). "
             system_content += "Do not use Python style True/False or quoted strings like 'true'/'false'. The response MUST be parseable as JSON. "
-            system_content += "NEVER return a response that is missing any of the three required fields.\n\n"
-            system_content += "FORMAT EXAMPLE:\n```json\n"
-            system_content += '{\n  "reasoning": "The response clearly addresses the user\'s concern by providing step-by-step instructions to solve their problem. The assistant says to resolve the issue by taking specific steps. This demonstrates clear guidance. The tone is professional yet friendly, and the information is accurate and concise.",\n'
-            system_content += '  "judgment": true,\n'
-            system_content += '  "confidence": 0.85\n}\n```'
+            
+            if omit_reasoning:
+                system_content += "NEVER return a response that is missing any of the two required fields.\n\n"
+                system_content += "FORMAT EXAMPLE:\n```json\n"
+                system_content += '{\n'
+                system_content += '  "judgment": true,\n'
+                system_content += '  "confidence": 0.85\n}\n```'
+            else:
+                system_content += "NEVER return a response that is missing any of the three required fields.\n\n"
+                system_content += "FORMAT EXAMPLE:\n```json\n"
+                system_content += '{\n  "reasoning": "The response clearly addresses the user\'s concern by providing step-by-step instructions to solve their problem. The assistant says to resolve the issue by taking specific steps. This demonstrates clear guidance. The tone is professional yet friendly, and the information is accurate and concise.",\n'
+                system_content += '  "judgment": true,\n'
+                system_content += '  "confidence": 0.85\n}\n```'
             
             messages = [
                 {"role": "system", "content": system_content},
@@ -598,11 +677,14 @@ CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or st
                             logger.warning("Confidence value missing from model response. Using default value of 0.7")
                             confidence = 0.7
                         
-                        # Get reasoning if available
-                        if "reasoning" in judgment_obj and isinstance(judgment_obj["reasoning"], str):
+                        # Get reasoning if available and not omitted
+                        if omit_reasoning:
+                            # If reasoning is intentionally omitted, set to None
+                            reasoning = None
+                        elif "reasoning" in judgment_obj and isinstance(judgment_obj["reasoning"], str):
                             reasoning = judgment_obj["reasoning"]
                         else:
-                            # If reasoning is missing, provide a default explanation
+                            # If reasoning is missing but not intentionally omitted, provide a default explanation
                             logger.warning("Reasoning missing from model response. Using default reasoning")
                             reasoning = "No reasoning provided by evaluation model"
                         
@@ -732,7 +814,8 @@ async def run_evalset(
     evalset_id: str,
     conversation: List[Dict[str, str]],
     model: str = "meta-llama-3.1-8b-instruct",
-    max_parallel: int = 3
+    max_parallel: int = 3,
+    omit_reasoning: bool = False
 ) -> Dict[str, Any]:
     """
     Run an EvalSet evaluation on a conversation.
@@ -742,6 +825,7 @@ async def run_evalset(
         conversation: List of conversation messages
         model: LLM model to use for evaluations
         max_parallel: Maximum number of parallel evaluations
+        omit_reasoning: If True, don't generate or include reasoning in results
     
     Returns:
         Dictionary with evaluation results
@@ -775,7 +859,8 @@ async def run_evalset(
                     conversation=conversation,
                     question=question,
                     template=evalset.template,
-                    model=model
+                    model=model,
+                    omit_reasoning=omit_reasoning
                 )
         
         # Run all questions in parallel with rate limiting
@@ -877,19 +962,28 @@ async def run_evalset(
                 # Format the result with confidence and optional reasoning
                 formatted_results.append(f"   **A**: {judgment_text} {confidence_display}")
                 
-                # Include reasoning if available
-                if result.reasoning:
+                # Include reasoning if available and not omitted
+                if result.reasoning and not omit_reasoning:
                     # Limit reasoning to 200 chars and add ellipsis if needed
                     reasoning_text = result.reasoning[:200] + ("..." if len(result.reasoning) > 200 else "")
                     formatted_results.append(f"   **Reasoning**: {reasoning_text}")
         
+        # Prepare results for response, removing reasoning field if omitted
+        results_for_response = []
+        for result in eval_results:
+            result_dict = result.model_dump()
+            # Remove reasoning field if omit_reasoning is true
+            if omit_reasoning and 'reasoning' in result_dict:
+                result_dict.pop('reasoning')
+            results_for_response.append(result_dict)
+            
         return {
             "status": "success",
             "id": str(uuid.uuid4()),
             "evalset_id": evalset_id,
             "evalset_name": evalset.name,
             "model": model,
-            "results": [r.model_dump() for r in eval_results],
+            "results": results_for_response,
             "summary": summary,
             "formatted_message": "\n".join(formatted_results)
         }

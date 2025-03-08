@@ -349,6 +349,25 @@ async def run_evalset_tool(
                 Higher values can improve speed but increase resource requirements.
                 Recommended range: 1-5 (depending on your hardware)
                 Example: 5 for faster evaluation on powerful systems
+                
+    The following tool options are available in client configuration:
+      - judge_model: The LLM to use as the evaluation judge
+      - omit_reasoning: If set to "True", don't generate detailed reasoning in results
+        Example client configuration with omit_reasoning:
+        ```json
+        {
+          "mcpServers": {
+            "optim": {
+              "command": "...",
+              "args": ["..."],
+              "options": {
+                "judge_model": "gpt-4o-mini",
+                "omit_reasoning": "True"
+              }
+            }
+          }
+        }
+        ```
     
     ## Return Value
     
@@ -425,8 +444,9 @@ async def run_evalset_tool(
     """
     logger.info(f"run_evalset_tool called with evalset_id={evalset_id}")
     try:
-        # Check for judge_model in options (passed from client config)
+        # Check for judge_model and omit_reasoning in options (passed from client config)
         judge_model = None
+        omit_reasoning = False
         try:
             if hasattr(mcp, '_mcp_server'):
                 request_context = mcp._mcp_server.request_context
@@ -436,6 +456,12 @@ async def run_evalset_tool(
                     if 'judge_model' in options:
                         judge_model = options['judge_model']
                         logger.info(f"Using judge_model from client options: {judge_model}")
+                    
+                    # Check for omit_reasoning flag
+                    if 'omit_reasoning' in options:
+                        omit_reasoning_str = str(options['omit_reasoning']).lower()
+                        omit_reasoning = omit_reasoning_str in ('true', '1', 'yes')
+                        logger.info(f"omit_reasoning option set to: {omit_reasoning}")
         except (AttributeError, LookupError) as e:
             # This can happen during tests or when no request context is available
             logger.debug(f"Could not access request context: {e}")
@@ -450,7 +476,8 @@ async def run_evalset_tool(
             evalset_id=evalset_id,
             conversation=conversation,
             model=eval_model,
-            max_parallel=max_parallel
+            max_parallel=max_parallel,
+            omit_reasoning=omit_reasoning
         )
         
         # If result is a dictionary with a formatted_message, use that

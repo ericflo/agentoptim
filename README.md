@@ -231,7 +231,7 @@ Configure Claude Code to use the AgentOptim MCP server with different LLM provid
 }
 ```
 
-### Understanding Model Selection
+### Understanding Model Selection and Options
 
 AgentOptim selects the model to use for evaluations according to this priority:
 
@@ -240,6 +240,32 @@ AgentOptim selects the model to use for evaluations according to this priority:
 3. If neither is specified, the default model `meta-llama-3.1-8b-instruct` is used
 
 This allows Claude to send the client name (like "optim") as the model parameter, which will be ignored in favor of the configured judge_model.
+
+#### Additional Configuration Options
+
+The following additional options can be set in the client configuration:
+
+- **omit_reasoning**: When set to "True", the evaluation will not generate or include detailed reasoning in results. This can significantly improve evaluation speed and reduce token usage.
+
+Example configuration with omit_reasoning:
+
+```json
+{
+  "mcpServers": {
+    "optim": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "OPENAI_API_KEY=your_api_key_here agentoptim"
+      ],
+      "options": {
+        "judge_model": "gpt-4o-mini",
+        "omit_reasoning": "True"
+      }
+    }
+  }
+}
+```
 
 ## Additional Resources
 

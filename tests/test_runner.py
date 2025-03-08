@@ -6,6 +6,7 @@ import unittest
 from unittest import mock
 import json
 import pytest
+from types import SimpleNamespace
 
 from agentoptim.evalset import EvalSet
 from agentoptim.runner import (
@@ -154,7 +155,7 @@ class TestRunner(unittest.TestCase):
         # Mock call_llm_api to return success response
         mock_call_llm_api.return_value = self.mock_api_success_response
         
-        # Evaluate a question
+        # Test with reasoning (default)
         result = await evaluate_question(
             conversation=self.test_conversation,
             question="Is the response helpful?",
@@ -162,12 +163,29 @@ class TestRunner(unittest.TestCase):
             model="test-model"
         )
         
-        # Check result structure
+        # Check result structure with reasoning
         self.assertIsInstance(result, EvalResult)
         self.assertEqual(result.question, "Is the response helpful?")
         self.assertEqual(result.judgment, True)  # Should be True from our mock
         self.assertIsNotNone(result.confidence)
+        self.assertIsNotNone(result.reasoning)  # Reasoning should be present
         self.assertIsNone(result.error)
+        
+        # Test with omit_reasoning=True
+        result_no_reasoning = await evaluate_question(
+            conversation=self.test_conversation,
+            question="Is the response helpful?",
+            template=self.test_evalset.template,
+            model="test-model",
+            omit_reasoning=True
+        )
+        
+        # Check result structure without reasoning
+        self.assertIsInstance(result_no_reasoning, EvalResult)
+        self.assertEqual(result_no_reasoning.question, "Is the response helpful?")
+        self.assertEqual(result_no_reasoning.judgment, True)
+        self.assertIsNotNone(result_no_reasoning.confidence)
+        self.assertIsNone(result_no_reasoning.error)
     
     @mock.patch('agentoptim.runner.call_llm_api')
     async def test_evaluate_question_api_error(self, mock_call_llm_api):
@@ -288,6 +306,100 @@ TestRunner.test_evaluate_question_missing_fields = async_test(TestRunner.test_ev
 
 # Add a standalone pytest test for evaluation with missing fields
 @pytest.mark.asyncio
+async def test_run_evalset_omit_reasoning():
+    """Test running an EvalSet with omit_reasoning."""
+    import agentoptim.runner
+    from agentoptim.runner import get_evalset
+    
+    # Create a mock EvalSet get function to avoid file I/O
+    original_get_evalset = agentoptim.runner.get_evalset
+    
+    def mock_get_evalset(evalset_id):
+        return SimpleNamespace(
+            id="test-evalset-id",
+            name="Test EvalSet",
+            template="Given this conversation: {{ conversation }} Answer: {{ eval_question }}",
+            questions=[
+                "Is the response helpful?",
+                "Is the response accurate?"
+            ]
+        )
+    
+    # Create a mock evaluate_question function
+    original_evaluate_question = agentoptim.runner.evaluate_question
+    
+    async def mock_evaluate_question(conversation, question, template, model, omit_reasoning=False):
+        # Return different results based on omit_reasoning
+        if omit_reasoning:
+            # No reasoning when omitted
+            return EvalResult(
+                question=question,
+                judgment=True,
+                confidence=0.9,
+                reasoning=None
+            )
+        else:
+            # Include reasoning by default
+            return EvalResult(
+                question=question,
+                judgment=True,
+                confidence=0.9,
+                reasoning="This is a good response because it answers the question directly."
+            )
+    
+    # Apply the patches
+    agentoptim.runner.get_evalset = mock_get_evalset
+    agentoptim.runner.evaluate_question = mock_evaluate_question
+    
+    try:
+        # Define a test conversation
+        conversation = [
+            {"role": "user", "content": "How do I reset my password?"},
+            {"role": "assistant", "content": "Go to the login page and click 'Forgot Password'."}
+        ]
+        
+        # Test with omit_reasoning=False (default)
+        result_with_reasoning = await run_evalset(
+            evalset_id="test-evalset-id",
+            conversation=conversation,
+            model="test-model",
+            max_parallel=1,
+            omit_reasoning=False
+        )
+        
+        # Test with omit_reasoning=True
+        result_without_reasoning = await run_evalset(
+            evalset_id="test-evalset-id",
+            conversation=conversation,
+            model="test-model",
+            max_parallel=1,
+            omit_reasoning=True
+        )
+        
+        # Verify results with reasoning
+        assert result_with_reasoning["status"] == "success"
+        assert len(result_with_reasoning["results"]) == 2
+        assert "reasoning" in result_with_reasoning["results"][0]
+        assert result_with_reasoning["results"][0]["reasoning"] is not None
+        
+        # Verify formatted message includes reasoning
+        assert "Reasoning" in result_with_reasoning["formatted_message"]
+        
+        # Verify results without reasoning
+        assert result_without_reasoning["status"] == "success"
+        assert len(result_without_reasoning["results"]) == 2
+        assert "reasoning" not in result_without_reasoning["results"][0]
+        
+        # Verify formatted message doesn't include reasoning
+        assert "Reasoning" not in result_without_reasoning["formatted_message"]
+    
+    finally:
+        # Restore original functions
+        agentoptim.runner.get_evalset = original_get_evalset
+        agentoptim.runner.evaluate_question = original_evaluate_question
+
+
+@pytest.mark.asyncio
 async def test_evaluate_question_missing_fields_standalone():
     """Test handling of responses with missing confidence and reasoning fields."""
     # Create a test conversation
@@ -324,7 +436,7 @@ async def test_evaluate_question_missing_fields_standalone():
     with mock.patch('agentoptim.runner.call_llm_api') as mock_call_llm_api:
         mock_call_llm_api.return_value = mock_response
         
-        # Evaluate a question
+        # Test with reasoning enabled (default)
         result = await evaluate_question(
             conversation=conversation,
             question="Is the response helpful?",
@@ -338,7 +450,23 @@ async def test_evaluate_question_missing_fields_standalone():
         assert result.judgment is True
         assert result.confidence == 0.7  # Default confidence
         assert result.reasoning == "No reasoning provided by evaluation model"  # Default reasoning
-        assert result.error is None
+        
+        # Test with omit_reasoning=True
+        result_no_reasoning = await evaluate_question(
+            conversation=conversation,
+            question="Is the response helpful?",
+            template=template,
+            model="test-model",
+            omit_reasoning=True
+        )
+        
+        # Check result structure - reasoning should be None
+        assert isinstance(result_no_reasoning, EvalResult)
+        assert result_no_reasoning.question == "Is the response helpful?"
+        assert result_no_reasoning.judgment is True
+        assert result_no_reasoning.confidence == 0.7  # Default confidence
+        assert result_no_reasoning.reasoning is None  # Reasoning should be None
+        assert result_no_reasoning.error is None
 
 
 if __name__ == "__main__":
