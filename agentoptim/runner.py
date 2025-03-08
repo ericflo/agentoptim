@@ -122,6 +122,9 @@ async def call_llm_api(
                     "schema": {
                         "type": "object",
                         "properties": {
+                            "reasoning": {
+                                "type": "string"
+                            },
                             "judgment": {
                                 "type": "boolean"
                             },
@@ -129,12 +132,10 @@ async def call_llm_api(
                                 "type": "number",
                                 "minimum": 0,
                                 "maximum": 1
-                            },
-                            "reasoning": {
-                                "type": "string"
                             }
                         },
-                        "required": ["judgment", "confidence"]
+                        "required": ["reasoning", "judgment", "confidence"],
+                        "additionalProperties": false
                     }
                 }
             }
@@ -311,16 +312,20 @@ async def evaluate_question(
             # Based on the verbalized-uq research, this format is shown to be more effective
             rendered_prompt += """
 
-IMPORTANT: Provide your judgment and the probability that it is correct (0.0 to 1.0) for this question.
-Give ONLY the judgment and probability in JSON format. Take your uncertainty in the prompt, the task difficulty, 
-your knowledge availability, and other sources of uncertainty into account.
+IMPORTANT: Provide your reasoning, judgment, and confidence for this question.
+Respond ONLY in the required JSON format below.
+
+Your response must include:
+1. "reasoning": A brief explanation of your reasoning
+2. "judgment": true for Yes, false for No
+3. "confidence": Probability (0.0 to 1.0) that your judgment is correct
 
 For example:
 ```
 {
-  "judgment": true,  // true for Yes, false for No
-  "confidence": 0.85,  // probability between 0.0 and 1.0 that your judgment is correct
-  "reasoning": "Optional brief explanation of your reasoning"
+  "reasoning": "Based on the conversation, I can see that the assistant directly answered the question with accurate information.",
+  "judgment": true,
+  "confidence": 0.85
 }
 ```
 
@@ -342,20 +347,21 @@ Your confidence should reflect how certain you are about your judgment based on 
 
 Question: {question}
 
-Provide your judgment (Yes/No) and the probability that it is correct (0.0 to 1.0).
-Give ONLY the judgment and probability in JSON format, with no other words or explanation.
+Provide your reasoning, judgment (Yes/No), and confidence (0.0 to 1.0) in JSON format.
+ALL THREE FIELDS ARE REQUIRED.
 
-Example for a confident Yes:
-{{"judgment": true, "confidence": 0.85}}
+Example response:
+{{
+  "reasoning": "Based on the evidence in the conversation, this appears to be correct",
+  "judgment": true,
+  "confidence": 0.85
+}}
 
-Example for an uncertain No:
-{{"judgment": false, "confidence": 0.6}}
-
-Consider carefully and provide your best calibrated estimate of confidence."""
+Consider carefully and explain your reasoning before providing your judgment."""
                 
             # Add system prompt for better control - our testing shows system prompts work well
             messages = [
-                {"role": "system", "content": "You are an evaluation assistant that provides objective judgments in JSON format. Include: 1) a boolean 'judgment' field (true/false), 2) a 'confidence' field (0.0-1.0) indicating the probability your judgment is correct, and 3) optional 'reasoning'. Provide well-calibrated confidence scores based on uncertainty, task difficulty, and available information."},
+                {"role": "system", "content": "You are an evaluation assistant that provides objective judgments in JSON format. Your responses MUST include THREE required fields in this order: 1) a 'reasoning' field explaining your thought process, 2) a boolean 'judgment' field (true/false), and 3) a 'confidence' field (0.0-1.0) indicating the probability your judgment is correct. Provide well-calibrated confidence scores based on uncertainty, task difficulty, and available information."},
                 {"role": "user", "content": rendered_prompt}
             ]
         else:
