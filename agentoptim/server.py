@@ -13,6 +13,14 @@ from mcp.server.fastmcp import FastMCP
 from agentoptim.evalset import manage_evalset
 from agentoptim.runner import run_evalset
 
+# Import compatibility layer
+from agentoptim.compat import (
+    convert_evaluation_to_evalset,
+    evaluation_to_evalset_id,
+    dataset_to_conversations,
+    experiment_results_to_evalset_results
+)
+
 # Legacy tools (will be deprecated)
 from agentoptim.evaluation import manage_evaluation
 from agentoptim.dataset import manage_dataset
@@ -103,6 +111,34 @@ async def manage_evaluation_tool(
     """
     logger.info(f"manage_evaluation_tool called with action={action}")
     try:
+        # Handle the create action using the new EvalSet architecture
+        if action == "create" and name and template and questions:
+            logger.info(f"Converting evaluation creation to EvalSet: {name}")
+            
+            # If description is not set, add a note that this was converted
+            eval_description = description or f"Converted evaluation created through manage_evaluation_tool"
+            
+            # Call the compatibility layer to create an EvalSet
+            try:
+                evalset_result = await convert_evaluation_to_evalset(
+                    name=name,
+                    template=template,
+                    questions=questions,
+                    description=eval_description
+                )
+                
+                if "error" in evalset_result:
+                    # If EvalSet creation failed, fall back to the old method
+                    logger.warning(f"EvalSet creation failed, falling back to legacy implementation: {evalset_result.get('message')}")
+                else:
+                    # Return the EvalSet creation result formatted for the old API
+                    evalset_id = evalset_result.get("evalset", {}).get("id")
+                    return f"Evaluation '{name}' created with ID: {evalset_id} (using EvalSet architecture)"
+            except Exception as compat_e:
+                logger.error(f"Error in EvalSet conversion: {str(compat_e)}", exc_info=True)
+                # Fall back to old implementation if compatibility layer fails
+        
+        # Use the original implementation for other actions or if conversion failed
         result = manage_evaluation(
             action=action,
             evaluation_id=evaluation_id,
@@ -552,6 +588,9 @@ async def run_job_tool(
     poll_interval: Optional[int] = 5,
     timeout_minutes: Optional[int] = 10,
     stdio_friendly: Optional[bool] = True,
+    # New parameters for compatibility with EvalSet architecture
+    conversation: Optional[List[Dict[str, str]]] = None,
+    evalset_id: Optional[str] = None,
 ) -> str:
     """
     Execute and manage jobs that run prompt optimization experiments.
@@ -757,6 +796,43 @@ async def run_job_tool(
     """
     logger.info(f"run_job_tool called with action={action}")
     try:
+        # Check if we're using the new EvalSet architecture
+        if action == "create" and evalset_id and conversation:
+            logger.info(f"Using EvalSet architecture for job: {evalset_id}")
+            
+            # Use the run_evalset function directly
+            try:
+                # Set default model if not provided
+                model = judge_model or "meta-llama-3.1-8b-instruct"
+                mp = max_parallel or 3
+                
+                # Run the evaluation using the EvalSet architecture
+                result = await run_evalset(
+                    evalset_id=evalset_id,
+                    conversation=conversation,
+                    model=model,
+                    max_parallel=mp
+                )
+                
+                return result.get("formatted_message", json.dumps(result, indent=2))
+            except Exception as eval_e:
+                logger.error(f"Error running EvalSet: {str(eval_e)}", exc_info=True)
+                return f"Error running EvalSet: {str(eval_e)}"
+        
+        # Convert evaluation_id to evalset_id if appropriate
+        if action == "create" and evaluation_id and not evalset_id:
+            try:
+                # Try to find a corresponding EvalSet
+                compatible_evalset_id = await evaluation_to_evalset_id(evaluation_id)
+                if compatible_evalset_id:
+                    logger.info(f"Found compatible EvalSet {compatible_evalset_id} for evaluation {evaluation_id}")
+                    evalset_id = compatible_evalset_id
+                    
+                    # If we also have dataset_id and items, we could convert to conversations
+                    # This would be implemented in a more complete version
+            except Exception as conv_e:
+                logger.warning(f"Error converting evaluation to EvalSet: {str(conv_e)}")
+        
         # If creating a job, handle the auto-start behavior
         if action == "create":
             # Create the job

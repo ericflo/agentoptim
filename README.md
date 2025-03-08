@@ -67,22 +67,22 @@ We're simplifying the system down to just two tool calls:
 | Implement run_evalset tool | ✅ Complete | Added to server.py with async implementation |
 | Add unit tests | ✅ Complete | Added test_evalset.py and test_runner.py |
 | Update server.py | ✅ Complete | New tools registered alongside legacy tools |
-| Create compatibility layer | 🟡 Planned | |
-| Update existing tests | 🟡 Planned | |
-| Migrate example code | 🟡 Planned | |
-| Add migration guide | 🟡 Planned | |
-| Comprehensive testing | 🟡 Planned | |
+| Create compatibility layer | ✅ Complete | Implemented in compat.py with template conversion |
+| Update existing tests | ✅ Complete | Added tests for compatibility layer |
+| Migrate example code | ✅ Complete | Created examples/usage_example.py |
+| Add migration guide | ✅ Complete | Added docs/MIGRATION_GUIDE.md |
+| Comprehensive testing | 🟡 In Progress | Basic tests pass, need more real-world testing |
 | Performance benchmarking | 🟡 Planned | |
-| Update documentation | 🟡 Planned | |
+| Update documentation | 🟡 In Progress | Migration guide added, tool docs updated |
 | Release and deploy | 🟡 Planned | |
 
-### Example Usage (Planned)
+### Example Usage
 
 ```python
-# Create an EvalSet
-evalset = manage_evalset(
+# Create an EvalSet with evaluation criteria
+evalset_result = await manage_evalset_tool(
     action="create",
-    name="Response Quality Evaluation",
+    name="Helpfulness Evaluation",
     template="""
     Given this conversation:
     {{ conversation }}
@@ -94,24 +94,39 @@ evalset = manage_evalset(
     {"judgment": 1} for yes or {"judgment": 0} for no.
     """,
     questions=[
+        "Is the response helpful for the user's needs?",
         "Does the response directly address the user's question?",
-        "Is the response polite and professional?",
-        "Does the response provide a complete solution?",
-        "Is the response clear and easy to understand?"
+        "Is the response clear and easy to understand?",
+        "Is the response accurate?",
+        "Does the response provide complete information?"
     ],
-    description="Evaluation criteria for response quality"
+    description="Evaluation criteria for helpfulness of responses"
 )
 
-# Use the EvalSet to evaluate a conversation
-results = run_evalset(
-    evalset_id=evalset["id"],
-    conversation=[
-        {"role": "system", "content": "You are a helpful AI assistant."},
-        {"role": "user", "content": "How do I reset my password?"},
-        {"role": "assistant", "content": "To reset your password, please go to the login page and click on 'Forgot Password'. You'll receive an email with instructions to create a new password."}
-    ]
+# Extract the EvalSet ID
+evalset_id = evalset_result.get("evalset", {}).get("id")
+
+# Define a conversation to evaluate
+conversation = [
+    {"role": "system", "content": "You are a helpful AI assistant."},
+    {"role": "user", "content": "How do I reset my password?"},
+    {"role": "assistant", "content": "To reset your password, please go to the login page and click on 'Forgot Password'. You'll receive an email with instructions to create a new password."}
+]
+
+# Run the evaluation on the conversation
+eval_results = await run_evalset_tool(
+    evalset_id=evalset_id,
+    conversation=conversation,
+    model="meta-llama-3.1-8b-instruct"
 )
+
+# The results include both judgments and a summary
+print(f"Yes percentage: {eval_results.get('summary', {}).get('yes_percentage')}%")
 ```
+
+For a complete working example, see [examples/usage_example.py](examples/usage_example.py).
+
+For help migrating from the old API, see the [Migration Guide](docs/MIGRATION_GUIDE.md).
 
 ## Old Implementation (To be replaced)
 

@@ -1,0 +1,220 @@
+# AgentOptim Migration Guide
+
+This guide will help you migrate from the original AgentOptim API (with 5 separate tools) to the new simplified EvalSet architecture (with just 2 tools).
+
+## Why Migrate?
+
+The new EvalSet architecture offers several benefits:
+
+1. **Simplified API**: Instead of 5 different tools, you only need to learn and use 2 tools.
+2. **More intuitive**: The new API is more aligned with common evaluation workflows.
+3. **Less error-prone**: Fewer tool calls means fewer opportunities for errors.
+4. **Future-proof**: All new features and improvements will be focused on the new architecture.
+
+## Overview of Changes
+
+Here's how the old tools map to the new tools:
+
+| Old Tools | New Tools |
+|-----------|-----------|
+| `manage_evaluation_tool` | `manage_evalset_tool` |
+| `manage_dataset_tool` + `run_job_tool` | `run_evalset_tool` |
+| `manage_experiment_tool` | No longer needed; use variables in templates |
+| `analyze_results_tool` | Results directly returned by `run_evalset_tool` |
+
+## Migration Steps
+
+### Step 1: Replace Evaluations with EvalSets
+
+The first step is to migrate your `manage_evaluation_tool` calls to `manage_evalset_tool`. 
+
+#### Old API:
+```python
+result = manage_evaluation_tool(
+    action="create",
+    name="Response Quality Evaluation",
+    template="""
+        Input: {input}
+        Response: {response}
+        
+        Question: {question}
+        
+        Answer yes (1) or no (0) in JSON format: {"judgment": 1 or 0}
+    """,
+    questions=[
+        "Does the response directly address the question?",
+        "Is the response clear and easy to understand?"
+    ],
+    description="Evaluation criteria for responses"
+)
+```
+
+#### New API:
+```python
+result = manage_evalset_tool(
+    action="create",
+    name="Response Quality Evaluation",
+    template="""
+        Given this conversation:
+        {{ conversation }}
+        
+        Please answer the following yes/no question about the final assistant response:
+        {{ eval_question }}
+        
+        Return a JSON object with the following format:
+        {"judgment": 1} for yes or {"judgment": 0} for no.
+    """,
+    questions=[
+        "Does the response directly address the question?",
+        "Is the response clear and easy to understand?"
+    ],
+    description="Evaluation criteria for responses"
+)
+```
+
+**Key Differences:**
+- The template now uses `{{ conversation }}` instead of separate `{input}` and `{response}` placeholders
+- Questions are referred to with `{{ eval_question }}` instead of `{question}`
+- The template expects the conversation to be a list of message objects with "role" and "content" fields
+
+### Step 2: Replace Dataset + Job + Experiment with direct run_evalset calls
+
+Instead of creating a dataset, experiment, and job, you can now directly evaluate a conversation.
+
+#### Old API:
+```python
+# Create a dataset
+dataset_result = manage_dataset_tool(
+    action="create",
+    name="Password Reset Questions",
+    items=[
+        {"input": "How do I reset my password?", "expected_output": "To reset your password..."}
+    ]
+)
+dataset_id = "extract_id_from_response"
+
+# Create an experiment
+experiment_result = manage_experiment_tool(
+    action="create",
+    name="Response Quality Test",
+    dataset_id=dataset_id,
+    evaluation_id=evaluation_id,
+    prompt_variants=[
+        {
+            "name": "helpful_tone",
+            "content": "You are a helpful AI assistant."
+        }
+    ],
+    model_name="claude-3-opus-20240229"
+)
+experiment_id = "extract_id_from_response"
+
+# Run a job
+job_result = run_job_tool(
+    action="create",
+    experiment_id=experiment_id,
+    dataset_id=dataset_id,
+    evaluation_id=evaluation_id,
+    judge_model="meta-llama-3.1-8b-instruct"
+)
+job_id = job_result["job"]["job_id"]
+
+# Get results
+status_result = run_job_tool(
+    action="get",
+    job_id=job_id
+)
+```
+
+#### New API:
+```python
+# Evaluate a conversation directly
+evaluation_result = run_evalset_tool(
+    evalset_id=evalset_id,  # From the manage_evalset_tool call above
+    conversation=[
+        {"role": "system", "content": "You are a helpful AI assistant."},
+        {"role": "user", "content": "How do I reset my password?"},
+        {"role": "assistant", "content": "To reset your password, please go to the login page and click on 'Forgot Password'. You'll receive an email with instructions to create a new password."}
+    ],
+    model="meta-llama-3.1-8b-instruct"
+)
+```
+
+**Key Differences:**
+- No need to create separate dataset and experiment resources
+- The evaluation is performed directly on a conversation
+- Results are returned immediately
+
+### Step 3: Update Result Analysis
+
+The results format has changed to be simpler and more focused.
+
+#### Old API (results from analysis_results_tool):
+```python
+{
+    "variant_scores": {
+        "helpful_tone": 0.85
+    },
+    "question_scores": {
+        "Does the response directly address the question?": 1.0,
+        "Is the response clear and easy to understand?": 0.8
+    },
+    "recommendations": "The helpful_tone variant performed well..."
+}
+```
+
+#### New API (results from run_evalset_tool):
+```python
+{
+    "status": "success",
+    "evalset_id": "evalset-id",
+    "evalset_name": "Response Quality Evaluation",
+    "summary": {
+        "total_questions": 2,
+        "successful_evaluations": 2,
+        "yes_count": 2,
+        "no_count": 0,
+        "error_count": 0,
+        "yes_percentage": 100.0
+    },
+    "results": [
+        {
+            "question": "Does the response directly address the question?",
+            "judgment": true,
+            "logprob": -0.023
+        },
+        {
+            "question": "Is the response clear and easy to understand?",
+            "judgment": true,
+            "logprob": -0.031
+        }
+    ]
+}
+```
+
+**Key Differences:**
+- Results focus on yes/no judgments with logprobs
+- Summary statistics are provided directly
+- No need for a separate analysis step
+
+## Compatibility Layer
+
+To ease the transition, AgentOptim includes a compatibility layer that allows the old tools to work with the new architecture behind the scenes. This means:
+
+1. Your existing `manage_evaluation_tool` calls will create EvalSets
+2. Your existing `run_job_tool` calls can use EvalSets when appropriate
+
+The compatibility layer is temporary and will be deprecated in a future release, so we recommend migrating to the new API as soon as possible.
+
+## Full Example
+
+See the `examples/usage_example.py` file for a complete example of using the new EvalSet architecture.
+
+## Need Help?
+
+If you have questions or run into issues during migration, please:
+1. Check the documentation for the new tools
+2. Run the example code to see the new API in action
+3. Report any issues on the GitHub repository
+
+We're committed to making this transition as smooth as possible!
