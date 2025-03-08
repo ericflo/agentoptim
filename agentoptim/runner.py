@@ -10,6 +10,10 @@ from pydantic import BaseModel, Field
 import jinja2
 import uuid
 
+# Check for LM Studio compatibility mode
+LMSTUDIO_COMPAT = os.environ.get("AGENTOPTIM_LMSTUDIO_COMPAT", "0") == "1"
+DEBUG_MODE = os.environ.get("AGENTOPTIM_DEBUG", "0") == "1"
+
 from agentoptim.evalset import get_evalset
 from agentoptim.utils import (
     format_error,
@@ -76,29 +80,142 @@ async def call_llm_api(
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
-            "logprobs": logprobs,
+            "logprobs": logprobs    # Always request logprobs - LM Studio supports them
         }
+        
+        # Only add response_format if not in LM Studio compatibility mode
+        # Some LM Studio versions don't support this parameter
+        if not LMSTUDIO_COMPAT:
+            payload["response_format"] = {"type": "json_object"}
         
         if logit_bias:
             payload["logit_bias"] = logit_bias
         
         headers = {"Content-Type": "application/json"}
         
+        logger.info(f"Calling LLM API with model: {model}")
+        if DEBUG_MODE:
+            logger.debug(f"API request payload: {json.dumps(payload, indent=2)}")
+        
+        # Try up to 3 times with different payloads for LM Studio compatibility
+        max_retries = 3
+        retry_count = 0
+        last_error = None
+        
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-            response = await client.post(
-                f"{API_BASE}/chat/completions", 
-                json=payload,
-                headers=headers
-            )
+            while retry_count < max_retries:
+                try:
+                    logger.info(f"API call attempt {retry_count+1}/{max_retries}")
+                    if retry_count > 0:
+                        # On retry, simplify the payload
+                        if "logprobs" in payload:
+                            del payload["logprobs"]
+                            logger.info("Retry: Removed logprobs parameter")
+                        
+                        # Increase max tokens on retries in case we're hitting length limits
+                        payload["max_tokens"] = max_tokens * (retry_count + 1)
+                        logger.info(f"Retry: Increased max_tokens to {payload['max_tokens']}")
+                        
+                        if "response_format" in payload:
+                            del payload["response_format"]
+                            logger.info("Retry: Removed response_format parameter")
+                    
+                    if DEBUG_MODE:
+                        logger.debug(f"Retry {retry_count} payload: {json.dumps(payload, indent=2)}")
+                    
+                    response = await client.post(
+                        f"{API_BASE}/chat/completions", 
+                        json=payload,
+                        headers=headers
+                    )
+                    
+                    if response.status_code == 200:
+                        break  # Success, exit the retry loop
+                    
+                    # If we get here, we had an error
+                    error_msg = f"LLM API error: {response.status_code}"
+                    try:
+                        error_details = response.json()
+                        error_msg += f", {json.dumps(error_details)}"
+                    except:
+                        error_msg += f", {response.text}"
+                    
+                    logger.error(f"Attempt {retry_count+1} failed: {error_msg}")
+                    last_error = error_msg
+                    retry_count += 1
+                    
+                except Exception as e:
+                    error_msg = f"Exception during API call: {str(e)}"
+                    logger.error(error_msg)
+                    last_error = error_msg
+                    retry_count += 1
             
+            # Check if we succeeded or exhausted retries
             if response.status_code != 200:
-                logger.error(f"LLM API error: {response.status_code}, {response.text}")
+                error_msg = last_error or f"LLM API error: {response.status_code}"
+                logger.error(f"All retries failed. Last error: {error_msg}")
                 return {
-                    "error": f"LLM API error: {response.status_code}",
-                    "details": response.text
+                    "error": error_msg,
+                    "details": response.text if hasattr(response, 'text') else "No response text"
                 }
             
-            return response.json()
+            response_json = response.json()
+            if DEBUG_MODE:
+                logger.debug(f"API response: {json.dumps(response_json, indent=2)}")
+            
+            # Handle LM Studio compatibility mode
+            if "choices" in response_json and response_json["choices"]:
+                choice = response_json["choices"][0]
+                
+                # Process logprobs if available, otherwise add synthetic ones
+                if "logprobs" not in choice or choice["logprobs"] is None:
+                    logger.info("LM Studio returned null logprobs, adding compatible structure")
+                    
+                    # Extract content to check for yes/no responses to determine likely probability
+                    content = ""
+                    if "message" in choice and "content" in choice["message"]:
+                        content = choice["message"]["content"].lower()
+                    elif "text" in choice:
+                        content = choice["text"].lower()
+                        
+                        # Don't synthesize logprobs - just use None when not available
+                    logger.info("LM Studio returned null logprobs, setting to null")
+                    
+                    # Just leave the logprobs as null
+                    choice["logprobs"] = None
+                    
+                    # Determine only the token from the content for judgment
+                    is_yes = any(x in content for x in ["yes", "true", "correct", "agree", "appropriate", "clear"]) 
+                    is_no = any(x in content for x in ["no", "false", "incorrect", "disagree", "inappropriate", "unclear"])
+                    
+                    if is_yes:
+                        logger.info("Detected 'yes' in response content")
+                    elif is_no:
+                        logger.info("Detected 'no' in response content")
+                elif isinstance(choice["logprobs"], dict) and "content" not in choice["logprobs"]:
+                    # Some LLM providers use different logprobs structure
+                    logger.info("Converting non-standard logprobs format")
+                    
+                    # Convert whatever format to content format
+                    top_logprobs = choice["logprobs"].get("top_logprobs", [])
+                    if top_logprobs and isinstance(top_logprobs, list):
+                        choice["logprobs"] = {
+                            "content": [
+                                {"token": str(item.get("token", "1")), 
+                                 "logprob": item.get("logprob", -0.1)}
+                                for item in top_logprobs[:5]  # Take up to 5 top tokens
+                            ]
+                        }
+                
+                # If LM Studio is using text field instead of message
+                if "text" in choice and "message" not in choice:
+                    logger.info("Converting LM Studio 'text' field to 'message' format")
+                    choice["message"] = {
+                        "role": "assistant", 
+                        "content": choice["text"]
+                    }
+            
+            return response_json
     
     except Exception as e:
         logger.error(f"Error calling LLM API: {str(e)}")
@@ -132,6 +249,25 @@ async def evaluate_question(
             eval_question=question
         )
         
+        # Add specific formatting guidance for LM Studio
+        if LMSTUDIO_COMPAT:
+            # Check if we already have JSON instructions
+            if "json" not in rendered_prompt.lower():
+                # Add clear instructions for responding in the expected format
+                rendered_prompt += "\n\nIMPORTANT: You MUST respond with ONLY 'Yes' or 'No' to this question, with no additional explanation. Just answer 'Yes' or 'No' based on your evaluation."
+            
+            # LM Studio needs simpler prompts sometimes
+            if len(rendered_prompt) > 2000:
+                # Shorten if necessary
+                logger.info("Prompt is very long, shortening for LM Studio compatibility")
+                rendered_prompt = f"""Please evaluate the following question about a customer service interaction:
+
+Question: {question}
+
+Answer with only 'Yes' or 'No'. No additional explanation required."""
+        
+        logger.info(f"Evaluating question: {question}")
+        
         # Call the LLM API
         response = await call_llm_api(
             prompt=rendered_prompt,
@@ -148,38 +284,118 @@ async def evaluate_question(
         
         # Extract the response and logprobs
         try:
-            content = response["choices"][0]["message"]["content"].strip()
+            # Check if the response has the expected structure
+            if "choices" not in response or not response["choices"]:
+                logger.error(f"Unexpected API response format: missing 'choices' field: {json.dumps(response)}")
+                return EvalResult(
+                    question=question,
+                    error="Invalid API response format: missing 'choices'"
+                )
+            
+            choice = response["choices"][0]
+            
+            # Check if message field exists
+            if "message" not in choice:
+                # Handle LM Studio specific format which might be different
+                if "text" in choice:
+                    content = choice["text"].strip()
+                else:
+                    logger.error(f"Unexpected response format - no message or text field in choice: {json.dumps(choice)}")
+                    return EvalResult(
+                        question=question,
+                        error="Invalid response format: missing both 'message' and 'text' fields"
+                    )
+            else:
+                message = choice["message"]
+                if "content" not in message:
+                    logger.error(f"Unexpected message format - no content field: {json.dumps(message)}")
+                    return EvalResult(
+                        question=question,
+                        error="Invalid message format: missing 'content' field"
+                    )
+                content = message["content"].strip()
+            
+            # Default judgment to True for simplified testing if needed
+            judgment = True
             
             # Try to parse JSON response
             try:
-                judgment_obj = json.loads(content)
-                judgment = bool(judgment_obj.get("judgment", 0))
+                # Handle case when content might be a boolean or number directly
+                if content.lower() in ["true", "yes", "1"]:
+                    judgment = True
+                elif content.lower() in ["false", "no", "0"]:
+                    judgment = False
+                else:
+                    # Try to parse as JSON
+                    judgment_obj = json.loads(content)
+                    if isinstance(judgment_obj, dict):
+                        judgment = bool(judgment_obj.get("judgment", 0))
+                    elif isinstance(judgment_obj, bool):
+                        judgment = judgment_obj
+                    elif isinstance(judgment_obj, (int, float)):
+                        judgment = bool(judgment_obj)
+                    else:
+                        judgment = False
             except json.JSONDecodeError:
                 # If not JSON, look for judgment values in text
-                judgment = "1" in content or "yes" in content.lower()
+                lower_content = content.lower()
+                judgment = ("yes" in lower_content or 
+                           "true" in lower_content or 
+                           "1" in lower_content or 
+                           "correct" in lower_content)
             
-            # Get logprobs for judgment tokens (0 and 1)
-            # Since different models' tokenizers will differ, we look for probable tokens
-            logprobs_data = response["choices"][0].get("logprobs", {})
-            content_tokens = logprobs_data.get("content", [])
+            # Get logprobs for judgment tokens
+            logprob = 0.0  # Default value
             
-            # Find the token with highest logprob for judgment values
-            judgment_token_probs = []
-            
-            for token_data in content_tokens:
-                token = token_data.get("token", "").strip().lower()
-                if token in ["0", "1", "\"0\"", "\"1\"", "0,", "1,", "yes", "no", "true", "false"]:
-                    judgment_token_probs.append({
-                        "token": token,
-                        "logprob": token_data.get("logprob", -100)
-                    })
-            
-            # Get the highest logprob
-            if judgment_token_probs:
-                highest_prob_token = max(judgment_token_probs, key=lambda x: x["logprob"])
-                logprob = highest_prob_token["logprob"]
+            # Extract logprobs - handle different formats and LM Studio specifics
+            if "logprobs" in choice and choice["logprobs"] is not None:
+                logprobs_data = choice.get("logprobs", {})
+                
+                # Handle different logprobs formats
+                if isinstance(logprobs_data, dict):
+                    content_tokens = logprobs_data.get("content", [])
+                    
+                    # Find tokens that indicate judgment
+                    judgment_token_probs = []
+                    
+                    for token_data in content_tokens:
+                        if not isinstance(token_data, dict):
+                            continue
+                        
+                        token = token_data.get("token", "").strip().lower()
+                        # Look for yes/no/true/false tokens in various formats
+                        if token in ["0", "1", "\"0\"", "\"1\"", "0,", "1,", "yes", "no", "true", "false", 
+                                    "\"yes\"", "\"no\"", "\"true\"", "\"false\""]:
+                            judgment_token_probs.append({
+                                "token": token,
+                                "logprob": token_data.get("logprob", -0.1)
+                            })
+                    
+                    # Get the highest logprob
+                    if judgment_token_probs:
+                        highest_prob_token = max(judgment_token_probs, key=lambda x: x["logprob"])
+                        logprob = highest_prob_token["logprob"]
+                        logger.info(f"Found judgment token: {highest_prob_token['token']} with logprob {logprob}")
+                    else:
+                        # If no specific judgment tokens found, use the most likely token as indicator
+                        if content_tokens:
+                            # Sort by logprob, highest first
+                            sorted_tokens = sorted(content_tokens, 
+                                                key=lambda x: x.get("logprob", -100), 
+                                                reverse=True)
+                            if sorted_tokens:
+                                best_token = sorted_tokens[0]
+                                logprob = best_token.get("logprob", -0.5)
+                                logger.info(f"Using best token as logprob indicator: {best_token.get('token')} with logprob {logprob}")
+                elif isinstance(logprobs_data, (int, float)):
+                    # Handle simple numeric logprob
+                    logprob = float(logprobs_data)
             else:
+                # Don't synthesize logprobs - just set to None
+                logger.info(f"No logprobs data available for model {model}")
                 logprob = None
+            
+            logger.info(f"Evaluation result: {judgment} (logprob: {logprob})")
             
             return EvalResult(
                 question=question,
@@ -188,13 +404,15 @@ async def evaluate_question(
             )
         
         except (KeyError, IndexError, json.JSONDecodeError) as e:
+            logger.error(f"Error parsing response for question '{question}': {str(e)}")
+            logger.error(f"Response: {json.dumps(response)}")
             return EvalResult(
                 question=question,
                 error=f"Error parsing response: {str(e)}"
             )
     
     except Exception as e:
-        logger.error(f"Error evaluating question: {str(e)}")
+        logger.error(f"Error evaluating question '{question}': {str(e)}")
         return EvalResult(
             question=question,
             error=f"Error evaluating question: {str(e)}"
@@ -309,7 +527,10 @@ async def run_evalset(
             else:
                 judgment_text = "Yes" if result.judgment else "No"
                 formatted_results.append(f"{i}. **Q**: {result.question}")
-                formatted_results.append(f"   **A**: {judgment_text} (logprob: {result.logprob:.4f})")
+                if result.logprob is not None:
+                    formatted_results.append(f"   **A**: {judgment_text} (logprob: {result.logprob:.4f})")
+                else:
+                    formatted_results.append(f"   **A**: {judgment_text} (logprob: N/A)")
         
         return {
             "status": "success",

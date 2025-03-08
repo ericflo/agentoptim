@@ -19,19 +19,26 @@ from agentoptim.utils import DATA_DIR, ensure_data_directories
 # Ensure data directories exist
 ensure_data_directories()
 
-# Configure logging
+# Check for debug mode from environment variable
+DEBUG_MODE = os.environ.get("AGENTOPTIM_DEBUG", "0") == "1"
+LMSTUDIO_COMPAT = os.environ.get("AGENTOPTIM_LMSTUDIO_COMPAT", "0") == "1"
+
+# Configure logging - only log to file and stderr, not stdout (to avoid breaking MCP's stdio transport)
 log_file_path = os.path.join(DATA_DIR, "agentoptim.log")
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if DEBUG_MODE else logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.StreamHandler(sys.stdout),
+        logging.StreamHandler(sys.stderr),  # Changed from stdout to stderr
         logging.FileHandler(log_file_path),
     ],
 )
 
+# Add environment info to log
 logger = logging.getLogger("agentoptim")
 logger.info(f"Logging to {log_file_path}")
+logger.info(f"Debug mode: {DEBUG_MODE}")
+logger.info(f"LM Studio compatibility mode: {LMSTUDIO_COMPAT}")
 
 # Initialize FastMCP server
 mcp = FastMCP("agentoptim")
@@ -46,7 +53,7 @@ async def manage_evalset_tool(
     template: Optional[str] = None,
     questions: Optional[List[str]] = None,
     description: Optional[str] = None,
-) -> str:
+) -> dict:
     """
     Manage EvalSet definitions for assessing conversation quality.
     
@@ -127,18 +134,29 @@ async def manage_evalset_tool(
             description=description,
         )
         
-        # If result is a dictionary with a formatted_message, return that for MCP
+        # If result is a dictionary with a formatted_message, use that message
         if isinstance(result, dict) and "formatted_message" in result:
-            return result["formatted_message"]
+            return {"result": result["formatted_message"]}
             
+        # If result is a string, wrap it in a dict
+        if isinstance(result, str):
+            return {"result": result}
+            
+        # If result is already a dict but doesn't have formatted_message
         return result
     except Exception as e:
         logger.error(f"Error in manage_evalset_tool: {str(e)}", exc_info=True)
         error_msg = str(e)
+        error_response = {"error": error_msg}
         
         # Enhance error messages for common problems
         if "action" in error_msg and "valid actions" not in error_msg:
-            return f"Error: Invalid action '{action}'. Valid actions are: create, list, get, update, delete\n\nExamples:\n- manage_evalset_tool(action=\"create\", name=\"Response Quality\", template=\"...\", questions=[...])\n- manage_evalset_tool(action=\"list\")\n- manage_evalset_tool(action=\"get\", evalset_id=\"...\")"
+            error_response["details"] = f"Invalid action '{action}'. Valid actions are: create, list, get, update, delete"
+            error_response["examples"] = [
+                'manage_evalset_tool(action="create", name="Response Quality", template="...", questions=[...])',
+                'manage_evalset_tool(action="list")',
+                'manage_evalset_tool(action="get", evalset_id="...")'
+            ]
         elif "required parameters" in error_msg:
             # Show different examples based on action
             if action == "create":
@@ -153,7 +171,8 @@ async def manage_evalset_tool(
                     ],
                     "description": "Evaluates responses for clarity, completeness, and accuracy"
                 }
-                return f"Error: {error_msg}.\n\nThe 'create' action requires name, template, and questions parameters.\n\nExample:\n{json.dumps(example, indent=2)}"
+                error_response["details"] = "The 'create' action requires name, template, and questions parameters."
+                error_response["example"] = example
             elif action in ["get", "update", "delete"]:
                 example = {
                     "action": action,
@@ -164,22 +183,25 @@ async def manage_evalset_tool(
                     example["template"] = "New template text with {{ conversation }} and {{ eval_question }}"
                     example["questions"] = ["Updated question 1", "Updated question 2"]
                 
-                return f"Error: {error_msg}.\n\nThe '{action}' action requires the evalset_id parameter.\n\nExample:\n{json.dumps(example, indent=2)}"
+                error_response["details"] = f"The '{action}' action requires the evalset_id parameter."
+                error_response["example"] = example
             else:
-                return f"Error: {error_msg}. Please check the tool documentation for required parameters."
+                error_response["details"] = "Please check the tool documentation for required parameters."
         elif "not found" in error_msg:
-            return f"Error: {error_msg}.\n\nThe evalset_id you provided doesn't exist. Use manage_evalset_tool(action=\"list\") to see available EvalSets."
+            error_response["details"] = "The evalset_id you provided doesn't exist. Use manage_evalset_tool(action=\"list\") to see available EvalSets."
         elif "template" in error_msg:
-            return f"Error: {error_msg}.\n\nThe template should include placeholders like {{{{ conversation }}}} and {{{{ eval_question }}}}.\n\nExample template: \"Given this conversation: {{{{ conversation }}}}\\n\\nPlease answer this question: {{{{ eval_question }}}}\""
+            error_response["details"] = "The template should include placeholders like {{ conversation }} and {{ eval_question }}."
+            error_response["example"] = "Given this conversation: {{ conversation }}\n\nPlease answer this question: {{ eval_question }}"
         elif "questions" in error_msg:
             if "must be a list" in error_msg:
-                return f"Error: {error_msg}.\n\nQuestions must be provided as a list of strings.\n\nExample: questions=[\"Is the response clear?\", \"Does the response answer the question?\"]"
+                error_response["details"] = "Questions must be provided as a list of strings."
+                error_response["example"] = ["Is the response clear?", "Does the response answer the question?"]
             elif "maximum" in error_msg:
-                return f"Error: {error_msg}.\n\nYou have provided too many questions. Please limit your questions to 100 or fewer."
+                error_response["details"] = "You have provided too many questions. Please limit your questions to 100 or fewer."
             else:
-                return f"Error: {error_msg}.\n\nEach question should be a string that can be answered with yes/no by the judge model."
-        else:
-            return f"Error: {error_msg}"
+                error_response["details"] = "Each question should be a string that can be answered with yes/no by the judge model."
+        
+        return error_response
 
 
 @mcp.tool()
@@ -188,7 +210,7 @@ async def run_evalset_tool(
     conversation: List[Dict[str, str]],
     model: str = "meta-llama-3.1-8b-instruct",
     max_parallel: int = 3
-) -> str:
+) -> dict:
     """
     Run an EvalSet evaluation on a conversation.
     
@@ -245,31 +267,42 @@ async def run_evalset_tool(
             max_parallel=max_parallel
         )
         
-        # If result is a dictionary with a formatted_message, return that for MCP
+        # If result is a dictionary with a formatted_message, use that
         if isinstance(result, dict) and "formatted_message" in result:
-            return result["formatted_message"]
+            # Keep the formatted message but also include the structured data
+            result_copy = result.copy()
+            # Move formatted_message to result field to maintain compatibility
+            result_copy["result"] = result_copy.pop("formatted_message")
+            return result_copy
             
+        # If result is a string, wrap it in a dict
+        if isinstance(result, str):
+            return {"result": result}
+            
+        # Otherwise return as is (should be a dict)
         return result
     except Exception as e:
         logger.error(f"Error in run_evalset_tool: {str(e)}", exc_info=True)
         error_msg = str(e)
+        error_response = {"error": error_msg}
         
         # Enhance error messages for common problems
         if "evalset_id" in error_msg and "not found" in error_msg:
-            return f"Error: {error_msg}.\n\nThe evalset_id you provided doesn't exist. Use manage_evalset_tool(action=\"list\") to see available EvalSets."
+            error_response["details"] = "The evalset_id you provided doesn't exist. Use manage_evalset_tool(action=\"list\") to see available EvalSets."
         elif "conversation" in error_msg:
             example_conversation = [
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": "Hello, how are you?"},
                 {"role": "assistant", "content": "I'm doing well! How can I help you today?"}
             ]
-            return f"Error: {error_msg}.\n\nThe conversation parameter must be a list of message objects, each with 'role' and 'content' fields.\n\nExample:\n{json.dumps(example_conversation, indent=2)}"
+            error_response["details"] = "The conversation parameter must be a list of message objects, each with 'role' and 'content' fields."
+            error_response["example"] = example_conversation
         elif "max_parallel" in error_msg:
-            return f"Error: {error_msg}.\n\nThe max_parallel parameter must be a positive integer that controls how many evaluations to run in parallel."
+            error_response["details"] = "The max_parallel parameter must be a positive integer that controls how many evaluations to run in parallel."
         elif "model" in error_msg:
-            return f"Error: {error_msg}.\n\nThe model parameter must be a valid model identifier. Make sure your LLM server supports this model."
-        else:
-            return f"Error: {error_msg}\n\nPlease try again or check your parameters."
+            error_response["details"] = "The model parameter must be a valid model identifier. Make sure your LLM server supports this model."
+        
+        return error_response
 
 
 def main():
