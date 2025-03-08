@@ -181,9 +181,18 @@ async def call_llm_api(
         
         headers = {"Content-Type": "application/json"}
         
+        # Add OpenAI API key if LMSTUDIO_COMPAT is disabled and OPENAI_API_KEY is set
+        openai_api_key = os.environ.get("OPENAI_API_KEY")
+        if not LMSTUDIO_COMPAT and openai_api_key and "openai.com" in API_BASE:
+            logger.info("Using OpenAI API with authentication")
+            headers["Authorization"] = f"Bearer {openai_api_key}"
+        
         logger.info(f"Calling LLM API with model: {model}")
         if DEBUG_MODE:
             logger.debug(f"API request payload: {json.dumps(payload, indent=2)}")
+            # Log the headers (except Authorization to protect the API key)
+            safe_headers = {k: v if k.lower() != "authorization" else "Bearer sk-***" for k, v in headers.items()}
+            logger.debug(f"API headers: {json.dumps(safe_headers, indent=2)}")
         
         # Try up to 3 times with different payloads for LM Studio compatibility
         max_retries = 3
@@ -221,6 +230,17 @@ async def call_llm_api(
                     try:
                         error_details = response.json()
                         error_msg += f", {json.dumps(error_details)}"
+                        
+                        # Special handling for auth errors
+                        if response.status_code == 401:
+                            if "openai.com" in API_BASE:
+                                if not openai_api_key:
+                                    logger.error("Authentication failed: OPENAI_API_KEY environment variable is not set")
+                                else:
+                                    logger.error("Authentication failed: The provided OpenAI API key was rejected")
+                                    # Check if the key looks properly formatted
+                                    if not openai_api_key.startswith("sk-"):
+                                        logger.error("The API key doesn't start with 'sk-', which is unusual for OpenAI keys")
                     except:
                         error_msg += f", {response.text}"
                     
@@ -354,8 +374,11 @@ async def call_llm_api(
                 "traceback": tb_str[:500] + "..." if len(tb_str) > 500 else tb_str,  # Include truncated traceback
                 "troubleshooting_steps": [
                     "Check that the LLM server is running and accessible",
-                    "Verify the model name is correct and available in your LLM server",
+                    "Verify the model name is correct and available in your LLM server or cloud provider",
                     "Ensure your API_BASE environment variable points to the correct endpoint",
+                    "Verify your API key is correct and has access to the selected model",
+                    "For OpenAI, set OPENAI_API_KEY environment variable with a valid API key",
+                    "For OpenAI, set AGENTOPTIM_LMSTUDIO_COMPAT=0 to disable LM Studio mode",
                     "Check for API rate limits or quota issues",
                     "Try with a shorter prompt if hitting context length limits",
                     "Inspect the server logs for more information",
