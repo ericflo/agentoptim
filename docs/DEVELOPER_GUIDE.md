@@ -1,110 +1,67 @@
 # AgentOptim Developer Guide
 
-This guide provides an overview of the AgentOptim architecture, development workflow, and implementation details to help developers understand and contribute to the project.
+This guide provides an overview of the AgentOptim v2.0 architecture, development workflow, and implementation details to help developers understand and contribute to the project.
 
 ## Architecture Overview
 
-AgentOptim follows a modular architecture organized around core concepts of prompt optimization:
+AgentOptim v2.0 follows a streamlined architecture with just two main components:
 
 ```
-+------------------+    +------------------+    +------------------+
-|                  |    |                  |    |                  |
-|    Evaluation    |    |     Dataset      |    |    Experiment    |
-|                  |    |                  |    |                  |
-+--------+---------+    +--------+---------+    +--------+---------+
-         |                       |                       |
-         |                       |                       |
-         v                       v                       v
-+----------------------------------------------------------+
-|                                                          |
-|                          Jobs                            |
-|                                                          |
-+---------------------------+------------------------------+
-                            |
-                            |
-                            v
-+----------------------------------------------------------+
-|                                                          |
-|                        Analysis                          |
-|                                                          |
-+----------------------------------------------------------+
-                            |
-                            |
-                            v
-+----------------------------------------------------------+
-|                                                          |
-|                     MCP Server/Tools                     |
-|                                                          |
-+----------------------------------------------------------+
++----------------------+       +----------------------+
+|                      |       |                      |
+|      EvalSet         |------>|     Evaluations      |
+|                      |       |                      |
++----------------------+       +----------------------+
+           |                             ^
+           |                             |
+           v                             |
++--------------------------------------------------+
+|                                                  |
+|                MCP Server/Tools                  |
+|                                                  |
++--------------------------------------------------+
 ```
 
 ### Core Components
 
-#### 1. Evaluation
+#### 1. EvalSet
 
-The evaluation module defines criteria for assessing the quality of model responses. Evaluations consist of:
+The EvalSet module defines criteria for assessing the quality of conversations. An EvalSet consists of:
 
-- Questions to ask about a response (e.g., "Is the response factually accurate?")
-- Judging templates that format these questions for a judge model
-- Weights for combining multiple criteria into an overall score
+- A set of yes/no questions to evaluate responses (e.g., "Is the response helpful?")
+- A template that formats conversations and questions for a judge model
+- Metadata such as name, description, and creation timestamp
 
-#### 2. Dataset
+#### 2. Evaluations
 
-The dataset module manages collections of examples for testing prompt variations. Datasets can:
+The evaluations module executes assessments of conversations using EvalSets by:
 
-- Be manually created, imported, or generated
-- Be split into training/testing sets
-- Include any structure needed for the specific use case
-
-#### 3. Experiment
-
-The experiment module defines tests of different prompt variations against a dataset. Experiments include:
-
-- Prompt variations to test (system prompts, templates, etc.)
-- References to datasets for testing
-- References to evaluations for assessment
-- Configuration settings for the experiment
-
-#### 4. Jobs
-
-The jobs module executes evaluations or experiments by:
-
-- Running prompt variations against datasets
+- Running each question in an EvalSet against a conversation
 - Calling judge models to evaluate responses
-- Collecting and organizing results
+- Collecting and summarizing results
 - Supporting parallel execution
 
-#### 5. Analysis
-
-The analysis module examines experiment results to:
-
-- Calculate performance metrics for each variant
-- Identify the best-performing variants
-- Determine if differences are statistically significant
-- Generate optimized prompts based on results
-
-#### 6. MCP Server/Tools
+#### 3. MCP Server/Tools
 
 The server module exposes AgentOptim functionality as MCP tools that:
 
-- Allow agents to create/manage evaluations, datasets, and experiments
-- Provide interfaces for running jobs and analyzing results
+- Allow agents to create and manage EvalSets through `manage_evalset_tool`
+- Provide an interface for evaluating conversations through `run_evalset_tool`
 - Handle validation and error handling for tool inputs
 
 ### Data Flow
 
-1. **Creation Phase**: User/agent creates evaluations, datasets, and experiments
-2. **Execution Phase**: Jobs run experiments by testing prompt variants against datasets
-3. **Analysis Phase**: Results are analyzed to identify optimal prompt variations
-4. **Optimization Phase**: Insights from analysis are used to create improved prompts
+1. **Creation Phase**: User/agent creates an EvalSet with evaluation criteria
+2. **Execution Phase**: Conversations are evaluated against the EvalSet
+3. **Analysis Phase**: Results are summarized to identify strengths and weaknesses
 
 ## Data Storage
 
 AgentOptim uses a simple file-based storage system:
 
 - JSON files stored in a configurable data directory
-- Organized by resource type (evaluations, datasets, experiments, results)
-- Each resource has a unique ID and is stored in its own file
+- EvalSets are stored as individual files with unique IDs
+- Results are returned directly and not persistently stored
 
 ## Error Handling and Validation
 
@@ -132,7 +89,7 @@ The project implements a comprehensive error handling system:
 pytest
 
 # Run tests for a specific module
-pytest tests/test_evaluation.py
+pytest tests/test_evalset.py
 
 # Run with coverage
 pytest --cov=agentoptim
@@ -166,68 +123,80 @@ python -m agentoptim.server --log-level DEBUG
 
 ## Implementation Details
 
-### Creating New Resources
+### Managing EvalSets
 
-AgentOptim uses factory functions to create resources:
+The EvalSet module provides a unified interface for working with evaluation criteria:
 
 ```python
-# Creating an evaluation
-evaluation = create_evaluation(
-    name="Quality Assessment",
-    criteria=[...]
+# Creating an EvalSet
+evalset_result = await manage_evalset_tool(
+    action="create",
+    name="Response Quality Evaluation",
+    template="""
+    Given this conversation:
+    {{ conversation }}
+    
+    Please answer the following yes/no question about the final assistant response:
+    {{ eval_question }}
+    
+    Return a JSON object with the following format:
+    {"judgment": 1} for yes or {"judgment": 0} for no.
+    """,
+    questions=[
+        "Is the response helpful for the user's needs?",
+        "Does the response directly address the user's question?",
+        "Is the response clear and easy to understand?"
+    ],
+    description="Evaluation criteria for response quality"
 )
 
-# Creating a dataset
-dataset = create_dataset(
-    name="Test Dataset",
-    items=[...]
+# Get an EvalSet by ID
+evalset = await manage_evalset_tool(
+    action="get",
+    evalset_id="evalset_123abc"
 )
 
-# Creating an experiment
-experiment = create_experiment(
-    name="Prompt Test",
-    prompt_template="...",
-    variants=[...]
+# List all EvalSets
+evalsets = await manage_evalset_tool(
+    action="list"
+)
+
+# Update an EvalSet
+updated_evalset = await manage_evalset_tool(
+    action="update",
+    evalset_id="evalset_123abc",
+    name="Updated Response Quality Evaluation"
+)
+
+# Delete an EvalSet
+result = await manage_evalset_tool(
+    action="delete",
+    evalset_id="evalset_123abc"
 )
 ```
 
-### Running Jobs
+### Running Evaluations
 
-Jobs are executed in a streamlined process:
-
-1. Create a job object with references to experiment, dataset, and evaluation (job starts automatically by default)
-2. Monitor progress and wait for completion
-3. Retrieve and analyze results
+Evaluations are run using the `run_evalset_tool`:
 
 ```python
-# Create and automatically start a job
-job = create_job(
-    experiment_id=experiment.experiment_id,
-    dataset_id=dataset.dataset_id,
-    evaluation_id=evaluation.evaluation_id,
-    judge_model="llama-3-8b-instruct",  # Optional: specify judge model
-    auto_start=True  # Default behavior, can set to False if needed
+# Define a conversation to evaluate
+conversation = [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "How do I reset my password?"},
+    {"role": "assistant", "content": "To reset your password, please go to the login page and click on 'Forgot Password'. You'll receive an email with instructions to create a new password."}
+]
+
+# Run the evaluation
+eval_results = await run_evalset_tool(
+    evalset_id="evalset_123abc",
+    conversation=conversation,
+    model="meta-llama-3.1-8b-instruct",
+    max_parallel=3
 )
 
-# Get job status and results when complete
-job = get_job(job.job_id)
-```
-
-### Analyzing Results
-
-Analysis is performed on completed experiment results:
-
-```python
-# Create an analysis
-analysis = create_analysis(
-    experiment_id=experiment.experiment_id
-)
-
-# Compare multiple analyses
-comparison = compare_analyses([
-    analysis1.analysis_id,
-    analysis2.analysis_id
-])
+# The results contain individual judgments and a summary
+print(f"Yes percentage: {eval_results.get('summary', {}).get('yes_percentage')}%")
 ```
 
 ## Best Practices
@@ -250,7 +219,7 @@ comparison = compare_analyses([
 ### Testing
 
 - Write unit tests for all public functions
-- Aim for high test coverage (target: 85%+)
+- Aim for high test coverage (current: 91%)
 - Use fixtures to reduce code duplication
 - Test edge cases and error conditions
 
@@ -261,12 +230,18 @@ comparison = compare_analyses([
 3. Ensure tests pass and documentation is updated
 4. Submit a pull request with a clear description
 
+## Deprecated Functionality
+
+The compatibility layer in `compat.py` provides backward compatibility with the old 5-tool architecture, but it is deprecated and will be removed in v2.1.0. New developments should focus exclusively on the 2-tool architecture.
+
 ## Future Roadmap
 
-- Integration with external judge API providers
-- Support for more sophisticated optimization strategies
-- Web interface for visualization of experiment results
-- Integration with popular LLM libraries like LangChain
+Planned improvements for v2.1.0 include:
+
+- Removal of compatibility layer
+- Improved test coverage (target: 95%+)
+- Enhanced documentation and API reference
+- Performance optimizations
 
 ## References
 
