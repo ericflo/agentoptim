@@ -107,10 +107,27 @@ async def call_llm_api(
         if logprobs:
             payload["logprobs"] = logprobs
         
-        # Testing confirms LM Studio does NOT support response_format at all
-        # It specifically returns an error: "'response_format.type' must be 'json_schema'"
-        # So we'll never include it for LM Studio compatibility mode
-        if not LMSTUDIO_COMPAT:
+        # LM Studio requires response_format.type to be "json_schema" with specific format
+        if LMSTUDIO_COMPAT:
+            # Use the correct JSON schema format for LM Studio
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "judgment_response",
+                    "strict": "true",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "judgment": {
+                                "type": "boolean"
+                            }
+                        },
+                        "required": ["judgment"]
+                    }
+                }
+            }
+        else:
+            # For other providers, use standard OpenAI format
             payload["response_format"] = {"type": "json_object"}
         
         if logit_bias:
@@ -272,33 +289,28 @@ async def evaluate_question(
             eval_question=question
         )
         
-        # Add specific formatting guidance for LM Studio since it doesn't support response_format
+        # Add specific formatting guidance for LM Studio
         if LMSTUDIO_COMPAT:
-            # Our testing shows that LM Studio doesn't actually support JSON response format
-            # So we need to give very explicit instructions for structured responses
+            # Now that we've confirmed LM Studio supports JSON schema format
+            # We'll use it to strictly enforce the response format
             
-            # First, check if we already have JSON instructions
-            if "json" not in rendered_prompt.lower():
-                # Add clear instructions for responding in the expected format
-                rendered_prompt += "\n\nIMPORTANT: You MUST respond with ONLY 'Yes' or 'No' to this question, with no additional explanation. Just answer 'Yes' or 'No' based on your evaluation."
-            else:
-                # Replace JSON instructions with simpler format for LM Studio
-                rendered_prompt += "\n\nIMPORTANT: You MUST respond with ONLY 'Yes' or 'No' to this question, not in JSON format. Just answer 'Yes' or 'No' based on your evaluation."
+            # We can keep the JSON instructions in the prompt
+            # Add a clear note about the expected format
+            rendered_prompt += "\n\nIMPORTANT: Please respond with a JSON object containing a 'judgment' field. Use true for 'Yes' and false for 'No'."
             
             # LM Studio needs simpler prompts sometimes
             if len(rendered_prompt) > 2000:
                 # Shorten if necessary
                 logger.info("Prompt is very long, shortening for LM Studio compatibility")
-                rendered_prompt = f"""Please evaluate the following question about a customer service interaction:
+                rendered_prompt = f"""Please evaluate the following question:
 
 Question: {question}
 
-Answer with only 'Yes' or 'No'. No additional explanation required."""
+Respond with a JSON object like {"judgment": true} for Yes or {"judgment": false} for No."""
                 
             # Add system prompt for better control - our testing shows system prompts work well
-            # Prepend system message to improve the response consistency
             messages = [
-                {"role": "system", "content": "You are an evaluation assistant that responds with only 'Yes' or 'No' to evaluation questions. Never provide explanations."},
+                {"role": "system", "content": "You are an evaluation assistant that provides judgments in JSON format with a boolean 'judgment' field."},
                 {"role": "user", "content": rendered_prompt}
             ]
         else:
@@ -357,26 +369,60 @@ Answer with only 'Yes' or 'No'. No additional explanation required."""
             # Default judgment to True for simplified testing if needed
             judgment = True
             
-            # Try to parse JSON response
+            # Try to parse JSON response - with improved parsing for LM Studio
             try:
-                # Handle case when content might be a boolean or number directly
-                if content.lower() in ["true", "yes", "1"]:
-                    judgment = True
-                elif content.lower() in ["false", "no", "0"]:
-                    judgment = False
-                else:
-                    # Try to parse as JSON
+                # First try to parse as JSON
+                try:
                     judgment_obj = json.loads(content)
-                    if isinstance(judgment_obj, dict):
-                        judgment = bool(judgment_obj.get("judgment", 0))
+                    
+                    # Check for judgment field with proper boolean handling
+                    if isinstance(judgment_obj, dict) and "judgment" in judgment_obj:
+                        # Handle boolean value directly
+                        if isinstance(judgment_obj["judgment"], bool):
+                            judgment = judgment_obj["judgment"]
+                        # Handle string representations of boolean
+                        elif isinstance(judgment_obj["judgment"], str):
+                            judgment_str = judgment_obj["judgment"].lower()
+                            if judgment_str in ["true", "yes", "1"]:
+                                judgment = True
+                            elif judgment_str in ["false", "no", "0"]:
+                                judgment = False
+                            else:
+                                judgment = bool(judgment_obj["judgment"])
+                        # Handle numeric values (0 = False, anything else = True)
+                        elif isinstance(judgment_obj["judgment"], (int, float)):
+                            judgment = bool(judgment_obj["judgment"])
+                        else:
+                            judgment = False
+                    # If judgment field is missing but it's a simple boolean
                     elif isinstance(judgment_obj, bool):
                         judgment = judgment_obj
+                    # If it's a simple number
                     elif isinstance(judgment_obj, (int, float)):
                         judgment = bool(judgment_obj)
                     else:
+                        # Default to text analysis if JSON doesn't have expected structure
+                        lower_content = content.lower()
+                        judgment = ("yes" in lower_content or 
+                                   "true" in lower_content or 
+                                   "1" in lower_content or 
+                                   "correct" in lower_content)
+                except json.JSONDecodeError:
+                    # Handle case when it's a direct response instead of JSON
+                    if content.lower() in ["true", "yes", "1"]:
+                        judgment = True
+                    elif content.lower() in ["false", "no", "0"]:
                         judgment = False
-            except json.JSONDecodeError:
-                # If not JSON, look for judgment values in text
+                    else:
+                        # If it's not parseable JSON or a direct boolean, analyze text
+                        lower_content = content.lower()
+                        judgment = ("yes" in lower_content or 
+                                   "true" in lower_content or 
+                                   "1" in lower_content or 
+                                   "correct" in lower_content)
+            except Exception as e:
+                # Fallback to basic text analysis
+                logger.warning(f"Error parsing judgment: {str(e)}")
                 lower_content = content.lower()
                 judgment = ("yes" in lower_content or 
                            "true" in lower_content or 

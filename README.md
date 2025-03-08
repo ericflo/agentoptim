@@ -164,11 +164,11 @@ AGENTOPTIM_LMSTUDIO_COMPAT=1 AGENTOPTIM_DEBUG=1 agentoptim
 
 Based on extensive testing, we've found that LM Studio has specific requirements:
 
-1. It doesn't support the `response_format` parameter (causes 400 errors)
-2. It ignores logprobs requests (always returns null)
+1. It requires a specific JSON schema format: `response_format.type` must be `json_schema` with a `json_schema.schema` object
+2. It ignores logprobs requests (always returns null) - we display "N/A" for these values
 3. It works best with system prompts for controlling output format
 
-The LM Studio compatibility mode (enabled by default) accommodates these requirements automatically.
+The LM Studio compatibility mode (enabled by default) handles these requirements automatically.
 
 ### Configuring Claude Code
 
