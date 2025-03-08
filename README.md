@@ -172,7 +172,9 @@ The LM Studio compatibility mode (enabled by default) handles these requirements
 
 ### Configuring Claude Code
 
-Configure Claude Code to use the AgentOptim MCP server:
+Configure Claude Code to use the AgentOptim MCP server with different LLM providers:
+
+#### LM Studio Configuration
 
 ```json
 {
@@ -190,6 +192,54 @@ Configure Claude Code to use the AgentOptim MCP server:
   }
 }
 ```
+
+#### OpenAI Configuration
+
+```json
+{
+  "mcpServers": {
+    "optim": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "OPENAI_API_KEY=your_openai_api_key_here agentoptim"
+      ],
+      "options": {
+        "judge_model": "gpt-4o-mini"
+      }
+    }
+  }
+}
+```
+
+#### Anthropic Configuration
+
+```json
+{
+  "mcpServers": {
+    "optim": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "ANTHROPIC_API_KEY=your_anthropic_api_key_here agentoptim"
+      ],
+      "options": {
+        "judge_model": "claude-3-sonnet-20240229"
+      }
+    }
+  }
+}
+```
+
+### Understanding Model Selection
+
+AgentOptim selects the model to use for evaluations according to this priority:
+
+1. If a `model` parameter is explicitly provided in the `run_evalset_tool` call, this takes highest precedence
+2. If no model parameter is provided, the `judge_model` from client options (shown in the configs above) is used
+3. If neither is specified, the default model `meta-llama-3.1-8b-instruct` is used
+
+This allows Claude to send the client name (like "optim") as the model parameter, which will be ignored in favor of the configured judge_model.
 
 ## Additional Resources
 
