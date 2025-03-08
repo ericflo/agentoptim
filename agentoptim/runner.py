@@ -25,18 +25,18 @@ logger = logging.getLogger(__name__)
 
 # Check for LM Studio compatibility mode
 # Our testing showed LM Studio requires special handling
-# 1. No response_format parameter (causes 400 error)
-# 2. No logprobs support (always returns null)
-# 3. System prompts work well and help control the output format
+# 1. Special response_format schema structure
+# 2. System prompts work well and help control the output format
+# 3. Be explicit about expected JSON formatting
 LMSTUDIO_COMPAT = os.environ.get("AGENTOPTIM_LMSTUDIO_COMPAT", "1") == "1"  # Enable by default
 DEBUG_MODE = os.environ.get("AGENTOPTIM_DEBUG", "0") == "1"
 
 # Log compatibility mode
 if LMSTUDIO_COMPAT:
     logger.info("LM Studio compatibility mode is ENABLED")
-    logger.info("* response_format parameter disabled")
-    logger.info("* logprobs expected to be null")
+    logger.info("* Using special response_format structure for json_schema")
     logger.info("* Using system prompts for better control")
+    logger.info("* Using verbalized confidence scores")
 else:
     logger.info("LM Studio compatibility mode is DISABLED")
 
@@ -52,7 +52,6 @@ class EvalResult(BaseModel):
     
     question: str
     judgment: Optional[bool] = None
-    logprob: Optional[float] = None
     confidence: Optional[float] = None
     reasoning: Optional[str] = None
     error: Optional[str] = None
@@ -74,11 +73,10 @@ async def call_llm_api(
     temperature: float = 0.0,
     max_tokens: int = 50,
     logit_bias: Optional[Dict[int, float]] = None,
-    logprobs: bool = True,
     messages: Optional[List[Dict[str, str]]] = None
 ) -> Dict[str, Any]:
     """
-    Call the LLM API to get model response and token logprobs.
+    Call the LLM API to get structured model response with verbalized confidence.
     
     Args:
         prompt: The prompt to send to the model (legacy parameter)
@@ -86,12 +84,15 @@ async def call_llm_api(
         temperature: Sampling temperature
         max_tokens: Maximum tokens to generate
         logit_bias: Optional logit bias to apply
-        logprobs: Whether to return logprobs
         messages: List of message objects with role and content (preferred over prompt)
     
     Returns:
         Response from the LLM API
     """
+    # Initialize response_json so it's accessible in except block
+    response_json = {}
+    response = None
+    
     try:
         # Allow either messages or prompt parameter
         if messages is None:
@@ -105,43 +106,47 @@ async def call_llm_api(
             "max_tokens": max_tokens
         }
         
-        # Our testing shows that LM Studio ignores logprobs requests,
-        # but explicitly requesting them doesn't cause an error,
-        # so we'll include the parameter but be prepared for null results
-        if logprobs:
-            payload["logprobs"] = logprobs
+        # No longer using logprobs - we use verbalized confidence scores instead
+        # This provides better compatibility across different providers
         
-        # LM Studio requires response_format.type to be "json_schema" with specific format
+        # LM Studio requires a specific response_format with schema field
         if LMSTUDIO_COMPAT:
-            # Use the correct JSON schema format for LM Studio
+            logger.info("Using LM Studio-compatible JSON schema format")
+            # Use the CORRECT JSON schema format for LM Studio
+            # Following their API requirements exactly
             payload["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
                     "name": "judgment_response",
-                    "strict": "true",
                     "schema": {
                         "type": "object",
                         "properties": {
                             "reasoning": {
-                                "type": "string"
+                                "type": "string",
+                                "description": "Provide a clear, detailed explanation justifying your judgment. Include relevant evidence from the conversation and specific reasoning that led to your conclusion. This field should help others understand exactly why you determined the response was helpful or not helpful."
                             },
                             "judgment": {
-                                "type": "boolean"
+                                "type": "boolean", 
+                                "description": "Your yes/no judgment as a boolean value: true if the answer to the evaluation question is 'yes', false if the answer is 'no'. Must be a proper JSON boolean literal (true or false, not True/False)."
                             },
                             "confidence": {
                                 "type": "number",
                                 "minimum": 0,
-                                "maximum": 1
+                                "maximum": 1,
+                                "description": "A number between 0.0 and 1.0 indicating how confident you are in your judgment. Use 0.9-1.0 for very high confidence, 0.7-0.8 for moderate confidence, 0.5-0.6 for medium confidence, and below 0.5 for low confidence. Be well-calibrated - don't simply use 1.0 for everything."
                             }
                         },
                         "required": ["reasoning", "judgment", "confidence"],
-                        "additionalProperties": false
+                        "additionalProperties": False
                     }
                 }
             }
         else:
             # For other providers, use standard OpenAI format
-            payload["response_format"] = {"type": "json_object"}
+            logger.info("Using standard OpenAI JSON response format")
+            payload["response_format"] = {
+                "type": "json_object"
+            }
         
         if logit_bias:
             payload["logit_bias"] = logit_bias
@@ -163,10 +168,6 @@ async def call_llm_api(
                     logger.info(f"API call attempt {retry_count+1}/{max_retries}")
                     if retry_count > 0:
                         # On retry, simplify the payload
-                        if "logprobs" in payload:
-                            del payload["logprobs"]
-                            logger.info("Retry: Removed logprobs parameter")
-                        
                         # Increase max tokens on retries in case we're hitting length limits
                         payload["max_tokens"] = max_tokens * (retry_count + 1)
                         logger.info(f"Retry: Increased max_tokens to {payload['max_tokens']}")
@@ -222,14 +223,8 @@ async def call_llm_api(
             if "choices" in response_json and response_json["choices"]:
                 choice = response_json["choices"][0]
                 
-                # Based on our testing, LM Studio NEVER returns logprobs even when requested
-            # So we'll just handle the null case directly without trying to synthesize values
-            if "logprobs" not in choice or choice["logprobs"] is None:
-                logger.info("LM Studio returned null logprobs as expected from our testing")
-                
-                # Leave logprobs as null - don't try to synthesize anymore
-                choice["logprobs"] = None
-                
+                # No longer using or expecting logprobs
+                # We use verbalized confidence scores for all models including LM Studio
                 # For debugging only - analyze content to see what the model likely determined
                 content = ""
                 if "message" in choice and "content" in choice["message"]:
@@ -237,30 +232,7 @@ async def call_llm_api(
                 elif "text" in choice:
                     content = choice["text"].lower()
                     
-                is_yes = any(x in content for x in ["yes", "true", "correct", "agree", "appropriate", "clear"]) 
-                is_no = any(x in content for x in ["no", "false", "incorrect", "disagree", "inappropriate", "unclear"])
-                
-                if is_yes:
-                    logger.info("Detected 'yes' in response content")
-                elif is_no:
-                    logger.info("Detected 'no' in response content")
-            elif isinstance(choice["logprobs"], dict) and "content" not in choice["logprobs"]:
-                # Some LLM providers use different logprobs structure
-                # This is unlikely for LM Studio but we'll keep the code for other providers
-                logger.info("Converting non-standard logprobs format")
-                
-                # Convert whatever format to content format
-                top_logprobs = choice["logprobs"].get("top_logprobs", [])
-                if top_logprobs and isinstance(top_logprobs, list):
-                    choice["logprobs"] = {
-                        "content": [
-                            {"token": str(item.get("token", "1")), 
-                             "logprob": item.get("logprob", -0.1)}
-                            for item in top_logprobs[:5]  # Take up to 5 top tokens
-                        ]
-                    }
-                
-                # If LM Studio is using text field instead of message
+                # If LM Studio is using text field instead of message, convert it
                 if "text" in choice and "message" not in choice:
                     logger.info("Converting LM Studio 'text' field to 'message' format")
                     choice["message"] = {
@@ -272,16 +244,93 @@ async def call_llm_api(
     
     except Exception as e:
         # Special handling for common errors
-        if isinstance(e, NameError) and any(name in str(e) for name in ["true", "false", "True", "False"]):
+        error_str = str(e)
+        if isinstance(e, NameError) and any(name in error_str for name in ["true", "false", "True", "False"]):
             # This is common when the LLM returns literals like 'true' or 'false' in the response
-            error_msg = f"JSON parsing error: {str(e)}. The model may be using unquoted true/false values."
+            error_msg = f"JSON parsing error: {error_str}. The model is using unquoted JSON literals."
             logger.error(error_msg)
-            # Try to convert Python literals to JSON literals in the exception traceback
-            return {"error": "Error with JSON boolean values. Use the 'true' and 'false' JSON literals, not Python booleans."}
+            
+            # Extract the actual content that's causing the issue
+            model_content = "unknown"
+            if "choices" in response_json and response_json["choices"]:
+                choice = response_json["choices"][0]
+                if "message" in choice and "content" in choice["message"]:
+                    model_content = choice["message"]["content"]
+                elif "text" in choice:
+                    model_content = choice["text"]
+            
+            # Try to fix the response directly by replacing unquoted literals
+            try:
+                if "false" in error_str:
+                    fixed_content = model_content.replace("false", "false")  # This is a no-op but marks it as handled
+                    logger.info("Trying to fix unquoted 'false' in model response")
+                    # Parse the model's output as Python code and convert to JSON
+                    import ast
+                    # Replace all true/false literals with True/False
+                    python_fixed = model_content.replace("true", "True").replace("false", "False")
+                    try:
+                        # Parse as Python dict literal
+                        parsed = ast.literal_eval(python_fixed)
+                        # Process the parsed result
+                        if isinstance(parsed, dict):
+                            if "judgment" in parsed:
+                                if parsed["judgment"] in [True, False, 0, 1]:
+                                    return {
+                                        "choices": [
+                                            {
+                                                "message": {
+                                                    "content": json.dumps({
+                                                        "reasoning": parsed.get("reasoning", "No reasoning provided"),
+                                                        "judgment": bool(parsed["judgment"]),
+                                                        "confidence": float(parsed.get("confidence", 0.5))
+                                                    })
+                                                }
+                                            }
+                                        ]
+                                    }
+                    except (SyntaxError, ValueError) as syn_err:
+                        logger.warning(f"Failed to fix JSON with Python literal_eval: {syn_err}")
+            except Exception as fix_err:
+                logger.warning(f"Failed to fix JSON response: {fix_err}")
+            
+            # Comprehensive, helpful error message with detailed instructions
+            return {
+                "error": "JSON parsing error: The model response contains unquoted JSON boolean literals or invalid syntax.",
+                "details": "This error typically occurs when the model outputs unquoted 'true' or 'false' values or uses Python-style 'True/False' instead of JSON literals. The response must be valid JSON with proper boolean literals.",
+                "troubleshooting_steps": [
+                    "Check that your template emphasizes using proper JSON format",
+                    "Add a system message that explicitly requires JSON boolean literals",
+                    "Ensure the model is properly handling the json_schema response format",
+                    "Try a different model that has better JSON formatting capabilities",
+                    "Try using a more explicit example in your prompt"
+                ],
+                "model_content": model_content,  # Include for debugging
+                "raw_error": str(e)  # Include the actual error for debugging
+            }
         else:
-            # Handle other exceptions
-            logger.error(f"Error calling LLM API: {str(e)}")
-            return {"error": f"Error calling LLM API: {str(e)}"}
+            # Handle other exceptions with detailed error information
+            error_message = str(e)
+            error_type = type(e).__name__
+            logger.error(f"Error calling LLM API: {error_type}: {error_message}")
+            
+            # Create a detailed error response with troubleshooting suggestions
+            return {
+                "error": f"LLM API Error: {error_type}",
+                "details": error_message,
+                "troubleshooting_steps": [
+                    "Check that the LLM server is running and accessible",
+                    "Verify the model name is correct and available in your LLM server",
+                    "Ensure your API_BASE environment variable points to the correct endpoint",
+                    "Check for API rate limits or quota issues",
+                    "Try with a shorter prompt if hitting context length limits",
+                    "Inspect the server logs for more information"
+                ],
+                "request_info": {
+                    "model": model,
+                    "api_base": API_BASE,
+                    "timeout": DEFAULT_TIMEOUT
+                }
+            }
 
 
 async def evaluate_question(
@@ -321,60 +370,75 @@ async def evaluate_question(
             # Based on the verbalized-uq research, this format is shown to be more effective
             rendered_prompt += """
 
-IMPORTANT: Provide your reasoning, judgment, and confidence for this question.
-Respond ONLY in the required JSON format below.
+IMPORTANT INSTRUCTIONS FOR EVALUATION:
 
-Your response must include:
-1. "reasoning": A brief explanation of your reasoning
-2. "judgment": true for Yes, false for No (use the JSON literals true/false, not strings)
-3. "confidence": Probability (0.0 to 1.0) that your judgment is correct
+Think carefully about the question and analyze the conversation thoroughly before answering. Respond ONLY in the valid JSON format specified below.
 
-NOTE: The judgment field must use JSON boolean literals (true or false), not Python Boolean (True/False) or strings.
+Your JSON response MUST include these THREE fields:
 
-For example:
-```
+1. "reasoning": (REQUIRED)
+   • Provide a thorough explanation (3-5 sentences)
+   • Include specific evidence from the conversation
+   • Explain your evaluation criteria and thought process
+   • Be objective and focus on observable elements in the response
+
+2. "judgment": (REQUIRED)
+   • Must be a boolean value: true for Yes, false for No
+   • Must use JSON boolean literals (true/false)
+   • Do NOT use Python booleans (True/False)
+   • Do NOT use strings (like "true"/"false")
+   • This field must be JSON parseable
+
+3. "confidence": (REQUIRED)
+   • A number between 0.0 and 1.0
+   • Indicates how certain you are in your judgment
+   • Be well-calibrated - don't just use 1.0 for everything
+   • Use this scale:
+     - 0.95-1.0: Virtually certain (overwhelming evidence)
+     - 0.85-0.94: Very confident (strong evidence)
+     - 0.70-0.84: Moderately confident (good evidence)
+     - 0.50-0.69: Somewhat confident (mixed evidence)
+     - Below 0.5: Limited confidence (weak evidence)
+
+EXAMPLE OF CORRECT FORMAT:
+```json
 {
-  "reasoning": "Based on the conversation, I can see that the assistant directly answered the question with accurate information.",
+  "reasoning": "The assistant's response directly addresses the user's question by providing specific instructions on how to reset their password. The response is clear, concise, and gives the exact location of the 'Forgot Password' link, which is precisely what the user needs to solve their problem. The information provided would allow the user to accomplish their task without further assistance.",
   "judgment": true,
-  "confidence": 0.85
+  "confidence": 0.92
 }
 ```
 
-For the confidence field, estimate your confidence as accurately as possible:
-- 1.0 = perfect certainty (100% confident)
-- 0.9 = very high confidence (90% confident)
-- 0.7 = moderately confident (70% confident)
-- 0.5 = equally likely to be right or wrong (50% confident)
-- 0.3 = not very confident (30% confident)
-- 0.1 = highly uncertain (10% confident)
-
-Your confidence should reflect how certain you are about your judgment based on the evidence provided."""
+CRITICAL: Your response MUST be valid JSON that can be parsed. Incorrect formats will cause errors."""
             
             # LM Studio needs simpler prompts sometimes
             if len(rendered_prompt) > 2000:
                 # Shorten if necessary
                 logger.info("Prompt is very long, shortening for LM Studio compatibility")
-                rendered_prompt = f"""Please evaluate the following question:
+                rendered_prompt = f"""Please evaluate the following question about a conversation:
 
-Question: {question}
+QUESTION: {question}
 
-Provide your reasoning, judgment (Yes/No), and confidence (0.0 to 1.0) in JSON format.
-ALL THREE FIELDS ARE REQUIRED.
+Analyze the question carefully and provide your evaluation in JSON format with these THREE REQUIRED fields:
 
-Example response:
+1. "reasoning": A detailed explanation of your reasoning (3-5 sentences)
+2. "judgment": true for Yes, false for No (must be JSON boolean: true/false)
+3. "confidence": Number from 0.0 to 1.0 showing your confidence level
+
+Example of CORRECT format:
+```json
 {{
-  "reasoning": "Based on the evidence in the conversation, this appears to be correct",
+  "reasoning": "The assistant's response directly addresses the user's question by providing specific instructions. The information is clear, accurate, and would enable the user to successfully complete their task without further assistance.",
   "judgment": true,
-  "confidence": 0.85
+  "confidence": 0.88
 }}
+```
 
-IMPORTANT: Make sure to use proper JSON format with "true" and "false" (not True/False) for the judgment field.
-
-Consider carefully and explain your reasoning before providing your judgment."""
+CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or strings) for the judgment field to avoid errors. Include detailed reasoning with specific evidence."""
                 
             # Add system prompt for better control - our testing shows system prompts work well
             messages = [
-                {"role": "system", "content": "You are an evaluation assistant that provides objective judgments in JSON format. Your responses MUST include THREE required fields in this order: 1) a 'reasoning' field explaining your thought process, 2) a boolean 'judgment' field using JSON literals (true/false, not True/False), and 3) a 'confidence' field (0.0-1.0) indicating the probability your judgment is correct. Provide well-calibrated confidence scores and always use proper JSON syntax with lowercase true/false for boolean values."},
+                {"role": "system", "content": "You are an expert evaluation assistant that provides detailed, thoughtful judgments in valid JSON format. You analyze conversations and answer specific evaluation questions with nuanced reasoning.\n\nYour responses MUST include all THREE of these required fields:\n\n1) 'reasoning': A thorough explanation (3-5 sentences) that clearly justifies your judgment with specific evidence from the conversation. Explain your thought process and the criteria you used.\n\n2) 'judgment': A boolean true/false value (using proper JSON literals: true or false, NOT True/False or strings). Use true for 'yes' answers and false for 'no' answers to the evaluation question.\n\n3) 'confidence': A well-calibrated number between 0.0 and 1.0 indicating your confidence level. Use 0.9+ for near certainty, 0.7-0.8 for strong confidence, 0.5-0.6 for moderate confidence, and below 0.5 for low confidence. Avoid overconfidence.\n\nCRITICAL: Always use valid JSON syntax with proper JSON boolean literals (true/false). Do not use Python style True/False or quoted strings like \"true\"/\"false\". The response MUST be parseable as JSON. NEVER return a response that is missing any of the three required fields.\n\nFORMAT EXAMPLE:\n```json\n{\n  \"reasoning\": \"The response clearly addresses the user's concern by providing step-by-step instructions to solve their problem. The tone is professional yet friendly, and the information is accurate and concise.\",\n  \"judgment\": true,\n  \"confidence\": 0.85\n}\n```"},
                 {"role": "user", "content": rendered_prompt}
             ]
         else:
@@ -386,8 +450,7 @@ Consider carefully and explain your reasoning before providing your judgment."""
         # Call the LLM API with proper message format
         response = await call_llm_api(
             messages=messages,  # Now passing prepared messages with system prompt for LM Studio
-            model=model,
-            logprobs=True
+            model=model
         )
         
         # Check for errors
@@ -397,7 +460,7 @@ Consider carefully and explain your reasoning before providing your judgment."""
                 error=response["error"]
             )
         
-        # Extract the response and logprobs
+        # Extract the response and parse the results
         try:
             # Check if the response has the expected structure
             if "choices" not in response or not response["choices"]:
@@ -430,8 +493,8 @@ Consider carefully and explain your reasoning before providing your judgment."""
                     )
                 content = message["content"].strip()
             
-            # Default judgment to True for simplified testing if needed
-            judgment = True
+            # Default judgment to None (will be populated by parsing)
+            judgment = None
             confidence = None
             reasoning = None
             
@@ -460,23 +523,13 @@ Consider carefully and explain your reasoning before providing your judgment."""
                                                   .replace("'", '"')  # Replace any single quotes with double quotes
                                                   .replace("None", "null"))
                         
-                        # Create safe eval environment for handling JSON booleans
-                        safe_globals = {"null": None, "true": True, "false": False}
-                        
                         # Try to load the sanitized content
                         try:
                             judgment_obj = json.loads(sanitized_content)
                         except (json.JSONDecodeError, NameError):
-                            logger.warning(f"Trying to parse non-standard JSON: {sanitized_content}")
-                            # As a last resort, try to use safe eval with limited globals
-                            try:
-                                # Use safe eval with minimal globals
-                                judgment_obj = eval(sanitized_content, {"__builtins__": {}}, safe_globals)
-                            except Exception as e:
-                                # If eval fails, use regex to extract relevant parts
-                                logger.warning(f"Safe eval failed, will use regex: {str(e)}")
-                                # Re-raise to trigger the regex fallback
-                                raise json.JSONDecodeError("Cannot parse content", content, 0)
+                            logger.warning(f"JSON parsing failed. Using regex fallback for: {sanitized_content}")
+                            # Re-raise to trigger the regex fallback
+                            raise json.JSONDecodeError("Cannot parse content", content, 0)
                     
                     # Check for judgment field with proper boolean handling
                     if isinstance(judgment_obj, dict) and "judgment" in judgment_obj:
@@ -495,28 +548,42 @@ Consider carefully and explain your reasoning before providing your judgment."""
                                     confidence = min(max(float(conf_val), 0.0), 1.0)  # Clamp to 0-1
                             except (ValueError, TypeError):
                                 logger.warning(f"Invalid confidence value: {judgment_obj.get('confidence')}")
+                        else:
+                            # If confidence is missing, provide a default of 0.7
+                            logger.warning("Confidence value missing from model response. Using default value of 0.7")
+                            confidence = 0.7
                         
                         # Get reasoning if available
                         if "reasoning" in judgment_obj and isinstance(judgment_obj["reasoning"], str):
                             reasoning = judgment_obj["reasoning"]
-                        
-                        # Handle boolean judgment value directly
-                        if isinstance(judgment_obj["judgment"], bool):
-                            judgment = judgment_obj["judgment"]
-                        # Handle string representations of boolean
-                        elif isinstance(judgment_obj["judgment"], str):
-                            judgment_str = judgment_obj["judgment"].lower()
-                            if judgment_str in ["true", "yes", "1"]:
-                                judgment = True
-                            elif judgment_str in ["false", "no", "0"]:
-                                judgment = False
-                            else:
-                                judgment = bool(judgment_obj["judgment"])
-                        # Handle numeric values (0 = False, anything else = True)
-                        elif isinstance(judgment_obj["judgment"], (int, float)):
-                            judgment = bool(judgment_obj["judgment"])
                         else:
-                            judgment = False
+                            # If reasoning is missing, provide a default explanation
+                            logger.warning("Reasoning missing from model response. Using default reasoning")
+                            reasoning = "No reasoning provided by evaluation model"
+                        
+                        try:
+                            # Handle boolean judgment value directly
+                            if isinstance(judgment_obj["judgment"], bool):
+                                judgment = judgment_obj["judgment"]
+                            # Handle string representations of boolean
+                            elif isinstance(judgment_obj["judgment"], str):
+                                judgment_str = judgment_obj["judgment"].lower()
+                                if judgment_str in ["true", "yes", "1"]:
+                                    judgment = True
+                                elif judgment_str in ["false", "no", "0"]:
+                                    judgment = False
+                                else:
+                                    judgment = bool(judgment_obj["judgment"])
+                            # Handle numeric values (0 = False, anything else = True)
+                            elif isinstance(judgment_obj["judgment"], (int, float)):
+                                judgment = bool(judgment_obj["judgment"])
+                            else:
+                                judgment = False
+                                
+                            logger.info(f"Parsed judgment value: {judgment} from {judgment_obj['judgment']}")
+                        except Exception as e:
+                            logger.warning(f"Error parsing judgment value: {e}, using default True")
+                            judgment = True
                     # If judgment field is missing but it's a simple boolean
                     elif isinstance(judgment_obj, bool):
                         judgment = judgment_obj
@@ -577,82 +644,23 @@ Consider carefully and explain your reasoning before providing your judgment."""
                            "1" in lower_content or 
                            "correct" in lower_content)
             
-            # Get logprobs for judgment tokens
-            logprob = 0.0  # Default value
+            # Use verbalized confidence directly from the model
+            # This is more consistent across different providers and models
             
-            # Extract logprobs - handle different formats and LM Studio specifics
-            if "logprobs" in choice and choice["logprobs"] is not None:
-                logprobs_data = choice.get("logprobs", {})
-                
-                # Handle different logprobs formats
-                if isinstance(logprobs_data, dict):
-                    content_tokens = logprobs_data.get("content", [])
-                    
-                    # Find tokens that indicate judgment
-                    judgment_token_probs = []
-                    
-                    for token_data in content_tokens:
-                        if not isinstance(token_data, dict):
-                            continue
-                        
-                        token = token_data.get("token", "").strip().lower()
-                        # Look for yes/no/true/false tokens in various formats
-                        if token in ["0", "1", "\"0\"", "\"1\"", "0,", "1,", "yes", "no", "true", "false", 
-                                    "\"yes\"", "\"no\"", "\"true\"", "\"false\""]:
-                            judgment_token_probs.append({
-                                "token": token,
-                                "logprob": token_data.get("logprob", -0.1)
-                            })
-                    
-                    # Get the highest logprob
-                    if judgment_token_probs:
-                        highest_prob_token = max(judgment_token_probs, key=lambda x: x["logprob"])
-                        logprob = highest_prob_token["logprob"]
-                        logger.info(f"Found judgment token: {highest_prob_token['token']} with logprob {logprob}")
-                    else:
-                        # If no specific judgment tokens found, use the most likely token as indicator
-                        if content_tokens:
-                            # Sort by logprob, highest first
-                            sorted_tokens = sorted(content_tokens, 
-                                                key=lambda x: x.get("logprob", -100), 
-                                                reverse=True)
-                            if sorted_tokens:
-                                best_token = sorted_tokens[0]
-                                logprob = best_token.get("logprob", -0.5)
-                                logger.info(f"Using best token as logprob indicator: {best_token.get('token')} with logprob {logprob}")
-                elif isinstance(logprobs_data, (int, float)):
-                    # Handle simple numeric logprob
-                    logprob = float(logprobs_data)
-            else:
-                # Don't synthesize logprobs - just set to None
-                logger.info(f"No logprobs data available for model {model}")
-                logprob = None
+            # Log what we found 
+            logger.info(f"Evaluation result: {judgment} (confidence: {confidence})")
             
-            logger.info(f"Evaluation result: {judgment} (logprob: {logprob})")
+            # Use the verbalized confidence directly
+            final_confidence = confidence
             
-            # If we got a confidence from the model but no logprob, use the verbalized confidence
-            final_confidence = None
-            
-            if logprob is not None:
-                # If we have logprobs, convert to confidence score (0-1)
-                # Logprobs are typically negative values, so we use exp to convert to probability
-                # This gives us the probability of the token
-                if logprob < 0:
-                    final_confidence = min(max(float(math.exp(logprob)), 0.0), 1.0)
-                else:
-                    # Handle positive logprobs (unlikely but possible)
-                    final_confidence = min(max(float(logprob), 0.0), 1.0)
-                
-                logger.info(f"Using logprob-derived confidence: {final_confidence:.4f} from logprob {logprob:.4f}")
-            elif confidence is not None:
-                # If no logprobs but we have a verbalized confidence, use that
-                final_confidence = confidence
+            if final_confidence is not None:
                 logger.info(f"Using verbalized confidence: {final_confidence:.4f}")
+            else:
+                logger.info("No confidence value provided by model")
             
             return EvalResult(
                 question=question,
                 judgment=judgment,
-                logprob=logprob,
                 confidence=final_confidence,
                 reasoning=reasoning
             )
@@ -784,6 +792,10 @@ async def run_evalset(
         
         if error_count > 0:
             formatted_results.append(f"- Errors: {error_count} questions failed to evaluate")
+            # Add more detailed help message if boolean errors
+            boolean_errors = any("JSON boolean" in (r.error or "") for r in eval_results)
+            if boolean_errors:
+                formatted_results.append("  ⚠️ There were issues with JSON format. Try running again with different prompt.")
         
         formatted_results.append(f"- Yes responses: {yes_count} ({round(yes_percentage, 2)}%)")
         formatted_results.append(f"- No responses: {no_count} ({round(100 - yes_percentage, 2)}%)")
@@ -807,15 +819,13 @@ async def run_evalset(
             else:
                 judgment_text = "Yes" if result.judgment else "No"
                 formatted_results.append(f"{i}. **Q**: {result.question}")
-                # Format the display based on available confidence/logprob information
+                # Format the display based on available confidence information
+                # Show confidence if available
                 confidence_display = ""
                 
                 # If we have a confidence value, display it
                 if result.confidence is not None:
                     confidence_display = f"(confidence: {result.confidence:.2f})"
-                # Otherwise if we have a logprob, show it as a fallback
-                elif result.logprob is not None:
-                    confidence_display = f"(logprob: {result.logprob:.4f})"
                 else:
                     confidence_display = "(confidence: N/A)"
                 

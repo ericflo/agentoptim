@@ -5,6 +5,7 @@ import asyncio
 import unittest
 from unittest import mock
 import json
+import pytest
 
 from agentoptim.evalset import EvalSet
 from agentoptim.runner import (
@@ -32,7 +33,7 @@ class TestRunner(unittest.TestCase):
             {{ eval_question }}
             
             Return a JSON object with the following format:
-            {"judgment": 1} for yes or {"judgment": 0} for no.
+            {"judgment": true} for yes or {"judgment": false} for no.
             """,
             questions=["Is the response helpful?", "Is the response clear?"],
             description="Test description"
@@ -49,19 +50,7 @@ class TestRunner(unittest.TestCase):
             "choices": [
                 {
                     "message": {
-                        "content": '{"judgment": 1}'
-                    },
-                    "logprobs": {
-                        "content": [
-                            {"token": "{", "logprob": -0.1},
-                            {"token": "\"", "logprob": -0.2},
-                            {"token": "judgment", "logprob": -0.3},
-                            {"token": "\"", "logprob": -0.2},
-                            {"token": ":", "logprob": -0.1},
-                            {"token": " ", "logprob": -0.1},
-                            {"token": "1", "logprob": -0.5},
-                            {"token": "}", "logprob": -0.1}
-                        ]
+                        "content": '{"reasoning": "The response provides clear instructions on how to reset a password, including going to the login page, clicking on Forgot Password, and checking spam folders if needed.", "judgment": true, "confidence": 0.85}'
                     }
                 }
             ]
@@ -177,7 +166,7 @@ class TestRunner(unittest.TestCase):
         self.assertIsInstance(result, EvalResult)
         self.assertEqual(result.question, "Is the response helpful?")
         self.assertEqual(result.judgment, True)  # Should be True from our mock
-        self.assertIsNotNone(result.logprob)
+        self.assertIsNotNone(result.confidence)
         self.assertIsNone(result.error)
     
     @mock.patch('agentoptim.runner.call_llm_api')
@@ -198,9 +187,16 @@ class TestRunner(unittest.TestCase):
         self.assertIsInstance(result, EvalResult)
         self.assertEqual(result.question, "Is the response helpful?")
         self.assertIsNone(result.judgment)
-        self.assertIsNone(result.logprob)
+        self.assertIsNone(result.confidence)
         self.assertIsNotNone(result.error)
         self.assertIn("API connection error", result.error)
+    
+    # Using unittest approach for consistency with other tests
+    @mock.patch('agentoptim.runner.call_llm_api')
+    async def test_evaluate_question_missing_fields(self, mock_call_llm_api):
+        """Test evaluating a question with missing confidence and reasoning fields."""
+        # Skipping this test in unittest mode - we'll add a pytest-specific test below
+        pass
     
     def test_eval_result_model(self):
         """Test the EvalResult model functionality."""
@@ -208,13 +204,15 @@ class TestRunner(unittest.TestCase):
         result = EvalResult(
             question="Is the response helpful?",
             judgment=True,
-            logprob=-0.5
+            confidence=0.85,
+            reasoning="The response provides clear instructions."
         )
         
         # Check basic properties
         self.assertEqual(result.question, "Is the response helpful?")
         self.assertEqual(result.judgment, True)
-        self.assertEqual(result.logprob, -0.5)
+        self.assertEqual(result.confidence, 0.85)
+        self.assertEqual(result.reasoning, "The response provides clear instructions.")
         self.assertIsNone(result.error)
         
         # Create an error result
@@ -226,15 +224,16 @@ class TestRunner(unittest.TestCase):
         # Check error properties
         self.assertEqual(error_result.question, "Is the response helpful?")
         self.assertIsNone(error_result.judgment)
-        self.assertIsNone(error_result.logprob)
+        self.assertIsNone(error_result.confidence)
+        self.assertIsNone(error_result.reasoning)
         self.assertEqual(error_result.error, "API error")
     
     def test_eval_results_model(self):
         """Test the EvalResults model functionality."""
         # Create some EvalResults
         results = [
-            EvalResult(question="Q1", judgment=True, logprob=-0.5),
-            EvalResult(question="Q2", judgment=False, logprob=-0.7),
+            EvalResult(question="Q1", judgment=True, confidence=0.85, reasoning="Reasoning 1"),
+            EvalResult(question="Q2", judgment=False, confidence=0.75, reasoning="Reasoning 2"),
             EvalResult(question="Q3", error="API error")
         ]
         
@@ -284,6 +283,62 @@ TestRunner.test_run_evalset_missing_evalset = async_test(TestRunner.test_run_eva
 TestRunner.test_run_evalset_invalid_conversation = async_test(TestRunner.test_run_evalset_invalid_conversation)
 TestRunner.test_evaluate_question_success = async_test(TestRunner.test_evaluate_question_success)
 TestRunner.test_evaluate_question_api_error = async_test(TestRunner.test_evaluate_question_api_error)
+TestRunner.test_evaluate_question_missing_fields = async_test(TestRunner.test_evaluate_question_missing_fields)
+
+
+# Add a standalone pytest test for evaluation with missing fields
+@pytest.mark.asyncio
+async def test_evaluate_question_missing_fields_standalone():
+    """Test handling of responses with missing confidence and reasoning fields."""
+    # Create a test conversation
+    conversation = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "How do I reset my password?"},
+        {"role": "assistant", "content": "To reset your password, go to the login page."}
+    ]
+    
+    # Template similar to what's used in the TestRunner
+    template = """
+    Given this conversation:
+    {{ conversation }}
+    
+    Please answer the following yes/no question about the final assistant response:
+    {{ eval_question }}
+    
+    Return a JSON object with the following format:
+    {"judgment": true} for yes or {"judgment": false} for no.
+    """
+    
+    # Mock response with only judgment field
+    mock_response = {
+        "choices": [
+            {
+                "message": {
+                    "content": '{"judgment": true}'
+                }
+            }
+        ]
+    }
+    
+    # Patch the API call
+    with mock.patch('agentoptim.runner.call_llm_api') as mock_call_llm_api:
+        mock_call_llm_api.return_value = mock_response
+        
+        # Evaluate a question
+        result = await evaluate_question(
+            conversation=conversation,
+            question="Is the response helpful?",
+            template=template,
+            model="test-model"
+        )
+        
+        # Check result structure - should use default values
+        assert isinstance(result, EvalResult)
+        assert result.question == "Is the response helpful?"
+        assert result.judgment is True
+        assert result.confidence == 0.7  # Default confidence
+        assert result.reasoning == "No reasoning provided by evaluation model"  # Default reasoning
+        assert result.error is None
 
 
 if __name__ == "__main__":
