@@ -31,7 +31,8 @@ async def main():
         {{ eval_question }}
         
         Return a JSON object with the following format:
-        {"judgment": 1} for yes or {"judgment": 0} for no.
+        {"reasoning": "Your reasoning here", "judgment": true, "confidence": 0.9} for yes
+        or {"reasoning": "Your reasoning here", "judgment": false, "confidence": 0.7} for no.
         """,
         questions=[
             "Is the response helpful for the user's needs?",
@@ -48,6 +49,13 @@ async def main():
     # Extract the EvalSet ID
     evalset_id = evalset_result.get("evalset", {}).get("id")
     print(f"EvalSet created with ID: {evalset_id}")
+    
+    if not evalset_id:
+        # If EvalSet creation failed, print error and exit
+        print("Error: Failed to create EvalSet. Please check your configuration.")
+        print(f"Error details: {evalset_result.get('error', 'Unknown error')}")
+        return
+        
     print(f"EvalSet contains {len(evalset_result.get('evalset', {}).get('questions', []))} evaluation questions")
     
     # Step 2: Define conversations to evaluate
@@ -124,9 +132,11 @@ async def main():
         for item in results.get("results", []):
             judgment = "✅ Yes" if item.get("judgment") else "❌ No"
             question = item.get("question")
-            logprob = item.get("logprob", 0)
-            confidence = abs(logprob)  # Higher absolute value = higher confidence
+            confidence = item.get("confidence", 0)
+            reasoning = item.get("reasoning", "")
             print(f"  {judgment} | {question} (confidence: {confidence:.3f})")
+            if reasoning:
+                print(f"    Reasoning: {reasoning[:100]}{'...' if len(reasoning) > 100 else ''}")
     
     # Print results for each response
     print_results("Good", good_results)

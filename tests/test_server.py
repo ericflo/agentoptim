@@ -16,7 +16,7 @@ from agentoptim.server import (
 async def test_manage_evalset_tool():
     """Test the manage_evalset_tool endpoint."""
     with patch('agentoptim.server.manage_evalset') as mock_manage:
-        mock_manage.return_value = "Success"
+        mock_manage.return_value = {"status": "success", "message": "Success"}
         
         result = await manage_evalset_tool(
             action="list"
@@ -31,7 +31,7 @@ async def test_manage_evalset_tool():
             description=None
         )
         
-        assert result == "Success"
+        assert result == {"status": "success", "message": "Success"}
 
 
 @pytest.mark.asyncio
@@ -44,8 +44,9 @@ async def test_manage_evalset_tool_error():
             action="invalid"
         )
         
-        assert result.startswith("Error:")
-        assert "Invalid input" in result
+        assert isinstance(result, dict)
+        assert "error" in result
+        assert "Invalid input" in result["error"]
 
 
 @pytest.mark.asyncio
@@ -74,7 +75,9 @@ async def test_run_evalset_tool_error():
             conversation=[]
         )
         
-        assert result.startswith("Error:")
+        assert isinstance(result, dict)
+        assert "error" in result
+        assert "Invalid input" in result["error"]
 
 
 def test_main():

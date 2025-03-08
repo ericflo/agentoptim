@@ -1,17 +1,29 @@
-"""Tests for the compatibility layer."""
+"""Tests for the compatibility layer.
+
+Note: The compat module is intentionally deprecated and these tests will be removed in v2.1.0.
+They are kept to ensure backwards compatibility during the transition period.
+"""
 
 import os
 import asyncio
 import unittest
 from unittest import mock
 import json
+import pytest
 
-from agentoptim.compat import (
-    convert_evaluation_to_evalset,
-    evaluation_to_evalset_id,
-    dataset_to_conversations,
-    experiment_results_to_evalset_results
-)
+# Mark all tests as intentionally using deprecated features
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
+
+# Suppress specific deprecation warnings for these imports
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    from agentoptim.compat import (
+        convert_evaluation_to_evalset,
+        evaluation_to_evalset_id,
+        dataset_to_conversations,
+        experiment_results_to_evalset_results
+    )
 
 from agentoptim.evalset import EvalSet, list_evalsets
 

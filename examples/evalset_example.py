@@ -34,7 +34,7 @@ async def main():
         {{ eval_question }}
         
         Return a JSON object with the following format:
-        {"judgment": 1} for yes or {"judgment": 0} for no.
+        {"judgment": true} for yes or {"judgment": false} for no.
         """,
         questions=[
             "Is the response helpful for the user's needs?",
