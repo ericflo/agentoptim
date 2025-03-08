@@ -6,28 +6,25 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from agentoptim.server import (
-    manage_evaluation_tool,
-    manage_dataset_tool,
-    manage_experiment_tool,
-    run_job_tool,
-    analyze_results_tool,
+    manage_evalset_tool,
+    run_evalset_tool,
     main
 )
 
 
 @pytest.mark.asyncio
-async def test_manage_evaluation_tool():
-    """Test the manage_evaluation_tool endpoint."""
-    with patch('agentoptim.server.manage_evaluation') as mock_manage:
+async def test_manage_evalset_tool():
+    """Test the manage_evalset_tool endpoint."""
+    with patch('agentoptim.server.manage_evalset') as mock_manage:
         mock_manage.return_value = "Success"
         
-        result = await manage_evaluation_tool(
+        result = await manage_evalset_tool(
             action="list"
         )
         
         mock_manage.assert_called_once_with(
             action="list",
-            evaluation_id=None,
+            evalset_id=None,
             name=None,
             template=None,
             questions=None,
@@ -38,12 +35,12 @@ async def test_manage_evaluation_tool():
 
 
 @pytest.mark.asyncio
-async def test_manage_evaluation_tool_error():
-    """Test the manage_evaluation_tool endpoint error handling."""
-    with patch('agentoptim.server.manage_evaluation') as mock_manage:
+async def test_manage_evalset_tool_error():
+    """Test the manage_evalset_tool endpoint error handling."""
+    with patch('agentoptim.server.manage_evalset') as mock_manage:
         mock_manage.side_effect = ValueError("Invalid input")
         
-        result = await manage_evaluation_tool(
+        result = await manage_evalset_tool(
             action="invalid"
         )
         
@@ -52,121 +49,29 @@ async def test_manage_evaluation_tool_error():
 
 
 @pytest.mark.asyncio
-async def test_manage_dataset_tool():
-    """Test the manage_dataset_tool endpoint."""
-    with patch('agentoptim.server.manage_dataset') as mock_manage:
-        mock_manage.return_value = "Success"
+async def test_run_evalset_tool():
+    """Test the run_evalset_tool endpoint."""
+    with patch('agentoptim.server.run_evalset') as mock_run:
+        mock_run.return_value = {"status": "success", "message": "Test success"}
         
-        result = await manage_dataset_tool(
-            action="list"
+        result = await run_evalset_tool(
+            evalset_id="test-id",
+            conversation=[{"role": "user", "content": "Hello"}]
         )
         
-        mock_manage.assert_called_once()
-        assert result == "Success"
+        mock_run.assert_called_once()
+        assert result == {"status": "success", "message": "Test success"}
 
 
 @pytest.mark.asyncio
-async def test_manage_dataset_tool_error():
-    """Test the manage_dataset_tool endpoint error handling."""
-    with patch('agentoptim.server.manage_dataset') as mock_manage:
-        mock_manage.side_effect = ValueError("Invalid input")
+async def test_run_evalset_tool_error():
+    """Test the run_evalset_tool endpoint error handling."""
+    with patch('agentoptim.server.run_evalset') as mock_run:
+        mock_run.side_effect = ValueError("Invalid input")
         
-        result = await manage_dataset_tool(
-            action="invalid"
-        )
-        
-        assert result.startswith("Error:")
-
-
-@pytest.mark.asyncio
-async def test_manage_experiment_tool():
-    """Test the manage_experiment_tool endpoint."""
-    with patch('agentoptim.server.manage_experiment') as mock_manage:
-        mock_manage.return_value = "Success"
-        
-        result = await manage_experiment_tool(
-            action="list"
-        )
-        
-        mock_manage.assert_called_once()
-        assert result == "Success"
-
-
-@pytest.mark.asyncio
-async def test_manage_experiment_tool_error():
-    """Test the manage_experiment_tool endpoint error handling."""
-    with patch('agentoptim.server.manage_experiment') as mock_manage:
-        mock_manage.side_effect = ValueError("Invalid input")
-        
-        result = await manage_experiment_tool(
-            action="invalid"
-        )
-        
-        assert result.startswith("Error:")
-
-
-@pytest.mark.asyncio
-async def test_run_job_tool():
-    """Test the run_job_tool endpoint."""
-    with patch('agentoptim.server.manage_job') as mock_manage:
-        mock_manage.return_value = "Success"
-        
-        # Test normal action
-        result = await run_job_tool(
-            action="list"
-        )
-        
-        mock_manage.assert_called_once()
-        assert result == "Success"
-        
-        # Reset mock
-        mock_manage.reset_mock()
-        
-        # Test run action
-        result = await run_job_tool(
-            action="run",
-            job_id="job_123"
-        )
-        
-        mock_manage.assert_called_once()
-        assert "started" in result
-
-
-@pytest.mark.asyncio
-async def test_run_job_tool_error():
-    """Test the run_job_tool endpoint error handling."""
-    with patch('agentoptim.server.manage_job') as mock_manage:
-        mock_manage.side_effect = ValueError("Invalid input")
-        
-        result = await run_job_tool(
-            action="invalid"
-        )
-        
-        assert result.startswith("Error:")
-
-
-@pytest.mark.asyncio
-async def test_analyze_results_tool():
-    """Test the analyze_results_tool endpoint."""
-    with patch('agentoptim.server.analyze_results') as mock_analyze:
-        mock_analyze.return_value = "Success"
-        
-        result = await analyze_results_tool(
-            action="list"
-        )
-        
-        mock_analyze.assert_called_once()
-        assert result == "Success"
-
-
-@pytest.mark.asyncio
-async def test_analyze_results_tool_error():
-    """Test the analyze_results_tool endpoint error handling."""
-    with patch('agentoptim.server.analyze_results') as mock_analyze:
-        mock_analyze.side_effect = ValueError("Invalid input")
-        
-        result = await analyze_results_tool(
-            action="invalid"
+        result = await run_evalset_tool(
+            evalset_id="test-id",
+            conversation=[]
         )
         
         assert result.startswith("Error:")
