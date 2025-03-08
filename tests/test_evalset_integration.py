@@ -23,12 +23,10 @@ from unittest.mock import patch, MagicMock
 # Import the new EvalSet architecture components
 from agentoptim.evalset import manage_evalset
 from agentoptim.runner import run_evalset
-from agentoptim.compat import (
-    convert_evaluation_to_evalset,
-    evaluation_to_evalset_id,
-    dataset_to_conversations
-)
 from agentoptim.utils import DATA_DIR
+
+# Note: We no longer use the compat module as it's deprecated in v2.1.0
+# We're using the new EvalSet architecture directly instead
 
 
 # Create a test directory to avoid interfering with real data
@@ -199,19 +197,7 @@ class TestEvalSetEvaluation:
             "choices": [
                 {
                     "message": {
-                        "content": '{"judgment": 1}'
-                    },
-                    "logprobs": {
-                        "content": [
-                            {"token": "{", "logprob": -0.1},
-                            {"token": "\"", "logprob": -0.2},
-                            {"token": "judgment", "logprob": -0.3},
-                            {"token": "\"", "logprob": -0.2},
-                            {"token": ":", "logprob": -0.1},
-                            {"token": " ", "logprob": -0.1},
-                            {"token": "1", "logprob": -0.5},
-                            {"token": "}", "logprob": -0.1}
-                        ]
+                        "content": '{"reasoning": "The response provides clear instructions on how to reset a password.", "judgment": true, "confidence": 0.85}'
                     }
                 }
             ]
@@ -254,7 +240,7 @@ class TestEvalSetEvaluation:
                 assert "question" in result
                 assert "judgment" in result
                 assert result["judgment"] is True  # All mocked to be yes
-                assert "logprob" in result
+                assert "confidence" in result
 
 
 class TestCompatibilityLayer:
@@ -327,19 +313,7 @@ class TestRealWorldScenarios:
             "choices": [
                 {
                     "message": {
-                        "content": '{"judgment": 1}'
-                    },
-                    "logprobs": {
-                        "content": [
-                            {"token": "{", "logprob": -0.1},
-                            {"token": "\"", "logprob": -0.2},
-                            {"token": "judgment", "logprob": -0.3},
-                            {"token": "\"", "logprob": -0.2},
-                            {"token": ":", "logprob": -0.1},
-                            {"token": " ", "logprob": -0.1},
-                            {"token": "1", "logprob": -0.5},
-                            {"token": "}", "logprob": -0.1}
-                        ]
+                        "content": '{"reasoning": "The response is very detailed and provides clear instructions.", "judgment": true, "confidence": 0.95}'
                     }
                 }
             ]
@@ -350,32 +324,68 @@ class TestRealWorldScenarios:
             "choices": [
                 {
                     "message": {
-                        "content": '{"judgment": 0}'
-                    },
-                    "logprobs": {
-                        "content": [
-                            {"token": "{", "logprob": -0.1},
-                            {"token": "\"", "logprob": -0.2},
-                            {"token": "judgment", "logprob": -0.3},
-                            {"token": "\"", "logprob": -0.2},
-                            {"token": ":", "logprob": -0.1},
-                            {"token": " ", "logprob": -0.1},
-                            {"token": "0", "logprob": -0.5},
-                            {"token": "}", "logprob": -0.1}
-                        ]
+                        "content": '{"reasoning": "The response is too brief and does not provide specific instructions.", "judgment": false, "confidence": 0.9}'
                     }
                 }
             ]
         }
         
-        # Use side_effect to return different responses based on input
+        # Since mocking isn't working as expected with side_effect, 
+        # let's modify our approach to use a counter
+
+        # Create a specific mock for each question and response type
+        good_mocks = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"reasoning": "The response is very detailed and provides clear instructions.", "judgment": true, "confidence": 0.95}'
+                        }
+                    }
+                ]
+            } for _ in range(4)  # One for each question
+        ]
+        
+        poor_mocks = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"reasoning": "The response is too brief and does not provide specific instructions.", "judgment": false, "confidence": 0.9}'
+                        }
+                    }
+                ]
+            } for _ in range(4)  # One for each question
+        ]
+        
+        # Track call counts for good and poor responses separately
+        good_call_count = 0
+        poor_call_count = 0
+        
         def mock_api_call(*args, **kwargs):
-            # Check if the prompt contains the poor response text
-            prompt = args[0] if args else kwargs.get('prompt', '')
-            if "Contact support" in prompt:
-                return poor_response_mock
+            nonlocal good_call_count, poor_call_count
+            
+            # Check the conversation text in the request
+            messages = kwargs.get('messages', [])
+            
+            # Extract the conversation part
+            conv_text = ""
+            for msg in messages:
+                if isinstance(msg, dict) and "conversation" in msg.get('content', ''):
+                    conv_text = msg.get('content', '')
+                    break
+            
+            # Determine which response type this is for
+            if "Contact support." in conv_text:
+                # This is for the poor response test
+                mock_response = poor_mocks[poor_call_count]
+                poor_call_count += 1
+                return mock_response
             else:
-                return good_response_mock
+                # This is for the good response test
+                mock_response = good_mocks[good_call_count]
+                good_call_count += 1
+                return mock_response
         
         # Patch the LLM API call with the side_effect function
         with patch('agentoptim.runner.call_llm_api', side_effect=mock_api_call):
