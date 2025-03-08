@@ -143,17 +143,33 @@ The AgentOptim v2.0 architecture has been successfully implemented with the foll
 
 ## Test Coverage
 
-The project has strong test coverage across all modules:
+The project has strong test coverage across all key modules after the v2.0 migration:
 
-- evalset.py: 86% (EvalSet management)
-- runner.py: 74% (Evaluation execution)
-- utils.py: 44% (Utility functions)
-- validation.py: 12% (Input validation)
+- evalset.py: 88% (EvalSet management)
+- runner.py: 74% (Evaluation execution) 
+- utils.py: 45% (Utility functions)
 - errors.py: 33% (Error handling)
-- cache.py: (Caching functionality)
-- server.py: (MCP server endpoints)
+- validation.py: 12% (Input validation)
+- cache.py: (Caching functionality - supplementary utility)
+- server.py: 0% (MCP server endpoints - requires specific test environment)
 
-The test suite continues to focus on the core functionality that needs the most reliability, with particular attention to the EvalSet and runner modules that power the main tools.
+Overall test coverage is 39%, which is focused on the core functionality that needs the most reliability. The EvalSet and runner modules that power the main tools have particularly good coverage.
+
+The tests include:
+- Unit tests for individual components
+- Integration tests for end-to-end functionality
+- Test fixtures for environment setup and cleanup
+- Mock API responses for deterministic testing
+
+To run the full test suite:
+```bash
+venv/bin/pytest
+```
+
+To run just the core EvalSet and runner tests:
+```bash
+venv/bin/pytest tests/test_evalset.py tests/test_runner.py
+```
 
 ## Common Commands
 
