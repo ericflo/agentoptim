@@ -1,4 +1,20 @@
-"""Compatibility layer for transitioning from old API to new EvalSet architecture."""
+"""
+DEPRECATED: Compatibility layer for transitioning from old API to new EvalSet architecture.
+
+WARNING: This module is deprecated and will be removed in version 2.1.0.
+It is only provided to help with the transition from the old 5-tool architecture 
+to the new 2-tool EvalSet architecture. New code should directly use the EvalSet 
+architecture via manage_evalset_tool and run_evalset_tool.
+"""
+
+import warnings
+
+warnings.warn(
+    "The compat module is deprecated and will be removed in version 2.1.0. "
+    "Use manage_evalset_tool and run_evalset_tool directly instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import logging
 import json

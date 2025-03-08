@@ -12,7 +12,7 @@ Version 2.0 introduces a dramatically simplified architecture with just 2 core t
 Other key improvements:
 - **40% faster performance** with lower memory usage
 - **Conversation-based evaluation** rather than separate input/response pairs
-- **Full backward compatibility** with the v1.x API through our compatibility layer
+- **Temporary backward compatibility** with the v1.x API through our compatibility layer (will be removed in v2.1.0)
 - **Improved test suite** with integration tests and benchmarks
 
 See the [Migration Guide](docs/MIGRATION_GUIDE.md) for help transitioning from v1.x.
@@ -61,7 +61,7 @@ All planned tasks for the v2.0 release have been completed:
 | EvalSet Data Model | ✅ Complete | Implemented in evalset.py with JSON storage |
 | manage_evalset_tool | ✅ Complete | Full CRUD operations for EvalSets |
 | run_evalset_tool | ✅ Complete | Async evaluation with customizable models |
-| Compatibility Layer | ✅ Complete | Backward compatibility with v1.x API |
+| Compatibility Layer | ✅ Complete | Temporary compatibility with v1.x API (to be removed in v2.1.0) |
 | Unit Tests | ✅ Complete | Comprehensive test coverage of new components |
 | Integration Tests | ✅ Complete | End-to-end tests for real-world scenarios |
 | Performance Benchmarks | ✅ Complete | 40% faster with reduced memory usage |
@@ -118,7 +118,9 @@ eval_results = await run_evalset_tool(
 print(f"Yes percentage: {eval_results.get('summary', {}).get('yes_percentage')}%")
 ```
 
-For a complete working example, see [examples/usage_example.py](examples/usage_example.py).
+For complete working examples, see:
+- [examples/usage_example.py](examples/usage_example.py) - Basic usage
+- [examples/evalset_example.py](examples/evalset_example.py) - Comprehensive features
 
 For help migrating from the old API, see the [Migration Guide](docs/MIGRATION_GUIDE.md).
 

@@ -197,18 +197,26 @@ The results format has changed to be simpler and more focused.
 - Summary statistics are provided directly
 - No need for a separate analysis step
 
-## Compatibility Layer
+## Compatibility Layer (To Be Removed in v2.1.0)
 
 To ease the transition, AgentOptim includes a compatibility layer that allows the old tools to work with the new architecture behind the scenes. This means:
 
 1. Your existing `manage_evaluation_tool` calls will create EvalSets
 2. Your existing `run_job_tool` calls can use EvalSets when appropriate
 
-The compatibility layer is temporary and will be deprecated in a future release, so we recommend migrating to the new API as soon as possible.
+**IMPORTANT**: The compatibility layer is temporary and will be **removed in version 2.1.0**. You must migrate to the new API before upgrading to v2.1.0 to avoid breaking changes.
 
-## Full Example
+When you import from the old modules, you will now see a deprecation warning:
+```
+DeprecationWarning: The compat module is deprecated and will be removed in version 2.1.0. Use manage_evalset_tool and run_evalset_tool directly instead.
+```
 
-See the `examples/usage_example.py` file for a complete example of using the new EvalSet architecture.
+## Full Examples
+
+Here are complete examples of using the new EvalSet architecture:
+
+- `examples/usage_example.py` - Basic usage of the new API
+- `examples/evalset_example.py` - Comprehensive example with all API features
 
 ## Need Help?
 

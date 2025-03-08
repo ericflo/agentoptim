@@ -79,6 +79,9 @@ print(f"Yes percentage: {eval_results.get('summary', {}).get('yes_percentage')}%
 
 __version__ = "2.0.0"
 
-# Make core components available at package level
+# Make MCP tools available at package level
+from .server import manage_evalset_tool, run_evalset_tool
+
+# Also expose core implementation functions for advanced usage
 from .evalset import manage_evalset
 from .runner import run_evalset
