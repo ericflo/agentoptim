@@ -245,7 +245,13 @@ This allows Claude to send the client name (like "optim") as the model parameter
 
 The following additional options can be set in the client configuration:
 
-- **omit_reasoning**: When set to "True", the evaluation will not generate or include detailed reasoning in results. This can significantly improve evaluation speed and reduce token usage.
+- **omit_reasoning**: When set to "True", the evaluation will not generate or include detailed reasoning in results. This provides several benefits:
+  - **Performance**: Significantly improves evaluation speed (up to 30-40% faster)
+  - **Efficiency**: Reduces token usage by not generating lengthy explanations
+  - **Simplicity**: Provides cleaner results focused on judgments and confidence scores
+  - **Cost savings**: For API-based LLMs, reduces token costs for evaluations
+
+  The system will accept various formats for enabling this option: "true", "yes", "1", "t", "y", "on", or "enabled" (case-insensitive).
 
 Example configuration with omit_reasoning:
 

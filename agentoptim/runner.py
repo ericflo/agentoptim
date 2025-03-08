@@ -48,7 +48,15 @@ API_BASE = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234/v1")
 
 
 class EvalResult(BaseModel):
-    """Model for a single evaluation result."""
+    """Model for a single evaluation result.
+    
+    Attributes:
+        question: The evaluation question being answered
+        judgment: Boolean value (true/false) indicating the yes/no judgment
+        confidence: Number between 0.0 and 1.0 indicating confidence level
+        reasoning: Detailed explanation for the judgment (None when omit_reasoning=True)
+        error: Error message if evaluation failed, None otherwise
+    """
     
     question: str
     judgment: Optional[bool] = None
@@ -58,7 +66,16 @@ class EvalResult(BaseModel):
 
 
 class EvalResults(BaseModel):
-    """Model for evaluation results."""
+    """Model for evaluation results.
+    
+    Attributes:
+        evalset_id: ID of the EvalSet used for evaluation
+        evalset_name: Name of the EvalSet used
+        results: List of EvalResult objects with evaluation results
+                (reasoning field will be None when omit_reasoning=True)
+        conversation: List of conversation messages that were evaluated
+        summary: Dictionary with summary statistics (yes/no counts, percentages, etc.)
+    """
     
     evalset_id: str
     evalset_name: str
@@ -424,7 +441,7 @@ EXAMPLE OF CORRECT FORMAT:
 }
 ```
 
-CRITICAL: Your response MUST be valid JSON that can be parsed. Incorrect formats will cause errors."""
+CRITICAL: Your response MUST be valid JSON that can be parsed. Incorrect formats will cause errors. DO NOT include a "reasoning" field in your response."""
             else:
                 rendered_prompt += """
 
@@ -503,7 +520,7 @@ Example of CORRECT format:
 }}
 ```
 
-CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or strings) for the judgment field to avoid errors."""
+CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or strings) for the judgment field to avoid errors. DO NOT include a reasoning field in your response."""
                 else:
                     rendered_prompt = shortened_base + """these THREE REQUIRED fields:
 
@@ -963,7 +980,7 @@ async def run_evalset(
                 formatted_results.append(f"   **A**: {judgment_text} {confidence_display}")
                 
                 # Include reasoning if available and not omitted
-                if result.reasoning and not omit_reasoning:
+                if not omit_reasoning and result.reasoning is not None and result.reasoning:
                     # Limit reasoning to 200 chars and add ellipsis if needed
                     reasoning_text = result.reasoning[:200] + ("..." if len(result.reasoning) > 200 else "")
                     formatted_results.append(f"   **Reasoning**: {reasoning_text}")

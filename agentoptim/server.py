@@ -460,8 +460,11 @@ async def run_evalset_tool(
                     # Check for omit_reasoning flag
                     if 'omit_reasoning' in options:
                         omit_reasoning_str = str(options['omit_reasoning']).lower()
-                        omit_reasoning = omit_reasoning_str in ('true', '1', 'yes')
+                        # Accept various forms of "true" for better user experience
+                        omit_reasoning = omit_reasoning_str in ('true', 't', '1', 'yes', 'y', 'on', 'enabled')
                         logger.info(f"omit_reasoning option set to: {omit_reasoning}")
+                        if omit_reasoning:
+                            logger.info("Reasoning will be omitted from evaluation results")
         except (AttributeError, LookupError) as e:
             # This can happen during tests or when no request context is available
             logger.debug(f"Could not access request context: {e}")
