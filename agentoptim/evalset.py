@@ -24,13 +24,39 @@ from agentoptim.utils import (
 EVALSETS_DIR = os.path.join(DATA_DIR, "evalsets")
 os.makedirs(EVALSETS_DIR, exist_ok=True)
 
+# Default template used for all evaluations
+DEFAULT_TEMPLATE = """
+Given this conversation:
+{{ conversation }}
+
+Please answer the following yes/no question about the final assistant response:
+{{ eval_question }}
+
+IMPORTANT INSTRUCTIONS FOR EVALUATION:
+
+Analyze the conversation thoroughly before answering. Respond ONLY in valid JSON format with these THREE required fields:
+
+1. "reasoning": Provide a detailed explanation (3-5 sentences) with specific evidence from the conversation
+2. "judgment": Boolean true for Yes, false for No (must use JSON boolean literals: true/false)
+3. "confidence": Number between 0.0 and 1.0 indicating your certainty
+
+Example format:
+```json
+{
+  "reasoning": "The assistant's response directly addresses the user's question by providing specific instructions. The information is clear, accurate, and would enable the user to accomplish their task without further assistance.",
+  "judgment": true,
+  "confidence": 0.92
+}
+```
+"""
+
 
 class EvalSet(BaseModel):
     """Model for an EvalSet."""
     
     id: str = Field(default_factory=generate_id)
     name: str
-    template: str
+    template: str = Field(default=DEFAULT_TEMPLATE)  # Use the system default template
     questions: List[str] = Field(default_factory=list)
     description: Optional[str] = None
     
@@ -40,15 +66,6 @@ class EvalSet(BaseModel):
         if len(questions) > 100:
             raise ValueError("Maximum of 100 questions allowed per EvalSet")
         return questions
-    
-    @field_validator('template')
-    def validate_template(cls, template):
-        """Validate that the template contains required placeholders."""
-        if "{{ conversation }}" not in template:
-            raise ValueError("Template must contain the {{ conversation }} placeholder")
-        if "{{ eval_question }}" not in template:
-            raise ValueError("Template must contain the {{ eval_question }} placeholder")
-        return template
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -85,7 +102,6 @@ def get_evalset(evalset_id: str) -> Optional[EvalSet]:
 
 def create_evalset(
     name: str, 
-    template: str, 
     questions: List[str],
     description: Optional[str] = None
 ) -> EvalSet:
@@ -94,7 +110,6 @@ def create_evalset(
     
     Args:
         name: The name of the EvalSet
-        template: The evaluation template string with {{ conversation }} and {{ eval_question }} placeholders
         questions: List of yes/no evaluation questions
         description: Optional description
         
@@ -103,9 +118,9 @@ def create_evalset(
     """
     evalset = EvalSet(
         name=name, 
-        template=template, 
         questions=questions, 
         description=description
+        # template will use the DEFAULT_TEMPLATE
     )
     
     save_json(evalset.to_dict(), get_evalset_path(evalset.id))
@@ -115,7 +130,6 @@ def create_evalset(
 def update_evalset(
     evalset_id: str,
     name: Optional[str] = None,
-    template: Optional[str] = None,
     questions: Optional[List[str]] = None,
     description: Optional[str] = None,
 ) -> Optional[EvalSet]:
@@ -125,7 +139,6 @@ def update_evalset(
     Args:
         evalset_id: ID of the EvalSet to update
         name: Optional new name
-        template: Optional new template string
         questions: Optional new list of questions
         description: Optional new description
         
@@ -138,8 +151,6 @@ def update_evalset(
     
     if name is not None:
         evalset.name = name
-    if template is not None:
-        evalset.template = template
     if questions is not None:
         evalset.questions = questions
     if description is not None:
@@ -162,7 +173,7 @@ def manage_evalset(
     action: str,
     evalset_id: Optional[str] = None,
     name: Optional[str] = None,
-    template: Optional[str] = None,
+    template: Optional[str] = None,  # Kept for backward compatibility but ignored
     questions: Optional[List[str]] = None,
     description: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -173,7 +184,7 @@ def manage_evalset(
         action: One of "create", "list", "get", "update", "delete"
         evalset_id: Required for get, update, delete
         name: Required for create
-        template: Required for create, containing {{ conversation }} and {{ eval_question }} placeholders
+        template: Deprecated - templates are now system-defined (ignored)
         questions: Required for create, a list of yes/no questions (max 100)
         description: Optional description
     
@@ -221,9 +232,8 @@ def manage_evalset(
         elif action == "create":
             validate_required_params({
                 "name": name, 
-                "template": template, 
                 "questions": questions
-            }, ["name", "template", "questions"])
+            }, ["name", "questions"])
             
             # Validate questions
             if not isinstance(questions, list):
@@ -232,16 +242,10 @@ def manage_evalset(
             if len(questions) > 100:
                 return format_error("Maximum of 100 questions allowed per EvalSet")
             
-            # Validate template
-            if "{{ conversation }}" not in template:
-                return format_error("Template must contain the {{ conversation }} placeholder")
-            
-            if "{{ eval_question }}" not in template:
-                return format_error("Template must contain the {{ eval_question }} placeholder")
+            # Template is now system-defined, no need to validate
             
             evalset = create_evalset(
                 name=name,
-                template=template,
                 questions=questions,
                 description=description
             )
@@ -264,18 +268,17 @@ def manage_evalset(
                 if len(questions) > 100:
                     return format_error("Maximum of 100 questions allowed per EvalSet")
             
-            # Validate template if provided
+            # Template is now system-defined, no need to validate
+            # Inform the user if they try to update the template
             if template is not None:
-                if "{{ conversation }}" not in template:
-                    return format_error("Template must contain the {{ conversation }} placeholder")
-                
-                if "{{ eval_question }}" not in template:
-                    return format_error("Template must contain the {{ eval_question }} placeholder")
+                # Log a warning but don't fail the request
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Attempt to update template for EvalSet {evalset_id} ignored - templates are now system-defined")
             
             evalset = update_evalset(
                 evalset_id=evalset_id,
                 name=name,
-                template=template,
                 questions=questions,
                 description=description
             )

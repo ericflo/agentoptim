@@ -54,7 +54,7 @@ async def manage_evalset_tool(
     action: str,
     evalset_id: Optional[str] = None,
     name: Optional[str] = None,
-    template: Optional[str] = None,
+    template: Optional[str] = None,  # Kept for backward compatibility but ignored
     questions: Optional[List[str]] = None,
     description: Optional[str] = None,
 ) -> dict:
@@ -66,7 +66,7 @@ async def manage_evalset_tool(
     evaluation criteria for judging the quality of conversational responses. Each EvalSet contains:
     
     1. A set of yes/no evaluation questions (e.g., "Is the response helpful?")
-    2. A template with formatting instructions for the evaluation model
+    2. A system-defined template with formatting instructions for the evaluation model
     3. Metadata like name and description
     
     ## Creating Effective EvalSets
@@ -76,7 +76,6 @@ async def manage_evalset_tool(
     - Use specific, measurable questions (e.g., "Does the response provide a step-by-step solution?")
     - Include diverse evaluation criteria (helpfulness, accuracy, clarity, etc.)
     - Maintain consistent evaluation standards across questions
-    - Write clear templates with proper JSON formatting instructions
     
     ## Arguments
     
@@ -96,11 +95,8 @@ async def manage_evalset_tool(
           Should be specific to the evaluation purpose.
           Example: "Technical Support Response Quality Evaluation"
           
-    template: A Jinja2 template string that formats inputs for the judge model.
-             Required for "create" action, optional for "update".
-             MUST include placeholders {{ conversation }} and {{ eval_question }}.
-             Should include clear instructions for JSON output format with reasoning, judgment, and confidence.
-             Example: See "Creating Templates" section below.
+    template: Deprecated - templates are now system-defined and this parameter is ignored.
+             The system now uses a standard template for all evaluations.
              
     questions: A list of yes/no evaluation questions to assess responses.
               Required for "create" action, optional for "update".
@@ -120,16 +116,17 @@ async def manage_evalset_tool(
                 Should explain what aspects of conversation quality are being measured.
                 Example: "Evaluates technical support responses for clarity, helpfulness, accuracy, and completeness."
     
-    ## Creating Templates
+    ## System Template
     
-    Your template should include:
+    The system template automatically includes:
     
-    1. Instructions to use the {{ conversation }} and {{ eval_question }} variables
-    2. Clear directions for JSON output format with these fields:
-       - "reasoning": Detailed explanation for the judgment
+    1. Instructions for the judge model to evaluate the conversation 
+    2. Formatting for the {{ conversation }} and {{ eval_question }} variables
+    3. Clear directions for JSON output format with these fields:
+       - "reasoning": Detailed explanation for the judgment (can be omitted with omit_reasoning option)
        - "judgment": Boolean true/false for yes/no answers
        - "confidence": Number between 0 and 1 indicating confidence level
-    3. Format examples showing proper JSON syntax
+    4. Format examples showing proper JSON syntax
     
     ## Return Values
     
@@ -149,31 +146,7 @@ async def manage_evalset_tool(
     evalset = manage_evalset_tool(
         action="create",
         name="Technical Support Quality Evaluation",
-        # The template can be a multiline string
-        template='''
-        Given this conversation:
-        {{ conversation }}
-        
-        Please answer the following yes/no question about the final assistant response:
-        {{ eval_question }}
-        
-        IMPORTANT INSTRUCTIONS FOR EVALUATION:
-        
-        Analyze the conversation thoroughly before answering. Respond ONLY in valid JSON format with these THREE required fields:
-        
-        1. "reasoning": Provide a detailed explanation (3-5 sentences) with specific evidence from the conversation
-        2. "judgment": Boolean true for Yes, false for No (must use JSON boolean literals: true/false)
-        3. "confidence": Number between 0.0 and 1.0 indicating your certainty
-        
-        Example format:
-        ```json
-        {
-          "reasoning": "The assistant's response directly addresses the user's question by providing specific instructions. The information is clear, accurate, and would enable the user to accomplish their task without further assistance.",
-          "judgment": true,
-          "confidence": 0.92
-        }
-        ```
-        ''',
+        # The template is now system-defined, no need to provide it
         # CRITICAL: questions must be a list/array of strings, not a multiline string
         questions=[
             "Does the response directly address the user's specific question?",
@@ -201,7 +174,8 @@ async def manage_evalset_tool(
         action="update",
         evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
         name="Enhanced Technical Support Quality Evaluation",
-        questions=["New question 1", "New question 2"]
+        questions=["New question 1", "New question 2"],
+        description="Updated description for the enhanced evaluation criteria"
     )
     
     # Delete an EvalSet
