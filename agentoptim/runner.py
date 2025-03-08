@@ -10,22 +10,6 @@ from pydantic import BaseModel, Field
 import jinja2
 import uuid
 
-# Check for LM Studio compatibility mode
-# Our testing showed LM Studio requires special handling
-# 1. No response_format parameter (causes 400 error)
-# 2. No logprobs support (always returns null)
-# 3. System prompts work well and help control the output format
-LMSTUDIO_COMPAT = os.environ.get("AGENTOPTIM_LMSTUDIO_COMPAT", "1") == "1"  # Enable by default
-DEBUG_MODE = os.environ.get("AGENTOPTIM_DEBUG", "0") == "1"
-
-if LMSTUDIO_COMPAT:
-    logger.info("LM Studio compatibility mode is ENABLED")
-    logger.info("* response_format parameter disabled")
-    logger.info("* logprobs expected to be null")
-    logger.info("* Using system prompts for better control")
-else:
-    logger.info("LM Studio compatibility mode is DISABLED")
-
 from agentoptim.evalset import get_evalset
 from agentoptim.utils import (
     format_error,
@@ -36,6 +20,23 @@ from agentoptim.utils import (
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Check for LM Studio compatibility mode
+# Our testing showed LM Studio requires special handling
+# 1. No response_format parameter (causes 400 error)
+# 2. No logprobs support (always returns null)
+# 3. System prompts work well and help control the output format
+LMSTUDIO_COMPAT = os.environ.get("AGENTOPTIM_LMSTUDIO_COMPAT", "1") == "1"  # Enable by default
+DEBUG_MODE = os.environ.get("AGENTOPTIM_DEBUG", "0") == "1"
+
+# Log compatibility mode
+if LMSTUDIO_COMPAT:
+    logger.info("LM Studio compatibility mode is ENABLED")
+    logger.info("* response_format parameter disabled")
+    logger.info("* logprobs expected to be null")
+    logger.info("* Using system prompts for better control")
+else:
+    logger.info("LM Studio compatibility mode is DISABLED")
 
 # Default timeout for API calls
 DEFAULT_TIMEOUT = 60  # seconds

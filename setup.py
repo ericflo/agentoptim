@@ -32,7 +32,8 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "agentoptim=agentoptim.server:main",
+            "agentoptim=agentoptim.__main__:main",
         ],
     },
+    scripts=["bin/agentoptim"],
 )

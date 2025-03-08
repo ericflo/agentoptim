@@ -134,29 +134,31 @@ pip install agentoptim
 
 ### Starting the MCP Server
 
-There are two ways to start the AgentOptim MCP server:
+You can start the AgentOptim MCP server in several ways:
 
-#### Option 1: Using the launcher script (recommended)
-
-The launcher script handles setting the proper environment variables for optimal compatibility with different LLM backends:
+#### Option 1: Using the command line executable (recommended)
 
 ```bash
-python launch_server.py
+agentoptim
 ```
 
-Command line options:
-- `--no-lmstudio-compat`: Disable LM Studio compatibility mode (enabled by default)  
-- `--debug`: Enable detailed debug logging
-
-#### Option 2: Direct module execution
+#### Option 2: Using the Python module
 
 ```bash
-python -m agentoptim.server
+python -m agentoptim
 ```
 
-Environment variables:
+#### Environment Variables for Configuration
+
+Set these environment variables to control server behavior:
+
 - `AGENTOPTIM_LMSTUDIO_COMPAT=1`: Enable LM Studio compatibility mode (enabled by default)
 - `AGENTOPTIM_DEBUG=1`: Enable detailed debug logging
+
+For example:
+```bash
+AGENTOPTIM_LMSTUDIO_COMPAT=1 AGENTOPTIM_DEBUG=1 agentoptim
+```
 
 ### LM Studio Compatibility
 
@@ -176,8 +178,11 @@ Configure Claude Code to use the AgentOptim MCP server:
 {
   "mcpServers": {
     "optim": {
-      "command": "/path/to/launch_server.py",
-      "args": [],
+      "command": "bash",
+      "args": [
+        "-c",
+        "AGENTOPTIM_LMSTUDIO_COMPAT=1 agentoptim"
+      ],
       "options": {
         "judge_model": "lmstudio-community/meta-llama-3.1-8b-instruct"
       }
