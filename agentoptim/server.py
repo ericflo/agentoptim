@@ -104,10 +104,16 @@ async def manage_evalset_tool(
              
     questions: A list of yes/no evaluation questions to assess responses.
               Required for "create" action, optional for "update".
+              CRITICAL: Must be a proper JSON array/list of strings, NOT a single multiline string.
               Each question must be clear, specific, and answerable with yes/no.
-              Example: ["Does the response directly address the user's question?",
-                       "Is the response clear and easy to understand?",
-                       "Does the response provide complete information?"]
+              CORRECT EXAMPLE: [
+                "Does the response directly address the user's question?",
+                "Is the response clear and easy to understand?",
+                "Does the response provide complete information?"
+              ]
+              INCORRECT EXAMPLE: "Does the response directly address the user's question?
+              Is the response clear and easy to understand?
+              Does the response provide complete information?"
               
     description: A detailed explanation of the EvalSet's purpose and criteria.
                 Optional for "create" and "update" actions.
@@ -139,9 +145,11 @@ async def manage_evalset_tool(
     
     ```python
     # Create a comprehensive EvalSet for technical support evaluation
+    # IMPORTANT: Note that 'questions' is an array/list of strings, NOT a multiline string
     evalset = manage_evalset_tool(
         action="create",
         name="Technical Support Quality Evaluation",
+        # The template can be a multiline string
         template='''
         Given this conversation:
         {{ conversation }}
@@ -166,6 +174,7 @@ async def manage_evalset_tool(
         }
         ```
         ''',
+        # CRITICAL: questions must be a list/array of strings, not a multiline string
         questions=[
             "Does the response directly address the user's specific question?",
             "Is the response clear and easy to understand?",
@@ -235,6 +244,15 @@ async def manage_evalset_tool(
                 'manage_evalset_tool(action="create", name="Response Quality", template="...", questions=[...])',
                 'manage_evalset_tool(action="list")',
                 'manage_evalset_tool(action="get", evalset_id="...")'
+            ]
+        elif "questions" in error_msg and ("list_type" in error_msg or "str" in error_msg):
+            error_response["details"] = "The 'questions' parameter must be a proper list of strings, not a multiline string."
+            error_response["troubleshooting"] = [
+                'Make sure questions is formatted as a JSON array/list of strings',
+                'Each question should be a separate string in the list',
+                'Example: questions=["Question 1?", "Question 2?", "Question 3?"]',
+                'Do NOT use a single multiline string for multiple questions',
+                'Incorrect: questions="Question 1?\nQuestion 2?\nQuestion 3?"'
             ]
         elif "required parameters" in error_msg:
             # Show different examples based on action
