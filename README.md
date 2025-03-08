@@ -124,6 +124,68 @@ For complete working examples, see:
 
 For help migrating from the old API, see the [Migration Guide](docs/MIGRATION_GUIDE.md).
 
+## Installation and Setup
+
+### Installation
+
+```bash
+pip install agentoptim
+```
+
+### Starting the MCP Server
+
+There are two ways to start the AgentOptim MCP server:
+
+#### Option 1: Using the launcher script (recommended)
+
+The launcher script handles setting the proper environment variables for optimal compatibility with different LLM backends:
+
+```bash
+python launch_server.py
+```
+
+Command line options:
+- `--no-lmstudio-compat`: Disable LM Studio compatibility mode (enabled by default)  
+- `--debug`: Enable detailed debug logging
+
+#### Option 2: Direct module execution
+
+```bash
+python -m agentoptim.server
+```
+
+Environment variables:
+- `AGENTOPTIM_LMSTUDIO_COMPAT=1`: Enable LM Studio compatibility mode (enabled by default)
+- `AGENTOPTIM_DEBUG=1`: Enable detailed debug logging
+
+### LM Studio Compatibility
+
+Based on extensive testing, we've found that LM Studio has specific requirements:
+
+1. It doesn't support the `response_format` parameter (causes 400 errors)
+2. It ignores logprobs requests (always returns null)
+3. It works best with system prompts for controlling output format
+
+The LM Studio compatibility mode (enabled by default) accommodates these requirements automatically.
+
+### Configuring Claude Code
+
+Configure Claude Code to use the AgentOptim MCP server:
+
+```json
+{
+  "mcpServers": {
+    "optim": {
+      "command": "/path/to/launch_server.py",
+      "args": [],
+      "options": {
+        "judge_model": "lmstudio-community/meta-llama-3.1-8b-instruct"
+      }
+    }
+  }
+}
+```
+
 ## Additional Resources
 
 For more information about using AgentOptim v2.0, please refer to:

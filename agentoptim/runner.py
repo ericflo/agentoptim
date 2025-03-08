@@ -11,8 +11,20 @@ import jinja2
 import uuid
 
 # Check for LM Studio compatibility mode
-LMSTUDIO_COMPAT = os.environ.get("AGENTOPTIM_LMSTUDIO_COMPAT", "0") == "1"
+# Our testing showed LM Studio requires special handling
+# 1. No response_format parameter (causes 400 error)
+# 2. No logprobs support (always returns null)
+# 3. System prompts work well and help control the output format
+LMSTUDIO_COMPAT = os.environ.get("AGENTOPTIM_LMSTUDIO_COMPAT", "1") == "1"  # Enable by default
 DEBUG_MODE = os.environ.get("AGENTOPTIM_DEBUG", "0") == "1"
+
+if LMSTUDIO_COMPAT:
+    logger.info("LM Studio compatibility mode is ENABLED")
+    logger.info("* response_format parameter disabled")
+    logger.info("* logprobs expected to be null")
+    logger.info("* Using system prompts for better control")
+else:
+    logger.info("LM Studio compatibility mode is DISABLED")
 
 from agentoptim.evalset import get_evalset
 from agentoptim.utils import (
@@ -52,39 +64,51 @@ class EvalResults(BaseModel):
 
 
 async def call_llm_api(
-    prompt: str,
+    prompt: Optional[str] = None,
     model: str = "meta-llama-3.1-8b-instruct",
     temperature: float = 0.0,
     max_tokens: int = 50,
     logit_bias: Optional[Dict[int, float]] = None,
-    logprobs: bool = True
+    logprobs: bool = True,
+    messages: Optional[List[Dict[str, str]]] = None
 ) -> Dict[str, Any]:
     """
     Call the LLM API to get model response and token logprobs.
     
     Args:
-        prompt: The prompt to send to the model
+        prompt: The prompt to send to the model (legacy parameter)
         model: LLM model to use
         temperature: Sampling temperature
         max_tokens: Maximum tokens to generate
         logit_bias: Optional logit bias to apply
         logprobs: Whether to return logprobs
+        messages: List of message objects with role and content (preferred over prompt)
     
     Returns:
         Response from the LLM API
     """
     try:
-        messages = [{"role": "user", "content": prompt}]
+        # Allow either messages or prompt parameter
+        if messages is None:
+            if prompt is None:
+                raise ValueError("Either messages or prompt must be provided")
+            messages = [{"role": "user", "content": prompt}]
         payload = {
             "model": model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
-            "logprobs": logprobs    # Always request logprobs - LM Studio supports them
+            "max_tokens": max_tokens
         }
         
-        # Only add response_format if not in LM Studio compatibility mode
-        # Some LM Studio versions don't support this parameter
+        # Our testing shows that LM Studio ignores logprobs requests,
+        # but explicitly requesting them doesn't cause an error,
+        # so we'll include the parameter but be prepared for null results
+        if logprobs:
+            payload["logprobs"] = logprobs
+        
+        # Testing confirms LM Studio does NOT support response_format at all
+        # It specifically returns an error: "'response_format.type' must be 'json_schema'"
+        # So we'll never include it for LM Studio compatibility mode
         if not LMSTUDIO_COMPAT:
             payload["response_format"] = {"type": "json_object"}
         
@@ -167,45 +191,43 @@ async def call_llm_api(
             if "choices" in response_json and response_json["choices"]:
                 choice = response_json["choices"][0]
                 
-                # Process logprobs if available, otherwise add synthetic ones
-                if "logprobs" not in choice or choice["logprobs"] is None:
-                    logger.info("LM Studio returned null logprobs, adding compatible structure")
+                # Based on our testing, LM Studio NEVER returns logprobs even when requested
+            # So we'll just handle the null case directly without trying to synthesize values
+            if "logprobs" not in choice or choice["logprobs"] is None:
+                logger.info("LM Studio returned null logprobs as expected from our testing")
+                
+                # Leave logprobs as null - don't try to synthesize anymore
+                choice["logprobs"] = None
+                
+                # For debugging only - analyze content to see what the model likely determined
+                content = ""
+                if "message" in choice and "content" in choice["message"]:
+                    content = choice["message"]["content"].lower()
+                elif "text" in choice:
+                    content = choice["text"].lower()
                     
-                    # Extract content to check for yes/no responses to determine likely probability
-                    content = ""
-                    if "message" in choice and "content" in choice["message"]:
-                        content = choice["message"]["content"].lower()
-                    elif "text" in choice:
-                        content = choice["text"].lower()
-                        
-                        # Don't synthesize logprobs - just use None when not available
-                    logger.info("LM Studio returned null logprobs, setting to null")
-                    
-                    # Just leave the logprobs as null
-                    choice["logprobs"] = None
-                    
-                    # Determine only the token from the content for judgment
-                    is_yes = any(x in content for x in ["yes", "true", "correct", "agree", "appropriate", "clear"]) 
-                    is_no = any(x in content for x in ["no", "false", "incorrect", "disagree", "inappropriate", "unclear"])
-                    
-                    if is_yes:
-                        logger.info("Detected 'yes' in response content")
-                    elif is_no:
-                        logger.info("Detected 'no' in response content")
-                elif isinstance(choice["logprobs"], dict) and "content" not in choice["logprobs"]:
-                    # Some LLM providers use different logprobs structure
-                    logger.info("Converting non-standard logprobs format")
-                    
-                    # Convert whatever format to content format
-                    top_logprobs = choice["logprobs"].get("top_logprobs", [])
-                    if top_logprobs and isinstance(top_logprobs, list):
-                        choice["logprobs"] = {
-                            "content": [
-                                {"token": str(item.get("token", "1")), 
-                                 "logprob": item.get("logprob", -0.1)}
-                                for item in top_logprobs[:5]  # Take up to 5 top tokens
-                            ]
-                        }
+                is_yes = any(x in content for x in ["yes", "true", "correct", "agree", "appropriate", "clear"]) 
+                is_no = any(x in content for x in ["no", "false", "incorrect", "disagree", "inappropriate", "unclear"])
+                
+                if is_yes:
+                    logger.info("Detected 'yes' in response content")
+                elif is_no:
+                    logger.info("Detected 'no' in response content")
+            elif isinstance(choice["logprobs"], dict) and "content" not in choice["logprobs"]:
+                # Some LLM providers use different logprobs structure
+                # This is unlikely for LM Studio but we'll keep the code for other providers
+                logger.info("Converting non-standard logprobs format")
+                
+                # Convert whatever format to content format
+                top_logprobs = choice["logprobs"].get("top_logprobs", [])
+                if top_logprobs and isinstance(top_logprobs, list):
+                    choice["logprobs"] = {
+                        "content": [
+                            {"token": str(item.get("token", "1")), 
+                             "logprob": item.get("logprob", -0.1)}
+                            for item in top_logprobs[:5]  # Take up to 5 top tokens
+                        ]
+                    }
                 
                 # If LM Studio is using text field instead of message
                 if "text" in choice and "message" not in choice:
@@ -249,12 +271,18 @@ async def evaluate_question(
             eval_question=question
         )
         
-        # Add specific formatting guidance for LM Studio
+        # Add specific formatting guidance for LM Studio since it doesn't support response_format
         if LMSTUDIO_COMPAT:
-            # Check if we already have JSON instructions
+            # Our testing shows that LM Studio doesn't actually support JSON response format
+            # So we need to give very explicit instructions for structured responses
+            
+            # First, check if we already have JSON instructions
             if "json" not in rendered_prompt.lower():
                 # Add clear instructions for responding in the expected format
                 rendered_prompt += "\n\nIMPORTANT: You MUST respond with ONLY 'Yes' or 'No' to this question, with no additional explanation. Just answer 'Yes' or 'No' based on your evaluation."
+            else:
+                # Replace JSON instructions with simpler format for LM Studio
+                rendered_prompt += "\n\nIMPORTANT: You MUST respond with ONLY 'Yes' or 'No' to this question, not in JSON format. Just answer 'Yes' or 'No' based on your evaluation."
             
             # LM Studio needs simpler prompts sometimes
             if len(rendered_prompt) > 2000:
@@ -265,12 +293,22 @@ async def evaluate_question(
 Question: {question}
 
 Answer with only 'Yes' or 'No'. No additional explanation required."""
+                
+            # Add system prompt for better control - our testing shows system prompts work well
+            # Prepend system message to improve the response consistency
+            messages = [
+                {"role": "system", "content": "You are an evaluation assistant that responds with only 'Yes' or 'No' to evaluation questions. Never provide explanations."},
+                {"role": "user", "content": rendered_prompt}
+            ]
+        else:
+            # Normal mode - just use the rendered prompt as user message
+            messages = [{"role": "user", "content": rendered_prompt}]
         
         logger.info(f"Evaluating question: {question}")
         
-        # Call the LLM API
+        # Call the LLM API with proper message format
         response = await call_llm_api(
-            prompt=rendered_prompt,
+            messages=messages,  # Now passing prepared messages with system prompt for LM Studio
             model=model,
             logprobs=True
         )
