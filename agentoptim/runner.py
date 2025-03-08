@@ -271,8 +271,17 @@ async def call_llm_api(
             return response_json
     
     except Exception as e:
-        logger.error(f"Error calling LLM API: {str(e)}")
-        return {"error": f"Error calling LLM API: {str(e)}"}
+        # Special handling for common errors
+        if isinstance(e, NameError) and any(name in str(e) for name in ["true", "false", "True", "False"]):
+            # This is common when the LLM returns literals like 'true' or 'false' in the response
+            error_msg = f"JSON parsing error: {str(e)}. The model may be using unquoted true/false values."
+            logger.error(error_msg)
+            # Try to convert Python literals to JSON literals in the exception traceback
+            return {"error": "Error with JSON boolean values. Use the 'true' and 'false' JSON literals, not Python booleans."}
+        else:
+            # Handle other exceptions
+            logger.error(f"Error calling LLM API: {str(e)}")
+            return {"error": f"Error calling LLM API: {str(e)}"}
 
 
 async def evaluate_question(
@@ -317,8 +326,10 @@ Respond ONLY in the required JSON format below.
 
 Your response must include:
 1. "reasoning": A brief explanation of your reasoning
-2. "judgment": true for Yes, false for No
+2. "judgment": true for Yes, false for No (use the JSON literals true/false, not strings)
 3. "confidence": Probability (0.0 to 1.0) that your judgment is correct
+
+NOTE: The judgment field must use JSON boolean literals (true or false), not Python Boolean (True/False) or strings.
 
 For example:
 ```
@@ -357,11 +368,13 @@ Example response:
   "confidence": 0.85
 }}
 
+IMPORTANT: Make sure to use proper JSON format with "true" and "false" (not True/False) for the judgment field.
+
 Consider carefully and explain your reasoning before providing your judgment."""
                 
             # Add system prompt for better control - our testing shows system prompts work well
             messages = [
-                {"role": "system", "content": "You are an evaluation assistant that provides objective judgments in JSON format. Your responses MUST include THREE required fields in this order: 1) a 'reasoning' field explaining your thought process, 2) a boolean 'judgment' field (true/false), and 3) a 'confidence' field (0.0-1.0) indicating the probability your judgment is correct. Provide well-calibrated confidence scores based on uncertainty, task difficulty, and available information."},
+                {"role": "system", "content": "You are an evaluation assistant that provides objective judgments in JSON format. Your responses MUST include THREE required fields in this order: 1) a 'reasoning' field explaining your thought process, 2) a boolean 'judgment' field using JSON literals (true/false, not True/False), and 3) a 'confidence' field (0.0-1.0) indicating the probability your judgment is correct. Provide well-calibrated confidence scores and always use proper JSON syntax with lowercase true/false for boolean values."},
                 {"role": "user", "content": rendered_prompt}
             ]
         else:
@@ -436,7 +449,34 @@ Consider carefully and explain your reasoning before providing your judgment."""
             try:
                 # First try to parse as JSON
                 try:
-                    judgment_obj = json.loads(content)
+                    # Handle true/false literals properly
+                    # First try direct JSON loads
+                    try:
+                        judgment_obj = json.loads(content)
+                    except (json.JSONDecodeError, NameError) as json_err:
+                        # If that fails, try to sanitize the content - could be Python-like dict with True/False
+                        sanitized_content = (content.replace("True", "true")
+                                                  .replace("False", "false")
+                                                  .replace("'", '"')  # Replace any single quotes with double quotes
+                                                  .replace("None", "null"))
+                        
+                        # Create safe eval environment for handling JSON booleans
+                        safe_globals = {"null": None, "true": True, "false": False}
+                        
+                        # Try to load the sanitized content
+                        try:
+                            judgment_obj = json.loads(sanitized_content)
+                        except (json.JSONDecodeError, NameError):
+                            logger.warning(f"Trying to parse non-standard JSON: {sanitized_content}")
+                            # As a last resort, try to use safe eval with limited globals
+                            try:
+                                # Use safe eval with minimal globals
+                                judgment_obj = eval(sanitized_content, {"__builtins__": {}}, safe_globals)
+                            except Exception as e:
+                                # If eval fails, use regex to extract relevant parts
+                                logger.warning(f"Safe eval failed, will use regex: {str(e)}")
+                                # Re-raise to trigger the regex fallback
+                                raise json.JSONDecodeError("Cannot parse content", content, 0)
                     
                     # Check for judgment field with proper boolean handling
                     if isinstance(judgment_obj, dict) and "judgment" in judgment_obj:
