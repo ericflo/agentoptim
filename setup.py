@@ -10,10 +10,10 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="agentoptim",
-    version="0.1.0",
+    version="2.0.0",
     author="Eric Florenzano",
     author_email="",
-    description="MCP tools for data-driven prompt optimization",
+    description="MCP tools for data-driven prompt optimization and evaluation",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/ericflo/agentoptim",
@@ -24,7 +24,7 @@ setup(
         "Programming Language :: Python :: 3.11",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],

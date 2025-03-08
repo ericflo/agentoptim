@@ -1,21 +1,36 @@
-# AgentOptim
+# AgentOptim v2.0
 
-AgentOptim is a focused-but-powerful set of MCP tools that allows an MCP-aware agent to optimize a prompt in a data-driven way. Think of it as DSPy, but for agents - a toolkit that enables autonomous experimentation, evaluation, and optimization of prompts and interactions.
+AgentOptim is a focused-but-powerful set of MCP tools that allows an MCP-aware agent to optimize and evaluate prompts in a data-driven way. Think of it as DSPy, but for agents - a toolkit that enables autonomous experimentation, evaluation, and optimization of prompts and interactions.
 
-## Refactoring Plan: Simplifying to Two Core Tools
+## 🚀 New in v2.0!
 
-We are undertaking a significant refactoring of AgentOptim to simplify its architecture and improve usability. The current implementation with 5 separate tools (manage_evaluation, manage_dataset, manage_experiment, run_job, analyze_results) has proven to be too complex, requiring too many tool calls and making it error-prone.
+Version 2.0 introduces a dramatically simplified architecture with just 2 core tools instead of 5, making it much easier to use:
+
+1. `manage_evalset_tool` - Create and manage EvalSets for evaluating conversations
+2. `run_evalset_tool` - Run evaluations on conversations using an EvalSet
+
+Other key improvements:
+- **40% faster performance** with lower memory usage
+- **Conversation-based evaluation** rather than separate input/response pairs
+- **Full backward compatibility** with the v1.x API through our compatibility layer
+- **Improved test suite** with integration tests and benchmarks
+
+See the [Migration Guide](docs/MIGRATION_GUIDE.md) for help transitioning from v1.x.
+
+## Architecture: Two Simple Core Tools
+
+We have completed a significant refactoring of AgentOptim to simplify its architecture and improve usability. The previous implementation with 5 separate tools (manage_evaluation, manage_dataset, manage_experiment, run_job, analyze_results) proved to be too complex, requiring too many tool calls and making it error-prone.
 
 ### Current Status
 
-- [x] Current implementation with 5 separate tools
-- [ ] Simplified implementation with 2 core tools
+- [x] Previous implementation with 5 separate tools (maintained for compatibility)
+- [x] Simplified implementation with 2 core tools (recommended)
 
 ### New Architecture
 
-We're simplifying the system down to just two tool calls:
+The system has been simplified down to just two tool calls:
 
-1. **`manage_evalset`** - A unified CRUD tool for managing EvalSets
+1. **`manage_evalset_tool`** - A unified CRUD tool for managing EvalSets
    - An EvalSet contains:
      - Up to 100 yes/no questions
      - A Jinja template that receives two variables:
@@ -23,58 +38,37 @@ We're simplifying the system down to just two tool calls:
        - `{{ eval_question }}` - One of the yes/no questions from the EvalSet
    - By default, `{"judgment":1}` or `{"judgment":0}` will be appended to each yes/no question to extract logprobs
 
-2. **`run_evalset`** - A tool to run an EvalSet on a given conversation and report results
+2. **`run_evalset_tool`** - A tool to run an EvalSet on a given conversation and report results
    - Returns a table of yes/no questions and the logprob of the judgment
-   - Provides a summary of the results
+   - Provides a summary of the results with success rates and statistics
 
-### Migration Plan
+### Migration Guide
 
-1. **Phase 1: Core Implementation (Planning)**
-   - [ ] Define the data models for EvalSet
-   - [ ] Design storage system for EvalSets
-   - [ ] Define interface for manage_evalset tool
-   - [ ] Define interface for run_evalset tool
+We've provided comprehensive documentation to help users transition from the v1.x API to the new v2.0 architecture:
 
-2. **Phase 2: Implementation**
-   - [ ] Implement EvalSet model and storage
-   - [ ] Implement manage_evalset tool
-   - [ ] Implement run_evalset tool
-   - [ ] Add unit tests for new components
-   - [ ] Update server.py to expose new tools
+- [Migration Guide](docs/MIGRATION_GUIDE.md) - Step-by-step instructions for upgrading
+- [Example Usage](examples/usage_example.py) - Complete example of the new API
 
-3. **Phase 3: Migration and Compatibility Layer**
-   - [ ] Create compatibility layer for existing tools
-   - [ ] Update existing tests to work with new architecture
-   - [ ] Migrate example code to new API
-   - [ ] Add migration guide documentation
+The compatibility layer ensures that existing code will continue to work with minimal changes, while new code can take advantage of the simplified architecture.
 
-4. **Phase 4: Testing and Deployment**
-   - [ ] Comprehensive testing of new implementation
-   - [ ] Performance benchmarking
-   - [ ] Update documentation to reflect new API
-   - [ ] Release and deploy
+### Implementation Status: ✅ Complete!
 
-### Progress Tracking
+All planned tasks for the v2.0 release have been completed:
 
-| Task | Status | Notes |
+| Component | Status | Notes |
 |------|--------|-------|
-| Define EvalSet data model | ✅ Complete | Implemented in evalset.py |
-| Design storage system | ✅ Complete | Using JSON-based storage in DATA_DIR/evalsets/ |
-| Define manage_evalset interface | ✅ Complete | CRUD operations for EvalSets |
-| Define run_evalset interface | ✅ Complete | Supports conversation evaluation with customizable models |
-| Implement EvalSet model and storage | ✅ Complete | Includes validators for template and questions |
-| Implement manage_evalset tool | ✅ Complete | Added to server.py |
-| Implement run_evalset tool | ✅ Complete | Added to server.py with async implementation |
-| Add unit tests | ✅ Complete | Added test_evalset.py and test_runner.py |
-| Update server.py | ✅ Complete | New tools registered alongside legacy tools |
-| Create compatibility layer | ✅ Complete | Implemented in compat.py with template conversion |
-| Update existing tests | ✅ Complete | Added tests for compatibility layer |
-| Migrate example code | ✅ Complete | Created examples/usage_example.py |
-| Add migration guide | ✅ Complete | Added docs/MIGRATION_GUIDE.md |
-| Comprehensive testing | ✅ Complete | Added integration tests for EvalSet architecture, test markers, and improved test runner |
-| Performance benchmarking | ✅ Complete | Benchmarks show the new architecture is 40% faster with less memory usage |
-| Update documentation | ✅ Complete | Migration guide, tool docs, and examples all updated |
-| Release and deploy | 🟡 In Progress | Preparing for v2.0.0 release with new architecture |
+| Core Architecture | ✅ Complete | Simplified from 5 tools to 2 tools |
+| EvalSet Data Model | ✅ Complete | Implemented in evalset.py with JSON storage |
+| manage_evalset_tool | ✅ Complete | Full CRUD operations for EvalSets |
+| run_evalset_tool | ✅ Complete | Async evaluation with customizable models |
+| Compatibility Layer | ✅ Complete | Backward compatibility with v1.x API |
+| Unit Tests | ✅ Complete | Comprehensive test coverage of new components |
+| Integration Tests | ✅ Complete | End-to-end tests for real-world scenarios |
+| Performance Benchmarks | ✅ Complete | 40% faster with reduced memory usage |
+| Documentation | ✅ Complete | Migration guide, examples, and updated docs |
+| Release Preparation | ✅ Complete | Version 2.0.0 ready for deployment |
+
+The v2.0.0 release is now ready for deployment, with all components fully implemented and tested.
 
 ### Example Usage
 
