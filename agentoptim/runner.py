@@ -100,7 +100,8 @@ async def call_llm_api(
     temperature: float = 0.0,
     max_tokens: int = 1024,  # Increased to 1024 to ensure complete responses
     logit_bias: Optional[Dict[int, float]] = None,
-    messages: Optional[List[Dict[str, str]]] = None
+    messages: Optional[List[Dict[str, str]]] = None,
+    omit_reasoning: bool = False
 ) -> Dict[str, Any]:
     """
     Call the LLM API to get structured model response with verbalized confidence.
@@ -610,7 +611,8 @@ CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or st
         # Call the LLM API with proper message format
         response = await call_llm_api(
             messages=messages,  # Now passing prepared messages with system prompt for LM Studio
-            model=model
+            model=model,
+            omit_reasoning=omit_reasoning
         )
         
         # Check for errors
