@@ -23,6 +23,16 @@ from agentoptim.utils import (
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Ensure we have at least one file handler for comprehensive logging
+if not any(isinstance(h, logging.FileHandler) for h in logger.handlers):
+    log_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "debug_agentoptim.log")
+    file_handler = logging.FileHandler(log_path)
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    logger.info(f"Added file handler for debugging to {log_path}")
+
 # Check for LM Studio compatibility mode
 # Our testing showed LM Studio requires special handling
 # 1. Special response_format schema structure
@@ -262,7 +272,8 @@ async def call_llm_api(
     except Exception as e:
         # Special handling for common errors
         error_str = str(e)
-        if isinstance(e, NameError) and any(name in error_str for name in ["true", "false", "True", "False"]):
+        # Using 'in' search instead of any() to be more robust
+        if isinstance(e, NameError) and ('true' in error_str.lower() or 'false' in error_str.lower()):
             # This is common when the LLM returns literals like 'true' or 'false' in the response
             error_msg = f"JSON parsing error: {error_str}. The model is using unquoted JSON literals."
             logger.error(error_msg)
@@ -330,17 +341,25 @@ async def call_llm_api(
             error_type = type(e).__name__
             logger.error(f"Error calling LLM API: {error_type}: {error_message}")
             
+            # Get traceback for more debugging information
+            import traceback
+            tb_str = traceback.format_exc()
+            logger.error(f"Traceback: {tb_str}")
+            
             # Create a detailed error response with troubleshooting suggestions
             return {
                 "error": f"LLM API Error: {error_type}",
                 "details": error_message,
+                "traceback": tb_str[:500] + "..." if len(tb_str) > 500 else tb_str,  # Include truncated traceback
                 "troubleshooting_steps": [
                     "Check that the LLM server is running and accessible",
                     "Verify the model name is correct and available in your LLM server",
                     "Ensure your API_BASE environment variable points to the correct endpoint",
                     "Check for API rate limits or quota issues",
                     "Try with a shorter prompt if hitting context length limits",
-                    "Inspect the server logs for more information"
+                    "Inspect the server logs for more information",
+                    "If using LM Studio, make sure it's properly configured and responding",
+                    "Try with a different model that has better JSON compatibility"
                 ],
                 "request_info": {
                     "model": model,
@@ -653,24 +672,62 @@ CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or st
             try:
                 # First try to parse as JSON
                 try:
-                    # Handle true/false literals properly
-                    # First try direct JSON loads
+                    # Log the original content for debugging
+                    logger.debug(f"Attempting to parse JSON content: {content}")
+                    
+                    # Pre-sanitize common issues before even attempting to parse
+                    # This helps avoid NameError exceptions by fixing Python-style literals
+                    sanitized_content = (content.replace("True", "true")
+                                          .replace("False", "false")
+                                          .replace("None", "null")
+                                          .replace("'", '"'))  # Replace single quotes with double quotes
+                    
+                    # Add more logging for debugging
+                    logger.debug(f"Sanitized content: {sanitized_content}")
+                    
+                    # First try with the sanitized content since it's more likely to work
+                    judgment_obj = None
+                    parse_error = None
+                    
                     try:
-                        judgment_obj = json.loads(content)
-                    except (json.JSONDecodeError, NameError) as json_err:
-                        # If that fails, try to sanitize the content - could be Python-like dict with True/False
-                        sanitized_content = (content.replace("True", "true")
-                                                  .replace("False", "false")
-                                                  .replace("'", '"')  # Replace any single quotes with double quotes
-                                                  .replace("None", "null"))
+                        judgment_obj = json.loads(sanitized_content)
+                        logger.debug("Successfully parsed sanitized content as JSON")
+                    except Exception as sanitized_err:
+                        parse_error = str(sanitized_err)
+                        logger.warning(f"Failed to parse sanitized content: {parse_error}")
                         
-                        # Try to load the sanitized content
+                        # If sanitized content failed, fall back to trying original
                         try:
-                            judgment_obj = json.loads(sanitized_content)
-                        except (json.JSONDecodeError, NameError):
-                            logger.warning(f"JSON parsing failed. Using regex fallback for: {sanitized_content}")
-                            # Re-raise to trigger the regex fallback
-                            raise json.JSONDecodeError("Cannot parse content", content, 0)
+                            judgment_obj = json.loads(content)
+                            logger.debug("Successfully parsed original content as JSON")
+                        except Exception as original_err:
+                            logger.warning(f"Failed to parse original content: {str(original_err)}")
+                            
+                            # Last resort: try with explicit safe eval for Python dict literals
+                            try:
+                                import ast
+                                logger.debug("Attempting to parse as Python literal with ast.literal_eval")
+                                # Try to eval it as a Python literal, then convert to proper JSON
+                                python_dict = ast.literal_eval(content)
+                                
+                                # Convert Python dict to judgment_obj
+                                judgment_obj = {}
+                                if isinstance(python_dict, dict):
+                                    # Convert all keys and values to proper JSON types
+                                    for k, v in python_dict.items():
+                                        if isinstance(v, bool):
+                                            judgment_obj[k] = bool(v)  # Ensure it's JSON boolean
+                                        elif v is None:
+                                            judgment_obj[k] = None
+                                        else:
+                                            judgment_obj[k] = v
+                                    logger.debug("Successfully parsed with ast.literal_eval")
+                            except Exception as ast_err:
+                                logger.warning(f"ast.literal_eval parsing failed: {str(ast_err)}")
+                                logger.warning(f"All JSON parsing methods failed. Using regex fallback.")
+                                # Re-raise to trigger the regex fallback
+                                raise json.JSONDecodeError("Cannot parse content: " + parse_error, 
+                                                         content, 0)
                     
                     # Check for judgment field with proper boolean handling
                     if isinstance(judgment_obj, dict) and "judgment" in judgment_obj:
