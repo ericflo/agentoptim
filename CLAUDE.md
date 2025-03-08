@@ -147,24 +147,41 @@ The AgentOptim v2.0 architecture has been successfully implemented with the foll
 - **Streamlined code** with better separation of concerns
 - **Comprehensive test suite** with excellent coverage
 
-### Version 2.1.0 Planning (Future Release)
+### Version 2.1.0 Planning (Scheduled for Q2 2025)
 
-For the next release, the following improvements are planned:
+The v2.1.0 release is scheduled for Q2 2025 and will focus on the following improvements:
 
 1. 🔲 Remove compatibility layer
    - 🔲 Remove compat.py module completely
+   - 🔲 Remove deprecated_examples directory
    - 🔲 Update tests to remove compatibility tests
    - 🔲 Finalize migration to the 2-tool architecture
 
-2. 🔲 Improve test coverage
-   - 🔲 Increase coverage for server.py
-   - 🔲 Increase coverage for validation.py
+2. 🔲 Improve test coverage (per [TEST_IMPROVEMENTS.md](docs/TEST_IMPROVEMENTS.md))
+   - 🔲 Increase coverage for server.py to at least 85%
+   - 🔲 Increase coverage for runner.py to at least 85% 
    - 🔲 Add more integration tests
+   - 🔲 Reach overall coverage of 95%+
 
 3. 🔲 Enhance documentation
    - 🔲 Create detailed API reference
    - 🔲 Add more examples and use cases
    - 🔲 Improve tutorial content
+
+4. 🔲 Performance optimizations
+   - 🔲 Improve caching for frequently accessed EvalSets
+   - 🔲 Optimize parallel execution of evaluations
+   - 🔲 Reduce memory usage for large EvalSets
+
+### Version 2.1.0 Timeline
+
+| Milestone | Date | Description |
+|-----------|------|-------------|
+| Planning | March 2025 | Finalize v2.1.0 feature set and test improvement plan |
+| Alpha | April 2025 | Begin implementation of compatibility layer removal |
+| Test Sprint | May 2025 | Focus on test improvements and validation | 
+| Beta | June 2025 | Feature complete with all tests passing |
+| Release | July 2025 | Official v2.1.0 release |
 
 ## Test Coverage
 
