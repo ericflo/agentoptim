@@ -1,5 +1,5 @@
 """
-Integration tests for AgentOptim.
+Integration tests for AgentOptim v2.0.
 
 These tests verify that the different components of the system work together
 correctly through full workflows.
@@ -9,18 +9,10 @@ import pytest
 import os
 import shutil
 import asyncio
-import uuid
-from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
-from agentoptim import (
-    create_dataset, get_dataset, 
-    create_evaluation, get_evaluation,
-    create_experiment, get_experiment,
-    create_job, get_job, run_job,
-    create_analysis, get_analysis
-)
-from agentoptim.jobs import JobStatus, Job, JobResult
+from agentoptim import manage_evalset, run_evalset
+from agentoptim.evalset import EvalSet, EVALSETS_DIR
 from agentoptim.utils import DATA_DIR
 
 
@@ -34,27 +26,13 @@ def temp_data_dir():
     # Set up the test data directory
     os.makedirs(TEST_DATA_DIR, exist_ok=True)
     
-    # Also set up subdirectories
-    os.makedirs(os.path.join(TEST_DATA_DIR, "datasets"), exist_ok=True)
-    os.makedirs(os.path.join(TEST_DATA_DIR, "evaluations"), exist_ok=True)
-    os.makedirs(os.path.join(TEST_DATA_DIR, "experiments"), exist_ok=True)
-    os.makedirs(os.path.join(TEST_DATA_DIR, "results"), exist_ok=True)
+    # Also set up subdirectories for EvalSets
+    os.makedirs(os.path.join(TEST_DATA_DIR, "evalsets"), exist_ok=True)
     
-    # Create an empty jobs.json file
-    jobs_path = os.path.join(TEST_DATA_DIR, "jobs.json")
-    with open(jobs_path, 'w') as f:
-        f.write('{}')
-    
-    # Patch the DATA_DIR constant 
+    # Patch the DATA_DIR constant and the derived EVALSETS_DIR
     with patch('agentoptim.utils.DATA_DIR', TEST_DATA_DIR):
-        with patch('agentoptim.evaluation.DATA_DIR', TEST_DATA_DIR):
-            with patch('agentoptim.dataset.DATA_DIR', TEST_DATA_DIR):
-                with patch('agentoptim.experiment.DATA_DIR', TEST_DATA_DIR):
-                    with patch('agentoptim.jobs.DATA_DIR', TEST_DATA_DIR):
-                        # Make sure RESULTS_DIR is also patched for analysis
-                        with patch('agentoptim.analysis.DATA_DIR', TEST_DATA_DIR):
-                            with patch('agentoptim.analysis.RESULTS_DIR', os.path.join(TEST_DATA_DIR, "results")):
-                                yield TEST_DATA_DIR
+        with patch('agentoptim.evalset.EVALSETS_DIR', os.path.join(TEST_DATA_DIR, "evalsets")):
+            yield TEST_DATA_DIR
     
     # Clean up after the test
     if os.path.exists(TEST_DATA_DIR):
@@ -62,344 +40,241 @@ def temp_data_dir():
 
 
 class TestFullWorkflow:
-    """Test the full workflow from dataset to analysis."""
+    """Test the full workflow for version 2.0."""
     
     @pytest.mark.asyncio
     async def test_basic_workflow(self, temp_data_dir):
-        """Test a basic workflow from dataset to analysis."""
+        """Test a basic workflow from EvalSet creation to running an evaluation."""
         
-        # 1. Create a dataset
-        dataset = create_dataset(
-            name="Test Dataset",
-            description="Dataset for integration testing",
-            items=[
-                {"input": "Test input 1", "expected_output": "Expected output 1"},
-                {"input": "Test input 2", "expected_output": "Expected output 2"},
-            ]
-        )
-        
-        # Verify dataset was created
-        assert dataset is not None
-        assert dataset.id is not None
-        assert len(dataset.items) == 2
-        
-        # Verify dataset can be retrieved
-        retrieved_dataset = get_dataset(dataset.id)
-        assert retrieved_dataset is not None
-        assert retrieved_dataset.id == dataset.id
-        
-        # 2. Create an evaluation
-        evaluation = create_evaluation(
-            name="Test Evaluation",
-            description="Evaluation for integration testing",
-            criteria_or_description=[  # Use criteria_or_description instead of criteria
-                {
-                    "name": "accuracy",
-                    "description": "Accuracy of the response",
-                    "weight": 1.0
-                }
+        # 1. Create an EvalSet with yes/no questions
+        evalset_result = manage_evalset(
+            action="create",
+            name="Test EvalSet",
+            template="""
+            Given this conversation:
+            {{ conversation }}
+            
+            Please answer the following yes/no question about the final assistant response:
+            {{ eval_question }}
+            
+            Return a JSON object with the following format:
+            {"judgment": 1} for yes or {"judgment": 0} for no.
+            """,
+            questions=[
+                "Is the response helpful?",
+                "Is the response clear and concise?", 
+                "Does the response directly address the question?",
+                "Is the response accurate?"
             ],
-            template="Question: {input}\nExpected: {expected}\nActual: {response}\n\nIs the response accurate?"  # Add template
+            description="Test EvalSet for integration testing"
         )
         
-        # Verify evaluation was created
-        assert evaluation is not None
-        assert evaluation.id is not None  # Use id instead of evaluation_id
-        assert len(evaluation.criteria) == 1
+        # Verify EvalSet was created
+        assert evalset_result is not None
+        assert evalset_result.get("status") == "success"
+        assert "evalset" in evalset_result
         
-        # 3. Create an experiment
-        experiment = create_experiment(
-            name="Test Experiment",
-            description="Experiment for integration testing",
-            dataset_id=dataset.id,  # Add dataset_id
-            evaluation_id=evaluation.id,  # Add evaluation_id
-            model_name="test-model",  # Add model_name
-            prompt_variants=[  # Use prompt_variants instead of variants
+        evalset_id = evalset_result.get("evalset", {}).get("id")
+        assert evalset_id is not None
+        
+        # 2. Retrieve the EvalSet
+        get_result = manage_evalset(
+            action="get",
+            evalset_id=evalset_id
+        )
+        
+        # Verify EvalSet can be retrieved
+        assert get_result is not None
+        assert get_result.get("status") == "success"
+        assert get_result.get("evalset", {}).get("id") == evalset_id
+        assert len(get_result.get("evalset", {}).get("questions", [])) == 4
+        
+        # 3. Define a conversation to evaluate
+        conversation = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "How do I reset my password?"},
+            {"role": "assistant", "content": "To reset your password, please go to the login page and click on 'Forgot Password'. You'll receive an email with instructions to create a new password."}
+        ]
+        
+        # 4. Run an evaluation with a mock
+        # Mock the LLM API call to return a successful response with yes judgment
+        mock_api_response = {
+            "choices": [
                 {
-                    "name": "variant1",
-                    "description": "First test variant",
-                    "type": "standalone",  # Add type
-                    "template": "Generate a response for: {input}",  # Use template instead of prompt
-                    "variables": []  # Use empty list instead of empty dict
-                },
-                {
-                    "name": "variant2",
-                    "description": "Second test variant",
-                    "type": "standalone",  # Add type
-                    "template": "Please respond to this input: {input}",  # Use template instead of prompt
-                    "variables": [{"name": "style", "options": ["polite", "friendly", "casual"]}]  # Fix variables format
+                    "message": {
+                        "content": '{"judgment": 1}'
+                    },
+                    "logprobs": {
+                        "content": [
+                            {"token": "{", "logprob": -0.1},
+                            {"token": "\"", "logprob": -0.2},
+                            {"token": "judgment", "logprob": -0.3},
+                            {"token": "\"", "logprob": -0.2},
+                            {"token": ":", "logprob": -0.1},
+                            {"token": " ", "logprob": -0.1},
+                            {"token": "1", "logprob": -0.5},
+                            {"token": "}", "logprob": -0.1}
+                        ]
+                    }
                 }
             ]
-        )
+        }
         
-        # Verify experiment was created
-        assert experiment is not None
-        assert experiment.id is not None  # Use id instead of experiment_id
-        assert len(experiment.prompt_variants) == 2  # Use prompt_variants instead of variants
-        
-        # 4. Create and run a job with a mock model
-        # Create patched functions to modify job
-        job = None
-        job_with_results = None
-        
-        def patched_create_job(**kwargs):
-            nonlocal job, job_with_results
-            job = Job(
-                job_id=str(uuid.uuid4()),
-                experiment_id=experiment.id,
-                dataset_id=dataset.id,
-                evaluation_id=evaluation.id,
-                judge_model="mock-model",
-                status=JobStatus.PENDING,
-                progress={"completed": 0, "total": 4, "percentage": 0}
-            )
-            job_with_results = job.model_copy()
-            return job
-        
-        def patched_get_job(job_id):
-            # Update job status and add mock results
-            job_with_results.status = JobStatus.COMPLETED
-            job_with_results.completed_at = datetime.now().isoformat()
-            
-            # Add sample results
-            if not job_with_results.results:
-                for variant in experiment.prompt_variants:
-                    for i, item in enumerate(dataset.items):
-                        job_with_results.results.append(
-                            JobResult(
-                                variant_id=variant.id,
-                                data_item_id=f"item-{i}",
-                                input_text=f"Test input for {variant.id}",
-                                output_text="Mock response",
-                                scores={"accuracy": 4.5}
-                            )
-                        )
-            
-            return job_with_results
-        
-        def patched_run_job(job_id, max_parallel=5, timeout_minutes=30, stdio_friendly=True):
-            # Just return a completed job
-            job_with_results.status = JobStatus.COMPLETED
-            job_with_results.completed_at = datetime.now().isoformat()
-            return job_with_results
-        
-        # Apply patches - patch the imported functions, not the module functions
-        with patch('agentoptim.create_job', side_effect=patched_create_job), \
-             patch('agentoptim.get_job', side_effect=patched_get_job), \
-             patch('agentoptim.run_job', side_effect=patched_run_job):
-             
-            # Create job
-            job = create_job(
-                experiment_id=experiment.id,
-                dataset_id=dataset.id,
-                evaluation_id=evaluation.id,
-                judge_model="mock-model"
+        # Apply patch for the LLM API call
+        with patch('agentoptim.runner.call_llm_api', return_value=mock_api_response):
+            # Run the evaluation
+            result = await run_evalset(
+                evalset_id=evalset_id,
+                conversation=conversation,
+                model="mock-model",
+                max_parallel=2
             )
             
-            # Verify job was created
-            assert job is not None
-            assert job.job_id is not None
-            assert job.status == JobStatus.PENDING
+            # Verify evaluation results
+            assert result is not None
+            assert result.get("status") == "success"
+            assert result.get("evalset_id") == evalset_id
+            assert result.get("model") == "mock-model"
             
-            # Run job
-            await run_job(job.job_id)
+            # Check results array
+            assert "results" in result
+            results = result.get("results", [])
+            assert len(results) == 4  # Should have one result per question
             
-            # Get updated job status
-            completed_job = get_job(job.job_id)
-            assert completed_job.status == JobStatus.COMPLETED
-            assert len(completed_job.results) > 0
+            # Check summary
+            assert "summary" in result
+            summary = result.get("summary", {})
+            assert summary.get("total_questions") == 4
+            assert summary.get("yes_count") == 4  # All should be "yes" from our mock
+            
+            # Check formatted message is present
+            assert "formatted_message" in result
         
-        # Skip analysis creation and verification for the integration test
-        # Since we're mocking the judge model, we don't have real results to analyze
-        # Just verify that we can run the experiment and get results
-        assert job.job_id is not None
-
-
-class TestCacheIntegration:
-    """Test that the caching system works correctly."""
-    
-    @pytest.mark.asyncio
-    async def test_resource_caching(self, temp_data_dir):
-        """Test that resources are properly cached and invalidated."""
+        # 5. Test the list function
+        list_result = manage_evalset(action="list")
         
-        # Create a dataset
-        dataset = create_dataset(
-            name="Cache Test Dataset",
-            description="Dataset for cache testing",
-            items=[
-                {"input": "Test input", "expected_output": "Expected output"},
-            ]
+        # Verify list results
+        assert list_result is not None
+        assert not list_result.get("error", False)
+        assert "items" in list_result
+        assert len(list_result.get("items", [])) == 1
+        assert list_result.get("items", [])[0].get("id") == evalset_id
+        
+        # 6. Update the EvalSet
+        update_result = manage_evalset(
+            action="update",
+            evalset_id=evalset_id,
+            name="Updated Test EvalSet"
         )
         
-        # First retrieval should load the dataset from json
-        retrieved_dataset = get_dataset(dataset.id)
-        assert retrieved_dataset is not None
-        assert retrieved_dataset.id == dataset.id
+        # Verify update
+        assert update_result is not None
+        assert update_result.get("status") == "success"
+        assert "Updated" in update_result.get("message", "")
         
-        # Should be able to get it again
-        retrieved_dataset_again = get_dataset(dataset.id)
-        assert retrieved_dataset_again is not None
-        assert retrieved_dataset_again.id == dataset.id
+        # 7. Delete the EvalSet
+        delete_result = manage_evalset(
+            action="delete",
+            evalset_id=evalset_id
+        )
         
-        # Modification of dataset would be done through update_dataset
-        # Just verify we can access dataset attributes
-        assert dataset.name == "Cache Test Dataset"
-        assert len(dataset.items) == 1
+        # Verify deletion
+        assert delete_result is not None
+        assert delete_result.get("status") == "success"
+        assert "deleted" in delete_result.get("message", "")
         
-        # There's no direct delete_dataset function in the API we're testing
-        # Just verify dataset exists
-        assert dataset.id is not None
+        # Check that it's really gone
+        list_after_delete = manage_evalset(action="list")
+        assert len(list_after_delete.get("items", [])) == 0
 
 
 class TestParallelProcessing:
-    """Test parallel processing for experiments."""
+    """Test parallel processing for EvalSet evaluations."""
     
     @pytest.mark.asyncio
-    async def test_parallel_job_execution(self, temp_data_dir):
-        """Test that jobs can be executed in parallel."""
+    async def test_parallel_evaluation(self, temp_data_dir):
+        """Test that evaluations can be executed in parallel."""
         
-        # Create a dataset with more items
-        dataset = create_dataset(
-            name="Parallel Test Dataset",
-            description="Dataset for parallel processing testing",
-            items=[{"input": f"Test input {i}", "expected_output": f"Expected output {i}"} for i in range(5)]
+        # Create an EvalSet with multiple questions
+        evalset_result = manage_evalset(
+            action="create",
+            name="Parallel Test EvalSet",
+            template="""
+            Given this conversation:
+            {{ conversation }}
+            
+            Please answer the following yes/no question about the final assistant response:
+            {{ eval_question }}
+            
+            Return a JSON object with the following format:
+            {"judgment": 1} for yes or {"judgment": 0} for no.
+            """,
+            questions=[f"Test question {i}?" for i in range(10)],  # 10 questions
+            description="EvalSet for testing parallel processing"
         )
         
-        # Create an evaluation
-        evaluation = create_evaluation(
-            name="Parallel Test Evaluation",
-            description="Evaluation for parallel processing testing",
-            criteria_or_description=[  # Use criteria_or_description instead of criteria
-                {
-                    "name": "quality",
-                    "description": "Quality of the response",
-                    "weight": 1.0
-                }
-            ],
-            template="Input: {input}\nResponse: {response}\n\nIs this a good response?"  # Add template
-        )
+        evalset_id = evalset_result.get("evalset", {}).get("id")
         
-        # Create an experiment with multiple variants
-        experiment = create_experiment(
-            name="Parallel Test Experiment",
-            description="Experiment for parallel processing testing",
-            dataset_id=dataset.id,  # Add dataset_id
-            evaluation_id=evaluation.id,  # Add evaluation_id
-            model_name="test-model",  # Add model_name
-            prompt_variants=[  # Use prompt_variants instead of variants
+        # Define a conversation to evaluate
+        conversation = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Can you explain quantum computing?"},
+            {"role": "assistant", "content": "Quantum computing uses quantum mechanics to perform computations..."}
+        ]
+        
+        # Mock the LLM API call to return a successful response
+        mock_api_response = {
+            "choices": [
                 {
-                    "name": f"variant{i}", 
-                    "type": "standalone",  # Add type
-                    "template": f"Input {i}: {{{{ input }}}}",  # Use template instead of prompt
-                    "variables": []  # Use empty list instead of empty dict
+                    "message": {
+                        "content": '{"judgment": 1}'
+                    },
+                    "logprobs": {
+                        "content": [
+                            {"token": "{", "logprob": -0.1},
+                            {"token": "\"", "logprob": -0.2},
+                            {"token": "judgment", "logprob": -0.3},
+                            {"token": "\"", "logprob": -0.2},
+                            {"token": ":", "logprob": -0.1},
+                            {"token": " ", "logprob": -0.1},
+                            {"token": "1", "logprob": -0.5},
+                            {"token": "}", "logprob": -0.1}
+                        ]
+                    }
                 }
-                for i in range(3)
             ]
-        )
+        }
         
-        # Use the same approach as in the basic workflow test
-        job = None
-        job_with_results = None
+        # Set up a counter to verify parallel execution
+        call_count = 0
         
-        def patched_create_job(**kwargs):
-            nonlocal job, job_with_results
-            job = Job(
-                job_id=str(uuid.uuid4()),
-                experiment_id=experiment.id,
-                dataset_id=dataset.id,
-                evaluation_id=evaluation.id,
-                judge_model="test-model",
-                status=JobStatus.PENDING,
-                progress={"completed": 0, "total": 15, "percentage": 0}
-            )
-            job_with_results = job.model_copy()
-            return job
+        def mock_call_llm_api(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return mock_api_response
         
-        def patched_get_job(job_id):
-            # Update job status and add mock results
-            job_with_results.status = JobStatus.COMPLETED
-            job_with_results.completed_at = datetime.now().isoformat()
-            
-            # Add sample results - one for each variant/item combination
-            if not job_with_results.results:
-                expected_task_count = len(dataset.items) * len(experiment.prompt_variants)
-                for i in range(expected_task_count):
-                    variant_idx = i % len(experiment.prompt_variants)
-                    item_idx = i // len(experiment.prompt_variants)
-                    
-                    variant = experiment.prompt_variants[variant_idx]
-                    
-                    job_with_results.results.append(
-                        JobResult(
-                            variant_id=variant.id,
-                            data_item_id=f"item-{item_idx}",
-                            input_text=f"Test input {item_idx} for {variant.id}",
-                            output_text="Mock response",
-                            scores={"quality": 4.0}
-                        )
-                    )
-            
-            return job_with_results
-        
-        def patched_run_job(job_id, max_parallel=5, timeout_minutes=30, stdio_friendly=True):
-            # Just return a completed job
-            job_with_results.status = JobStatus.COMPLETED
-            job_with_results.completed_at = datetime.now().isoformat()
-            return job_with_results
-        
-        # Apply patches - patch the imported functions, not the module functions
-        with patch('agentoptim.create_job', side_effect=patched_create_job), \
-             patch('agentoptim.get_job', side_effect=patched_get_job), \
-             patch('agentoptim.run_job', side_effect=patched_run_job):
-        
-            # Create job
-            job = create_job(
-                experiment_id=experiment.id,
-                dataset_id=dataset.id,
-                evaluation_id=evaluation.id
-            )
-
-            # Force the patched_create_job to be called which initializes job_with_results
-            patched_create_job(
-                experiment_id=experiment.id,
-                dataset_id=dataset.id,
-                evaluation_id=evaluation.id,
-                judge_model="test-model"
+        # Apply patch for the LLM API call
+        with patch('agentoptim.runner.call_llm_api', side_effect=mock_call_llm_api):
+            # Run the evaluation with parallel processing
+            result = await run_evalset(
+                evalset_id=evalset_id,
+                conversation=conversation,
+                model="mock-model",
+                max_parallel=4  # Run up to 4 evaluations in parallel
             )
             
-            # Now job_with_results should be populated
-            job_with_results.status = JobStatus.COMPLETED
-            job_with_results.completed_at = datetime.now().isoformat()
+            # Verify evaluation results
+            assert result is not None
+            assert result.get("status") == "success"
             
-            # Add sample results
-            expected_task_count = len(dataset.items) * len(experiment.prompt_variants)
-            job_with_results.results = []  # Clear any existing results
-            for i in range(expected_task_count):
-                variant_idx = i % len(experiment.prompt_variants)
-                item_idx = i // len(experiment.prompt_variants)
-                
-                variant = experiment.prompt_variants[variant_idx]
-                
-                job_with_results.results.append(
-                    JobResult(
-                        variant_id=variant.id,
-                        data_item_id=f"item-{item_idx}",
-                        input_text=f"Test input {item_idx} for {variant.id}",
-                        output_text="Mock response",
-                        scores={"quality": 4.0}
-                    )
-                )
+            # Check results array - should have one result per question
+            results = result.get("results", [])
+            assert len(results) == 10
             
-            # Use the mocked job
-            completed_job = job_with_results
-
-            # Verify job completed successfully
-            assert completed_job.status == JobStatus.COMPLETED
-
-            # Verify expected number of tasks
-            # For 5 items and 3 variants, we should have 15 tasks
-            expected_task_count = len(dataset.items) * len(experiment.prompt_variants)
-            assert len(completed_job.results) == expected_task_count
+            # Verify all calls were made
+            assert call_count == 10
             
-            # We know parallel processing worked if we got all the results
-            assert expected_task_count > 0
+            # Summary should show all successful evaluations
+            summary = result.get("summary", {})
+            assert summary.get("total_questions") == 10
+            assert summary.get("yes_count") == 10  # All are "yes" from our mock
