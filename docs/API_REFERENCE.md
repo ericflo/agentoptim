@@ -1,461 +1,378 @@
-# AgentOptim v2.1.0 API Reference
+# AgentOptim API Reference
 
-This document provides comprehensive documentation for all AgentOptim functions, parameters, and return values. It serves as the definitive reference for developers integrating AgentOptim into their projects.
+This document provides comprehensive reference documentation for the tools available in the AgentOptim project.
 
-## Core Tools
+## Overview
 
-AgentOptim's architecture centers on two powerful tools, designed to work together seamlessly:
+AgentOptim is a conversation evaluation framework that provides tools for creating, managing, and running evaluations on conversational AI responses. The framework is built around two main concepts:
 
-1. `manage_evalset_tool`: Create and manage evaluation criteria sets
-2. `run_evalset_tool`: Apply evaluation criteria to conversations
+1. **EvalSets**: Collections of evaluation criteria for judging conversation quality
+2. **Evaluation Runners**: Tools for executing evaluations against conversations
 
-## `manage_evalset_tool`
+The API consists of two primary tools:
 
-This tool handles all operations for creating and managing EvalSets - collections of evaluation criteria for assessing conversation quality.
+- `manage_evalset_tool`: For creating and managing evaluation criteria sets (EvalSets)
+- `run_evalset_tool`: For evaluating conversations against EvalSets
 
-### Function Signature
+## Tool: manage_evalset_tool
 
-```python
-async def manage_evalset_tool(
-    action: str,
-    evalset_id: Optional[str] = None,
-    name: Optional[str] = None,
-    questions: Optional[List[str]] = None,
-    short_description: Optional[str] = None,
-    long_description: Optional[str] = None,
-    template: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Create, retrieve, update, list, or delete evaluation sets (EvalSets).
-    """
-```
+### Description
+
+This tool allows you to create, retrieve, update, and delete "EvalSets" - collections of evaluation criteria for judging the quality of conversational responses.
 
 ### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `action` | `str` | Yes | Action to perform: "create", "get", "update", "list", or "delete" |
-| `evalset_id` | `str` | For get/update/delete | ID of the EvalSet to operate on |
-| `name` | `str` | For create | Name of the EvalSet |
-| `questions` | `List[str]` | For create | List of evaluation questions |
-| `short_description` | `str` | No | Brief description of the EvalSet |
-| `long_description` | `str` | No | Detailed description of the EvalSet |
-| `template` | `str` | No | Custom Jinja2 template for evaluations (uses system default if not provided) |
+| Parameter | Type | Required For | Description |
+|-----------|------|--------------|-------------|
+| `action` | string | All actions | The operation to perform. Must be one of: "create", "list", "get", "update", "delete" |
+| `evalset_id` | string | get, update, delete | The unique identifier of the EvalSet (UUID format) |
+| `name` | string | create, update (optional) | A descriptive name for the EvalSet |
+| `questions` | array of strings | create, update (optional) | A list of yes/no evaluation questions to assess responses |
+| `short_description` | string | create, update (optional) | A concise summary (6-128 chars) of what this EvalSet measures |
+| `long_description` | string | create, update (optional) | A detailed explanation (256-1024 chars) of the evaluation criteria |
 
-### Return Value
+### Return Values
 
-Returns a dictionary with action-specific data:
+The tool returns different results based on the action performed:
 
-- For "create" and "update": `{"evalset": {...}}` - The created/updated EvalSet object
-- For "get": `{"evalset": {...}}` - The requested EvalSet object
-- For "list": `{"evalsets": [...]}` - List of all available EvalSets
-- For "delete": `{"success": true}` - Confirmation of successful deletion
-
-### EvalSet Object Structure
-
+#### For `list` action
 ```json
 {
-  "id": "unique_evalset_id",
-  "name": "EvalSet Name",
-  "questions": ["Question 1?", "Question 2?", ...],
-  "short_description": "Brief description",
-  "long_description": "More detailed description",
-  "template": "Custom template text or null if using default",
-  "created_at": "2023-04-01T12:00:00Z",
-  "updated_at": "2023-04-01T12:00:00Z"
+  "status": "success",
+  "evalsets": [
+    {
+      "id": "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+      "name": "Technical Support Quality Evaluation",
+      "short_description": "Tech support response evaluation criteria",
+      "template": "...",
+      "questions": ["..."],
+      "question_count": 7
+    },
+    ...
+  ]
 }
 ```
 
-### Example Usage
-
-#### Creating an EvalSet
-
-```python
-result = await manage_evalset_tool(
-    action="create",
-    name="Customer Support Quality",
-    questions=[
-        "Is the response helpful for the user's needs?",
-        "Does the response directly address the user's question?",
-        "Is the response clear and easy to understand?",
-        "Is the tone of the response appropriate and professional?"
-    ],
-    short_description="Evaluates customer support response quality",
-    long_description="This EvalSet measures the helpfulness, clarity, and professionalism of customer support responses."
-)
-
-evalset_id = result["evalset"]["id"]
-```
-
-#### Retrieving an EvalSet
-
-```python
-result = await manage_evalset_tool(
-    action="get",
-    evalset_id="abc123"
-)
-
-evalset = result["evalset"]
-```
-
-#### Updating an EvalSet
-
-```python
-result = await manage_evalset_tool(
-    action="update",
-    evalset_id="abc123",
-    name="Updated Support Quality Evaluation",
-    questions=[
-        "Is the response helpful for the user's needs?",
-        "Does the response directly address the user's question?",
-        "Is the response clear and easy to understand?",
-        "Is the tone of the response appropriate and professional?",
-        "Does the response provide complete information?"  # Added question
-    ]
-)
-
-updated_evalset = result["evalset"]
-```
-
-#### Listing All EvalSets
-
-```python
-result = await manage_evalset_tool(
-    action="list"
-)
-
-evalsets = result["evalsets"]
-for evalset in evalsets:
-    print(f"{evalset['id']}: {evalset['name']}")
-```
-
-#### Deleting an EvalSet
-
-```python
-result = await manage_evalset_tool(
-    action="delete",
-    evalset_id="abc123"
-)
-
-if result["success"]:
-    print("EvalSet deleted successfully")
-```
-
-## `run_evalset_tool`
-
-This tool applies an EvalSet to a conversation to evaluate its quality against defined criteria.
-
-### Function Signature
-
-```python
-async def run_evalset_tool(
-    evalset_id: str,
-    conversation: List[Dict[str, str]],
-    model: Optional[str] = None,
-    temperature: Optional[float] = None,
-    max_parallel: Optional[int] = None,
-    omit_reasoning: Optional[bool] = None
-) -> Dict[str, Any]:
-    """
-    Evaluate a conversation using an EvalSet.
-    """
-```
-
-### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `evalset_id` | `str` | Yes | ID of the EvalSet to use for evaluation |
-| `conversation` | `List[Dict[str, str]]` | Yes | List of message objects in the conversation |
-| `model` | `str` | No | Judge model to use (default: meta-llama-3.1-8b-instruct) |
-| `temperature` | `float` | No | Temperature for the judge model (default: 0.0) |
-| `max_parallel` | `int` | No | Maximum number of parallel evaluations (default: 5) |
-| `omit_reasoning` | `bool` | No | Whether to omit detailed reasoning in results (default: false) |
-
-### Conversation Format
-
-The `conversation` parameter must be a list of message objects, where each message is a dictionary with `role` and `content` keys:
-
-```python
-conversation = [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "How do I reset my password?"},
-    {"role": "assistant", "content": "To reset your password, please go to the login page and click on 'Forgot Password'. You'll receive an email with instructions to create a new password."}
-]
-```
-
-### Return Value
-
-Returns a dictionary with evaluation results:
-
+#### For `get` action
 ```json
 {
-  "results": [
-    {
-      "question": "Is the response helpful for the user's needs?",
-      "judgment": 1,
-      "logprob": -0.021,
-      "reasoning": "The response provides clear instructions on how to reset a password...",
-      "raw_result": {...}
-    },
-    // Additional results for each question...
-  ],
-  "summary": {
-    "total_questions": 4,
-    "yes_count": 3,
-    "no_count": 1,
-    "yes_percentage": 75.0
+  "status": "success",
+  "evalset": {
+    "id": "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+    "name": "Technical Support Quality Evaluation",
+    "short_description": "Tech support response evaluation criteria",
+    "long_description": "This EvalSet provides comprehensive evaluation criteria for technical support responses...",
+    "template": "...",
+    "questions": ["..."],
+    "question_count": 7
   }
 }
 ```
 
-#### Result Fields
-
-| Field | Description |
-|-------|-------------|
-| `question` | The evaluation question |
-| `judgment` | Binary judgment: 1 for yes/pass, 0 for no/fail |
-| `logprob` | Log probability of the judgment (indicates confidence) |
-| `reasoning` | Explanation of the judgment (if `omit_reasoning` is false) |
-| `raw_result` | Raw response from the judge model (format depends on template) |
-
-### Example Usage
-
-#### Basic Evaluation
-
-```python
-# Define a conversation to evaluate
-conversation = [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "How do I reset my password?"},
-    {"role": "assistant", "content": "To reset your password, please go to the login page and click on 'Forgot Password'. You'll receive an email with instructions to create a new password."}
-]
-
-# Run the evaluation
-results = await run_evalset_tool(
-    evalset_id="abc123",
-    conversation=conversation,
-    model="meta-llama-3.1-8b-instruct",
-    max_parallel=3
-)
-
-# Print summary
-print(f"Overall score: {results['summary']['yes_percentage']}%")
-print(f"Passed criteria: {results['summary']['yes_count']}/{results['summary']['total_questions']}")
-
-# Print individual judgments
-for item in results["results"]:
-    judgment = "Yes" if item["judgment"] else "No"
-    print(f"{item['question']}: {judgment}")
-```
-
-#### Advanced Usage with Custom Model
-
-```python
-results = await run_evalset_tool(
-    evalset_id="abc123",
-    conversation=conversation,
-    model="gpt-4",
-    temperature=0.2,
-    max_parallel=2,
-    omit_reasoning=True
-)
-```
-
-## Templates
-
-AgentOptim uses Jinja2 templates to format evaluations. You can customize templates when creating EvalSets to fit specific evaluation needs.
-
-### Default Template
-
-If no custom template is provided, AgentOptim uses this default template:
-
-```
-Given this conversation:
-{{ conversation }}
-
-Please answer the following yes/no question about the final assistant response:
-{{ eval_question }}
-
-Return a JSON object with the following format:
-{"judgment": 1} for yes or {"judgment": 0} for no.
-```
-
-### Template Variables
-
-| Variable | Description |
-|----------|-------------|
-| `{{ conversation }}` | The full conversation transcript |
-| `{{ eval_question }}` | The current evaluation question |
-
-### Custom Template Example
-
-This example uses a 5-point scale instead of binary judgment:
-
-```
-Given this conversation:
-{{ conversation }}
-
-Please evaluate the following aspect of the final assistant response:
-{{ eval_question }}
-
-Rate your agreement on a 5-point scale:
-1 - Strongly Disagree
-2 - Disagree
-3 - Neutral
-4 - Agree
-5 - Strongly Agree
-
-Provide your rating and explanation in JSON format:
+#### For `create` action
+```json
 {
-    "rating": [1-5 integer],
-    "explanation": "Brief justification for your rating",
-    "judgment": [0 or 1 - convert to binary where 4-5 = 1, 1-3 = 0]
+  "status": "success",
+  "evalset": {
+    "id": "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+    "name": "Technical Support Quality Evaluation",
+    "short_description": "Tech support response evaluation criteria",
+    "long_description": "This EvalSet provides comprehensive evaluation criteria for technical support responses...",
+    "template": "...",
+    "questions": ["..."]
+  },
+  "message": "EvalSet 'Technical Support Quality Evaluation' created with ID: 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
 }
 ```
 
-## Model Selection
-
-AgentOptim supports multiple judge models for evaluations. The model is selected according to this priority:
-
-1. If a `model` parameter is explicitly provided in the `run_evalset_tool` call
-2. If the `AGENTOPTIM_JUDGE_MODEL` environment variable is set
-3. If the `judge_model` option is provided in client configuration
-4. Default model: `meta-llama-3.1-8b-instruct`
-
-### Supported Models
-
-- **LM Studio Models**: Any model available in LM Studio
-- **OpenAI Models**: With valid API key in environment
-  - gpt-4
-  - gpt-4o
-  - gpt-4-turbo
-  - gpt-4o-mini
-  - gpt-3.5-turbo
-- **Anthropic Models**: With valid API key in environment
-  - claude-3-opus-20240229
-  - claude-3-sonnet-20240229
-  - claude-3-haiku-20240307
-
-## Error Handling
-
-AgentOptim tools throw exceptions with detailed error messages when operations fail. Common error types include:
-
-### EvalSetNotFoundError
-
-Thrown when an EvalSet with the specified ID doesn't exist.
-
-```python
-try:
-    result = await manage_evalset_tool(
-        action="get",
-        evalset_id="nonexistent_id"
-    )
-except Exception as e:
-    print(f"Error: {e}")
-    # Handle EvalSet not found
+#### For `update` action
+```json
+{
+  "status": "success",
+  "evalset": {
+    "id": "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+    "name": "Enhanced Technical Support Quality Evaluation",
+    "short_description": "Enhanced tech support evaluation criteria",
+    "long_description": "This enhanced EvalSet provides improved evaluation criteria...",
+    "template": "...",
+    "questions": ["..."]
+  },
+  "message": "EvalSet 'Enhanced Technical Support Quality Evaluation' updated"
+}
 ```
 
-### ValidationError
-
-Thrown when input parameters are invalid or missing.
-
-```python
-try:
-    result = await manage_evalset_tool(
-        action="create",
-        # Missing required name and questions
-    )
-except Exception as e:
-    print(f"Error: {e}")
-    # Handle validation error
+#### For `delete` action
+```json
+{
+  "status": "success",
+  "message": "EvalSet 'Technical Support Quality Evaluation' with ID '6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e' deleted"
+}
 ```
 
-### ModelNotAvailableError
+### Error Responses
 
-Thrown when the specified judge model is not available.
+If an error occurs, the tool returns a detailed error message:
 
-```python
-try:
-    result = await run_evalset_tool(
-        evalset_id="abc123",
-        conversation=conversation,
-        model="nonexistent_model"
-    )
-except Exception as e:
-    print(f"Error: {e}")
-    # Handle model not available
+```json
+{
+  "error": "Error message",
+  "details": "Detailed explanation of the error",
+  "troubleshooting": [
+    "Suggestion 1",
+    "Suggestion 2",
+    ...
+  ]
+}
 ```
 
-## Performance Considerations
+### Usage Examples
 
-For optimal performance when using AgentOptim:
-
-1. **Parallel Evaluations**: The `max_parallel` parameter in `run_evalset_tool` controls how many questions are evaluated simultaneously. Higher values increase speed but use more resources.
-
-2. **Model Selection**: Smaller models like `meta-llama-3.1-8b-instruct` are faster than larger ones like `gpt-4`, but may provide less nuanced evaluations.
-
-3. **Template Complexity**: More complex templates may take longer to process. Simple templates are more efficient for large batch evaluations.
-
-4. **Caching**: AgentOptim automatically caches evaluation results. Identical conversations with the same EvalSet and model will use cached results, significantly improving performance for repeated evaluations.
-
-## Advanced Usage
-
-### Comparing Different Approaches
-
-To compare multiple conversation approaches:
+#### List all EvalSets
 
 ```python
-# Define different conversations
-approach1 = [...]  # First conversation approach
-approach2 = [...]  # Second conversation approach
-
-# Evaluate each approach
-results1 = await run_evalset_tool(evalset_id="abc123", conversation=approach1)
-results2 = await run_evalset_tool(evalset_id="abc123", conversation=approach2)
-
-# Compare scores
-print(f"Approach 1 score: {results1['summary']['yes_percentage']}%")
-print(f"Approach 2 score: {results2['summary']['yes_percentage']}%")
+existing_evalsets = manage_evalset_tool(action="list")
 ```
 
-### Batch Processing
-
-For evaluating multiple conversations efficiently:
+#### Get an EvalSet by ID
 
 ```python
-async def evaluate_batch(evalset_id, conversations):
-    results = []
-    for i, conv in enumerate(conversations):
-        print(f"Evaluating conversation {i+1}/{len(conversations)}")
-        result = await run_evalset_tool(evalset_id=evalset_id, conversation=conv)
-        results.append(result)
-    return results
-
-batch_results = await evaluate_batch("abc123", conversations_list)
+evalset_details = manage_evalset_tool(
+    action="get",
+    evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
+)
 ```
 
-## Best Practices
+#### Create a new EvalSet
 
-1. **Choose the Right Judge Model**: Select a judge model appropriate for your evaluation needs:
-   - Small models like `meta-llama-3.1-8b-instruct` for speed and efficiency
-   - Larger models like `gpt-4` or `claude-3-opus` for more nuanced evaluations
+```python
+evalset = manage_evalset_tool(
+    action="create",
+    name="Technical Support Quality Evaluation",
+    questions=[
+        "Does the response directly address the user's specific question?",
+        "Is the response clear and easy to understand?",
+        "Does the response provide complete step-by-step instructions?",
+        "Is the response accurate and technically correct?",
+        "Does the response use appropriate technical terminology?",
+        "Is the tone of the response professional and helpful?",
+        "Would the response likely resolve the user's issue without further assistance?"
+    ],
+    short_description="Tech support response evaluation criteria",
+    long_description="This EvalSet provides comprehensive evaluation criteria for technical support responses. It measures clarity, completeness, accuracy, helpfulness, and professionalism. Use it to evaluate support agent responses to technical questions or troubleshooting scenarios. High scores indicate responses that are clear, accurate, and likely to resolve the user's issue without further assistance."
+)
+```
 
-2. **Design Effective Questions**: Create clear, unambiguous evaluation questions that focus on specific aspects of quality.
+#### Update an EvalSet
 
-3. **Use Specialized EvalSets**: Create different EvalSets for different types of conversations or quality criteria.
+```python
+updated_evalset = manage_evalset_tool(
+    action="update",
+    evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+    name="Enhanced Technical Support Quality Evaluation",
+    questions=["New question 1", "New question 2"],
+    short_description="Enhanced tech support evaluation criteria",
+    long_description="This enhanced EvalSet provides improved evaluation criteria for technical support responses with more specific questions focused on resolution success. It measures clarity, accuracy, and customer satisfaction more precisely. Use it for evaluating advanced support scenarios where multiple solutions might be applicable."
+)
+```
 
-4. **Custom Templates**: Use custom templates for specialized evaluations requiring more detailed judgments.
+#### Delete an EvalSet
 
-5. **Templatized Evaluations**: For comparing similar conversations, use the same EvalSet to ensure consistent evaluation.
+```python
+delete_result = manage_evalset_tool(
+    action="delete",
+    evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
+)
+```
+
+### Important Notes
+
+1. **System Templates**: As of v2.0, templates are system-defined and no longer customizable by users.
+2. **Questions Format**: The `questions` parameter must be a proper list/array of strings, not a multiline string.
+3. **Question Limits**: A maximum of 100 questions are allowed per EvalSet.
+4. **Description Requirements**:
+   - `short_description` must be 6-128 characters
+   - `long_description` must be 256-1024 characters
+
+## Tool: run_evalset_tool
+
+### Description
+
+This tool systematically evaluates a conversation against a predefined set of criteria (an EvalSet), using a language model as a judge. It provides detailed insights into conversation quality with reasoned judgments, confidence scores, and summary statistics.
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `evalset_id` | string | Yes | The unique identifier (UUID) of the EvalSet to use |
+| `conversation` | array of objects | Yes | A chronological list of conversation messages to evaluate |
+| `max_parallel` | integer | No (default: 3) | Maximum number of evaluation questions to process simultaneously |
+
+#### Conversation Format
+
+Each message in the `conversation` array must be a dictionary with these fields:
+
+```json
+{
+  "role": "user|assistant|system",
+  "content": "Message content"
+}
+```
+
+### Tool Configuration Options
+
+The following options can be specified in client configuration:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `judge_model` | string | The LLM to use as the evaluation judge (default: "meta-llama-3.1-8b-instruct") |
+| `omit_reasoning` | boolean | If true, don't generate detailed reasoning in results |
+
+Example client configuration:
+```json
+{
+  "mcpServers": {
+    "optim": {
+      "command": "...",
+      "args": ["..."],
+      "options": {
+        "judge_model": "gpt-4o-mini",
+        "omit_reasoning": "True"
+      }
+    }
+  }
+}
+```
+
+These options can also be set using environment variables:
+- `AGENTOPTIM_JUDGE_MODEL`: Set the judge model
+- `AGENTOPTIM_OMIT_REASONING`: Set to "1", "true", or "yes" to omit reasoning
+
+### Return Value
+
+The tool returns a comprehensive evaluation result with these components:
+
+```json
+{
+  "status": "success",
+  "id": "unique-evaluation-id",
+  "evalset_id": "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+  "evalset_name": "Technical Support Quality Evaluation",
+  "judge_model": "meta-llama-3.1-8b-instruct",
+  "results": [
+    {
+      "question": "Does the response directly address the user's specific question?",
+      "judgment": true,
+      "confidence": 0.95,
+      "reasoning": "The assistant's response directly addresses the user's question about resetting their password by providing step-by-step instructions specifically for that task. The response begins with 'To reset your password, please follow these steps:' which clearly indicates that the assistant understood the question and is providing a solution to the exact problem the user described."
+    },
+    ...
+  ],
+  "summary": {
+    "total_questions": 7,
+    "successful_evaluations": 7,
+    "yes_count": 6,
+    "no_count": 1,
+    "error_count": 0,
+    "yes_percentage": 85.71,
+    "mean_confidence": 0.89,
+    "mean_yes_confidence": 0.92,
+    "mean_no_confidence": 0.75
+  },
+  "formatted_message": "# Evaluation Results for 'Technical Support Quality Evaluation'..."
+}
+```
+
+If `omit_reasoning` is set to true, the `reasoning` field will be omitted from each result.
+
+### Error Responses
+
+If an error occurs, the tool returns a detailed error message:
+
+```json
+{
+  "error": "Error message",
+  "details": "Detailed explanation of the error",
+  "troubleshooting": [
+    "Suggestion 1",
+    "Suggestion 2",
+    ...
+  ]
+}
+```
+
+### Usage Examples
+
+#### Basic evaluation
+
+```python
+results = run_evalset_tool(
+    evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+    conversation=[
+        {"role": "system", "content": "You are a helpful technical support assistant."},
+        {"role": "user", "content": "I forgot my password and can't log in. How do I reset it?"},
+        {"role": "assistant", "content": "To reset your password, please follow these steps:\n\n1. Go to the login page\n2. Click on the 'Forgot Password' link below the login form\n3. Enter the email address associated with your account\n4. Check your email for a password reset link\n5. Click the link and follow the instructions to create a new password\n\nIf you don't receive the email within a few minutes, please check your spam folder."}
+    ],
+    max_parallel=2
+)
+```
+
+#### Comparing multiple responses
+
+```python
+def evaluate_response(response_text):
+    return run_evalset_tool(
+        evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+        conversation=[
+            {"role": "user", "content": "How do I reset my password?"},
+            {"role": "assistant", "content": response_text}
+        ]
+    )["summary"]["yes_percentage"]
+
+response1_score = evaluate_response("Go to Settings > Account > Reset Password.")
+response2_score = evaluate_response("To reset your password, go to the login page and click 'Forgot Password'.")
+response3_score = evaluate_response("To reset your password, follow these steps:\n1. Go to the login page\n2. Click 'Forgot Password'\n3. Follow the on-screen instructions")
+
+print(f"Response 1: {response1_score}%")
+print(f"Response 2: {response2_score}%")
+print(f"Response 3: {response3_score}%")
+```
+
+### Important Notes
+
+1. **Judge Model**: By default, the tool uses "meta-llama-3.1-8b-instruct" as the judge model, but this can be configured.
+2. **Parallel Processing**: The `max_parallel` parameter controls how many questions are evaluated simultaneously. Higher values can improve speed but increase resource requirements.
+3. **Conversation Format**: The conversation must include at least one user message and one assistant message.
+4. **LM Studio Compatibility**: The tool includes special handling for LM Studio to ensure proper JSON processing.
+
+## Environment Variables
+
+The following environment variables can be used to configure AgentOptim:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AGENTOPTIM_DEBUG` | Enable debug logging | "0" |
+| `AGENTOPTIM_LMSTUDIO_COMPAT` | Enable LM Studio compatibility mode | "1" |
+| `AGENTOPTIM_JUDGE_MODEL` | Default judge model to use | None (uses "meta-llama-3.1-8b-instruct") |
+| `AGENTOPTIM_OMIT_REASONING` | Omit reasoning in evaluation results | "0" |
+| `AGENTOPTIM_API_BASE` | Base URL for the LLM API | "http://localhost:1234/v1" |
+| `OPENAI_API_KEY` | OpenAI API key (if using OpenAI models) | None |
+
+## Technical Implementation Notes
+
+1. **System Templates**: As of v2.0, templates are system-defined and standardized for all EvalSets.
+2. **JSON Response Format**: The evaluation uses a structured JSON format for all responses.
+3. **Confidence Scoring**: Confidence scores range from 0.0 to 1.0, with higher values indicating greater confidence.
+4. **Parallel Processing**: The tool uses asyncio for parallel processing of evaluation questions.
+5. **Error Handling**: Comprehensive error handling with detailed diagnostic information is provided.
+6. **API Compatibility**: Special handling for different LLM providers, including LM Studio compatibility mode.
 
 ## API Changes in v2.1.0
 
 Version 2.1.0 removes the legacy compatibility layer, making these breaking changes:
 
 1. All deprecated functions from v1.x have been removed
-2. The old `template_id` parameter is no longer supported in any function
-3. The `compat.py` module has been completely removed
+2. The `compat.py` module has been completely removed
+3. Removed all deprecated examples from examples/deprecated_examples
 
 Refer to the [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for detailed information on migrating from older versions.
 
