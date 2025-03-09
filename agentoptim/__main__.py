@@ -391,20 +391,22 @@ def run_cli():
             
             # Configure provider settings
             if args.provider:
-                if args.provider == "openai":
-                    os.environ["AGENTOPTIM_API_BASE"] = "https://api.openai.com/v1"
-                    # Only set default model if not explicitly specified
-                    if not args.model:
+                # Only set API_BASE if not already set by user
+                if "AGENTOPTIM_API_BASE" not in os.environ:
+                    if args.provider == "openai":
+                        os.environ["AGENTOPTIM_API_BASE"] = "https://api.openai.com/v1"
+                    elif args.provider == "anthropic":
+                        os.environ["AGENTOPTIM_API_BASE"] = "https://api.anthropic.com/v1"
+                    elif args.provider == "local":
+                        os.environ["AGENTOPTIM_API_BASE"] = "http://localhost:1234/v1"
+                
+                # Set default model based on provider if not explicitly specified
+                if not args.model:
+                    if args.provider == "openai":
                         args.model = "gpt-4o-mini"
-                elif args.provider == "anthropic":
-                    os.environ["AGENTOPTIM_API_BASE"] = "https://api.anthropic.com/v1"
-                    # Only set default model if not explicitly specified
-                    if not args.model:
+                    elif args.provider == "anthropic":
                         args.model = "claude-3-5-haiku-20241022"
-                elif args.provider == "local":
-                    os.environ["AGENTOPTIM_API_BASE"] = "http://localhost:1234/v1"
-                    # Only set default model if not explicitly specified
-                    if not args.model:
+                    elif args.provider == "local":
                         args.model = "meta-llama-3.1-8b-instruct"
             
             # Set environment variables for judge model and omit_reasoning if specified
