@@ -1077,7 +1077,8 @@ async def run_evalset(
     conversation: List[Dict[str, str]],
     judge_model: Optional[str] = None,  # Changed to None to trigger model auto-detection
     max_parallel: int = 3,
-    omit_reasoning: bool = False
+    omit_reasoning: bool = False,
+    progress_callback: Optional[callable] = None
 ) -> Dict[str, Any]:
     """
     Run an EvalSet evaluation on a conversation.
@@ -1088,6 +1089,7 @@ async def run_evalset(
         judge_model: LLM model to use for evaluations (from server config)
         max_parallel: Maximum number of parallel evaluations
         omit_reasoning: If True, don't generate or include reasoning in results
+        progress_callback: Optional callback function for progress updates, called with (completed, total)
     
     Returns:
         Dictionary with evaluation results
@@ -1122,15 +1124,29 @@ async def run_evalset(
         # Process all questions with rate limiting
         semaphore = asyncio.Semaphore(max_parallel)
         
+        # Set up progress tracking
+        total_questions = len(evalset.questions)
+        completed_questions = 0
+        
+        # Report initial progress (0%)
+        if progress_callback:
+            progress_callback(0, total_questions)
+            
         async def process_question(question):
+            nonlocal completed_questions
             async with semaphore:
-                return await evaluate_question(
+                result = await evaluate_question(
                     conversation=conversation,
                     question=question,
                     template=evalset.template,
                     judge_model=judge_model,
                     omit_reasoning=omit_reasoning
                 )
+                # Update progress counter and report progress if callback provided
+                completed_questions += 1
+                if progress_callback:
+                    progress_callback(completed_questions, total_questions)
+                return result
         
         # Run all questions in parallel with rate limiting
         eval_results = await asyncio.gather(
@@ -1181,61 +1197,112 @@ async def run_evalset(
             summary=summary
         )
         
-        # Format response
+        # Format response with emojis and visual enhancements for delight
         formatted_results = []
-        formatted_results.append(f"# Evaluation Results for '{evalset.name}'")
+        formatted_results.append(f"# 🔍 Evaluation Results for '{evalset.name}'")
         formatted_results.append("")
-        formatted_results.append(f"## Summary")
-        formatted_results.append(f"- Total questions: {total_questions}")
-        formatted_results.append(f"- Success rate: {len(successful_evals)}/{total_questions} questions evaluated successfully")
+        formatted_results.append(f"## 📊 Summary")
+        
+        # Calculate score rating for visual feedback
+        score_rating = ""
+        if yes_percentage >= 90:
+            score_rating = "🌟 Excellent"
+        elif yes_percentage >= 75:
+            score_rating = "✨ Good"
+        elif yes_percentage >= 60:
+            score_rating = "👍 Satisfactory"
+        elif yes_percentage >= 40:
+            score_rating = "🔸 Needs Improvement"
+        else:
+            score_rating = "⚠️ Poor"
+        
+        # Create visual bar chart for yes percentage
+        yes_bar_length = min(20, int(yes_percentage / 5))  # Scale to max 20 chars
+        no_bar_length = 20 - yes_bar_length
+        yes_bar = "█" * yes_bar_length
+        no_bar = "░" * no_bar_length
+        progress_bar = f"{yes_bar}{no_bar}"
+        
+        formatted_results.append(f"- 📋 Total questions: {total_questions}")
+        formatted_results.append(f"- ✅ Success rate: {len(successful_evals)}/{total_questions} questions evaluated successfully")
         
         if error_count > 0:
-            formatted_results.append(f"- Errors: {error_count} questions failed to evaluate")
+            formatted_results.append(f"- ❌ Errors: {error_count} questions failed to evaluate")
             # Add more detailed help message if boolean errors
             boolean_errors = any("JSON boolean" in (r.error or "") for r in eval_results)
             if boolean_errors:
                 formatted_results.append("  ⚠️ There were issues with JSON format. Try running again with different prompt.")
         
-        formatted_results.append(f"- Yes responses: {yes_count} ({round(yes_percentage, 2)}%)")
-        formatted_results.append(f"- No responses: {no_count} ({round(100 - yes_percentage, 2)}%)")
+        # Add overall score with visual indicators
+        formatted_results.append(f"- 🎯 Overall score: {round(yes_percentage, 1)}% {score_rating}")
+        formatted_results.append(f"  {progress_bar} {round(yes_percentage, 1)}%")
+        formatted_results.append(f"- ✓ Yes responses: {yes_count} ({round(yes_percentage, 1)}%)")
+        formatted_results.append(f"- ✗ No responses: {no_count} ({round(100 - yes_percentage, 1)}%)")
         
         # Add confidence information to summary if available
         if summary["mean_confidence"] is not None:
-            formatted_results.append(f"- Mean confidence: {summary['mean_confidence']:.2f}")
+            # Add confidence emoji based on value
+            conf_emoji = "🔍"
+            if summary["mean_confidence"] >= 0.9:
+                conf_emoji = "🔒"  # High confidence
+            elif summary["mean_confidence"] >= 0.7:
+                conf_emoji = "🔐"  # Good confidence
+            elif summary["mean_confidence"] >= 0.5:
+                conf_emoji = "🔓"  # Medium confidence
+            else:
+                conf_emoji = "⚠️"  # Low confidence
+                
+            formatted_results.append(f"- {conf_emoji} Mean confidence: {summary['mean_confidence']:.2f}")
             
             # Add yes/no confidence breakdowns if available
             if summary["mean_yes_confidence"] is not None and yes_count > 0:
-                formatted_results.append(f"- Mean confidence in Yes responses: {summary['mean_yes_confidence']:.2f}")
+                formatted_results.append(f"  ├─ ✓ Yes confidence: {summary['mean_yes_confidence']:.2f}")
             if summary["mean_no_confidence"] is not None and no_count > 0:
-                formatted_results.append(f"- Mean confidence in No responses: {summary['mean_no_confidence']:.2f}")
+                formatted_results.append(f"  └─ ✗ No confidence: {summary['mean_no_confidence']:.2f}")
         formatted_results.append("")
         
-        formatted_results.append(f"## Detailed Results")
+        formatted_results.append(f"## 📝 Detailed Results")
         for i, result in enumerate(eval_results, 1):
             if result.error:
-                formatted_results.append(f"{i}. **Q**: {result.question}")
-                formatted_results.append(f"   **Error**: {result.error}")
+                formatted_results.append(f"{i}. ❓ **Q**: {result.question}")
+                formatted_results.append(f"   ❌ **Error**: {result.error}")
             else:
+                # Use different emojis based on judgment
+                judgment_emoji = "✅" if result.judgment else "❌"
                 judgment_text = "Yes" if result.judgment else "No"
-                formatted_results.append(f"{i}. **Q**: {result.question}")
-                # Format the display based on available confidence information
-                # Show confidence if available
-                confidence_display = ""
                 
-                # If we have a confidence value, display it
+                formatted_results.append(f"{i}. ❓ **Q**: {result.question}")
+                
+                # Format the display based on available confidence information
+                confidence_display = ""
+                confidence_emoji = ""
+                
+                # If we have a confidence value, display it with appropriate emoji
                 if result.confidence is not None:
-                    confidence_display = f"(confidence: {result.confidence:.2f})"
+                    # Choose emoji based on confidence level
+                    if result.confidence >= 0.9:
+                        confidence_emoji = "🔒"  # Very confident
+                    elif result.confidence >= 0.8:
+                        confidence_emoji = "🔐"  # Pretty confident
+                    elif result.confidence >= 0.7:
+                        confidence_emoji = "🔏"  # Somewhat confident
+                    elif result.confidence >= 0.6:
+                        confidence_emoji = "🔓"  # Less confident
+                    else:
+                        confidence_emoji = "⚠️"  # Not very confident
+                        
+                    confidence_display = f"{confidence_emoji} {result.confidence:.2f}"
                 else:
                     confidence_display = "(confidence: N/A)"
                 
                 # Format the result with confidence and optional reasoning
-                formatted_results.append(f"   **A**: {judgment_text} {confidence_display}")
+                formatted_results.append(f"   {judgment_emoji} **A**: {judgment_text} {confidence_display}")
                 
                 # Include reasoning if available and not omitted
                 if not omit_reasoning and result.reasoning is not None and result.reasoning:
                     # Limit reasoning to 200 chars and add ellipsis if needed
                     reasoning_text = result.reasoning[:200] + ("..." if len(result.reasoning) > 200 else "")
-                    formatted_results.append(f"   **Reasoning**: {reasoning_text}")
+                    formatted_results.append(f"   💭 **Reasoning**: {reasoning_text}")
         
         # Prepare results for response, removing reasoning field if omitted
         results_for_response = []

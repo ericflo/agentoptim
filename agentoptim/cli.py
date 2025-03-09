@@ -42,7 +42,7 @@ logging.basicConfig(
 logger = logging.getLogger("agentoptim")
 
 # Constants
-VERSION = "2.1.1"
+VERSION = "2.1.1"  # Updated for CLI delight features
 MAX_WIDTH = 100  # Maximum width for formatted output
 
 
@@ -56,24 +56,34 @@ def setup_parser():
           # Start the server
           agentoptim server
           
-          # Create an evaluation set (generates a unique ID)
+          # Create an evaluation set interactively (generates a unique ID)
           agentoptim evalset create --wizard
           
           # List all evaluation sets to get their IDs
           agentoptim evalset list
           
-          # Run an evaluation (system stores results with auto-generated ID)
+          # Run evaluation with file input (system auto-generates result ID)
           agentoptim run create <evalset-id> conversation.json
+          
+          # Create and evaluate a conversation interactively
+          agentoptim run create <evalset-id> --interactive
+          
+          # Evaluate a text file as a single user message
+          agentoptim run create <evalset-id> --text response.txt
           
           # Get the most recent evaluation result (no need to remember IDs)
           agentoptim run get latest
           
           # View all your evaluation runs
           agentoptim run list
+          
+          # Install shell tab completion
+          agentoptim --install-completion
         """)
     )
     
     parser.add_argument('--version', action='version', version=f'AgentOptim v{VERSION}')
+    parser.add_argument('--install-completion', action='store_true', help='Install shell completion script')
     
     # Create subparsers for resources
     subparsers = parser.add_subparsers(dest="resource", help="Resource to manage")
@@ -301,9 +311,91 @@ def run_interactive_wizard(args):
 # Legacy command handling code removed - no backward compatibility
 
 
+def get_suggestion(command, available_commands):
+    """Get command suggestion for typos based on Levenshtein distance."""
+    if not command or not available_commands:
+        return None
+        
+    # Calculate Levenshtein distance (minimal string edit operations) 
+    # between command and each available command
+    def levenshtein_distance(s1, s2):
+        if len(s1) < len(s2):
+            return levenshtein_distance(s2, s1)
+        
+        if len(s2) == 0:
+            return len(s1)
+        
+        previous_row = range(len(s2) + 1)
+        for i, c1 in enumerate(s1):
+            current_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (c1 != c2)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+        
+        return previous_row[-1]
+    
+    # Find the closest match
+    closest = None
+    min_distance = float('inf')
+    
+    for cmd in available_commands:
+        distance = levenshtein_distance(command.lower(), cmd.lower())
+        if distance < min_distance:
+            min_distance = distance
+            closest = cmd
+            
+    # Only suggest if the distance is reasonable (relative to command length)
+    threshold = max(2, len(command) // 3)  # Allow more errors for longer commands
+    if min_distance <= threshold:
+        return closest
+    return None
+
+
 def run_cli():
     """Run the AgentOptim CLI based on the provided arguments."""
     parser = setup_parser()
+    
+    # Split into two stages: first check for mistyped commands without raising errors,
+    # then parse properly for execution
+    if len(sys.argv) > 1:
+        resource = sys.argv[1]
+        
+        # Check for common resources
+        main_resources = ["server", "evalset", "es", "run", "r", "dev"]
+        if resource not in main_resources and not resource.startswith('-'):
+            # Check for typos
+            suggestion = get_suggestion(resource, main_resources)
+            if suggestion:
+                print(f"{Fore.YELLOW}Command '{resource}' not found. Did you mean '{suggestion}'?{Style.RESET_ALL}")
+                print(f"Run {Fore.CYAN}agentoptim --help{Style.RESET_ALL} to see available commands.")
+                sys.exit(1)
+                
+        # Check for action typos if appropriate
+        if len(sys.argv) > 2 and resource in ["evalset", "es", "run", "r", "dev"]:
+            action = sys.argv[2]
+            
+            # Define valid actions for each resource
+            action_map = {
+                "evalset": ["list", "get", "create", "update", "delete"],
+                "es": ["list", "get", "create", "update", "delete"],
+                "run": ["list", "get", "create"],
+                "r": ["list", "get", "create"],
+                "dev": ["cache", "logs"]
+            }
+            
+            valid_actions = action_map.get(resource, [])
+            
+            if action not in valid_actions and not action.startswith('-'):
+                # Check for typos in action
+                suggestion = get_suggestion(action, valid_actions)
+                if suggestion:
+                    print(f"{Fore.YELLOW}Action '{action}' not found for '{resource}'. Did you mean '{suggestion}'?{Style.RESET_ALL}")
+                    print(f"Valid actions for '{resource}': {', '.join(valid_actions)}")
+                    sys.exit(1)
+    
     args = parser.parse_args()
     
     # Handle no args case
@@ -522,20 +614,130 @@ def run_cli():
             handle_output(formatted_run, args.format, args.output)
         
         elif args.action == "create":
-            # Interactive mode not implemented yet - placeholder
-            if args.interactive:
-                print(f"{Fore.YELLOW}Interactive conversation input mode not implemented yet.{Style.RESET_ALL}")
-                print("Please provide a conversation file or --text file.")
-                sys.exit(1)
-            
             # Check if evalset_id is provided
             if not args.evalset_id:
                 print(f"{Fore.RED}Error: No evaluation set ID provided. Get an ID with 'agentoptim evalset list'{Style.RESET_ALL}")
                 print(f"{Fore.RED}Usage: agentoptim run create <evalset-id> conversation.json{Style.RESET_ALL}")
                 sys.exit(1)
-            
-            # Load the conversation
-            conversation = load_conversation(args.conversation, args.text)
+                
+            # Interactive conversation creation mode
+            if args.interactive:
+                try:
+                    # Try to enhance the experience with rich if available
+                    try:
+                        from rich.console import Console
+                        from rich.panel import Panel
+                        from rich.markdown import Markdown
+                        from rich.prompt import Prompt, Confirm
+                        has_rich = True
+                        console = Console()
+                    except ImportError:
+                        has_rich = False
+                        
+                    # Show welcome message
+                    if has_rich:
+                        console.print(Panel(
+                            "[bold cyan]Interactive Conversation Creator[/bold cyan]\n"
+                            "Create a conversation to evaluate by adding messages turn by turn.\n"
+                            "Press Ctrl+D when finished to start evaluation.",
+                            title="✨ AgentOptim", 
+                            border_style="cyan"
+                        ))
+                    else:
+                        print(f"{Fore.CYAN}=== Interactive Conversation Creator ==={Style.RESET_ALL}")
+                        print("Create a conversation to evaluate by adding messages turn by turn.")
+                        print("Press Ctrl+D when finished to start evaluation.\n")
+                    
+                    # Create conversation with system message option
+                    conversation = []
+                    
+                    # Ask for system message first
+                    if has_rich:
+                        if Confirm.ask("Include a system message?", default=True):
+                            system_content = console.input("[bold green]System message: [/bold green]")
+                            conversation.append({"role": "system", "content": system_content})
+                    else:
+                        include_system = input(f"{Fore.GREEN}Include a system message? (Y/n): {Style.RESET_ALL}").lower()
+                        if include_system in ["", "y", "yes"]:
+                            system_content = input(f"{Fore.GREEN}System message: {Style.RESET_ALL}")
+                            conversation.append({"role": "system", "content": system_content})
+                    
+                    # Start with user message
+                    current_role = "user"
+                    
+                    # Collect messages until user signals they're done
+                    try:
+                        while True:
+                            # Prompt based on current role
+                            prompt_text = f"{current_role.capitalize()}: "
+                            
+                            if has_rich:
+                                role_color = "blue" if current_role == "user" else "green"
+                                content = console.input(f"[bold {role_color}]{prompt_text}[/bold {role_color}]")
+                            else:
+                                role_color = Fore.BLUE if current_role == "user" else Fore.GREEN
+                                content = input(f"{role_color}{prompt_text}{Style.RESET_ALL}")
+                            
+                            # Add message to conversation
+                            conversation.append({"role": current_role, "content": content})
+                            
+                            # Toggle role for next message
+                            current_role = "assistant" if current_role == "user" else "user"
+                    except EOFError:
+                        # End of input
+                        print("\n")
+                    except KeyboardInterrupt:
+                        # User cancelled
+                        print("\n\nCancelled by user.")
+                        sys.exit(0)
+                    
+                    # Show preview of conversation
+                    if has_rich:
+                        console.print("\n[bold cyan]Conversation Preview:[/bold cyan]")
+                        for msg in conversation:
+                            role_color = {
+                                "system": "yellow",
+                                "user": "blue",
+                                "assistant": "green"
+                            }.get(msg["role"], "white")
+                            
+                            console.print(f"[bold {role_color}]{msg['role'].upper()}:[/bold {role_color}] {msg['content']}")
+                            
+                        # Confirm evaluation
+                        if not Confirm.ask("\nEvaluate this conversation?", default=True):
+                            console.print("[yellow]Evaluation cancelled.[/yellow]")
+                            sys.exit(0)
+                    else:
+                        print(f"\n{Fore.CYAN}Conversation Preview:{Style.RESET_ALL}")
+                        for msg in conversation:
+                            role_color = {
+                                "system": Fore.YELLOW,
+                                "user": Fore.BLUE,
+                                "assistant": Fore.GREEN
+                            }.get(msg["role"], Fore.WHITE)
+                            
+                            print(f"{role_color}{msg['role'].upper()}:{Style.RESET_ALL} {msg['content']}")
+                        
+                        # Confirm evaluation
+                        confirm = input(f"\n{Fore.CYAN}Evaluate this conversation? (Y/n): {Style.RESET_ALL}").lower()
+                        if confirm not in ["", "y", "yes"]:
+                            print(f"{Fore.YELLOW}Evaluation cancelled.{Style.RESET_ALL}")
+                            sys.exit(0)
+                            
+                except Exception as e:
+                    print(f"{Fore.RED}Error in interactive mode: {str(e)}{Style.RESET_ALL}")
+                    sys.exit(1)
+            # File-based conversation
+            elif args.conversation or args.text:
+                # Load the conversation from file
+                conversation = load_conversation(args.conversation, args.text)
+            else:
+                print(f"{Fore.RED}Error: No conversation provided. Use a file, --text, or --interactive mode.{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Examples:{Style.RESET_ALL}")
+                print(f"  agentoptim run create <evalset-id> conversation.json")
+                print(f"  agentoptim run create <evalset-id> --text response.txt")
+                print(f"  agentoptim run create <evalset-id> --interactive")
+                sys.exit(1)
             
             # Import constants here to avoid circular imports
             from agentoptim.constants import (
@@ -575,14 +777,88 @@ def run_cli():
                 
             # Run the evaluation
             try:
-                # First call run_evalset
-                run_result = asyncio.run(run_evalset(
-                    evalset_id=args.evalset_id,
-                    conversation=conversation,
-                    judge_model=args.model,
-                    max_parallel=args.max_parallel,
-                    omit_reasoning=args.omit_reasoning
-                ))
+                # Try to import rich for progress display
+                try:
+                    from rich.progress import Progress, TextColumn, BarColumn, SpinnerColumn, TimeElapsedColumn
+                    from rich.console import Console
+                    from rich.panel import Panel
+                    has_rich = True
+                except ImportError:
+                    has_rich = False
+                    print(f"{Fore.YELLOW}Tip: Install 'rich' for better progress visualization: pip install rich{Style.RESET_ALL}")
+                
+                if has_rich:
+                    console = Console()
+                    with console.status(f"[bold green]Initializing evaluation...", spinner="dots"):
+                        # Define a callback to update progress
+                        question_count = 0
+                        
+                        # Get the eval set first to know how many questions
+                        from agentoptim.evalset import manage_evalset
+                        evalset_info = manage_evalset(action="get", evalset_id=args.evalset_id)
+                        if "evalset" in evalset_info and "questions" in evalset_info["evalset"]:
+                            question_count = len(evalset_info["evalset"]["questions"])
+                            
+                    # Now run with progress tracking
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[bold blue]{task.description}"),
+                        BarColumn(complete_style="green", finished_style="green"),
+                        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                        TimeElapsedColumn(),
+                    ) as progress:
+                        task = progress.add_task(f"[green]Evaluating with {args.model or os.environ.get('AGENTOPTIM_JUDGE_MODEL', 'default model')}...", total=question_count)
+                        
+                        # Define a progress callback 
+                        def progress_callback(completed, total):
+                            progress.update(task, completed=completed)
+                            
+                        # Run the evaluation with progress tracking
+                        run_result = asyncio.run(run_evalset(
+                            evalset_id=args.evalset_id,
+                            conversation=conversation,
+                            judge_model=args.model,
+                            max_parallel=args.max_parallel,
+                            omit_reasoning=args.omit_reasoning,
+                            progress_callback=progress_callback
+                        ))
+                else:
+                    # Simple spinner for when rich is not available
+                    print(f"{Fore.CYAN}Evaluating conversation...{Style.RESET_ALL}")
+                    animation = "|/-\\"
+                    idx = 0
+                    start_time = time.time()
+                    
+                    def print_spinner():
+                        nonlocal idx
+                        elapsed = time.time() - start_time
+                        mins, secs = divmod(int(elapsed), 60)
+                        sys.stdout.write(f"\r{Fore.CYAN}Working {animation[idx % len(animation)]} {mins:02d}:{secs:02d} elapsed{Style.RESET_ALL}")
+                        sys.stdout.flush()
+                        idx += 1
+                    
+                    # Run evaluation with a simple spinning cursor
+                    spinner_timer = None
+                    try:
+                        import threading
+                        spinner_timer = threading.Timer(0.1, print_spinner)
+                        spinner_timer.start()
+                        
+                        # Call the actual evaluation
+                        run_result = asyncio.run(run_evalset(
+                            evalset_id=args.evalset_id,
+                            conversation=conversation,
+                            judge_model=args.model,
+                            max_parallel=args.max_parallel,
+                            omit_reasoning=args.omit_reasoning
+                        ))
+                        
+                        # Clear the spinner line
+                        sys.stdout.write("\r" + " " * 50 + "\r")
+                        sys.stdout.flush()
+                    finally:
+                        if spinner_timer:
+                            spinner_timer.cancel()
                 
                 # Check for errors
                 if "error" in run_result:
@@ -653,8 +929,131 @@ def run_cli():
                         print(line, end="")
 
 
+def generate_completion_script():
+    """Generate a bash completion script for the agentoptim CLI."""
+    return '''
+# AgentOptim CLI bash completion script
+_agentoptim_completion() {
+    local cur prev opts resources actions
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    
+    # Define main resources
+    resources="server evalset es run r dev"
+    # Define actions based on resource
+    evalset_actions="list get create update delete"
+    run_actions="list get create"
+    dev_actions="cache logs"
+    
+    # Handle completion based on input position
+    case ${COMP_CWORD} in
+        1)
+            # First argument should be a resource or help
+            COMPREPLY=( $(compgen -W "${resources} --help --version" -- ${cur}) )
+            return 0
+            ;;
+        2)
+            # Second argument depends on the resource
+            case ${prev} in
+                evalset|es)
+                    COMPREPLY=( $(compgen -W "${evalset_actions}" -- ${cur}) )
+                    ;;
+                run|r)
+                    COMPREPLY=( $(compgen -W "${run_actions}" -- ${cur}) )
+                    ;;
+                dev)
+                    COMPREPLY=( $(compgen -W "${dev_actions}" -- ${cur}) )
+                    ;;
+                server)
+                    COMPREPLY=( $(compgen -W "--port --debug --provider" -- ${cur}) )
+                    ;;
+            esac
+            return 0
+            ;;
+        3)
+            # Third argument handles common parameters
+            resource="${COMP_WORDS[1]}"
+            action="${COMP_WORDS[2]}"
+            
+            if [[ "${resource}" == "evalset" || "${resource}" == "es" ]]; then
+                if [[ "${action}" == "create" ]]; then
+                    COMPREPLY=( $(compgen -W "--wizard --name --questions --short-desc --long-desc" -- ${cur}) )
+                elif [[ "${action}" == "get" || "${action}" == "update" || "${action}" == "delete" ]]; then
+                    # Try to complete with IDs from the list command output (simplified)
+                    COMPREPLY=( $(compgen -W "latest" -- ${cur}) )
+                fi
+            elif [[ "${resource}" == "run" || "${resource}" == "r" ]]; then
+                if [[ "${action}" == "get" ]]; then
+                    COMPREPLY=( $(compgen -W "latest" -- ${cur}) )
+                elif [[ "${action}" == "create" ]]; then
+                    # Try to complete with IDs from evalset list
+                    COMPREPLY=( $(compgen -W "--interactive --text --model --provider" -- ${cur}) )
+                fi
+            fi
+            return 0
+            ;;
+    esac
+    
+    # Default to general options when no specific completion is available
+    general_opts="--help --format --output"
+    COMPREPLY=( $(compgen -W "${general_opts}" -- ${cur}) )
+    return 0
+}
+
+# Register the completion function
+complete -F _agentoptim_completion agentoptim
+'''
+
+def install_completion():
+    """Attempt to install shell completion."""
+    try:
+        # Generate the completion script
+        script = generate_completion_script()
+        
+        # Determine completion path
+        user_home = os.path.expanduser("~")
+        completion_file = os.path.join(user_home, ".agentoptim_completion.sh")
+        
+        # Write completion script to file
+        with open(completion_file, "w") as f:
+            f.write(script)
+        
+        # Determine shell
+        shell_path = os.environ.get("SHELL", "")
+        shell_name = os.path.basename(shell_path)
+        
+        # Generate instruction message for user
+        print(f"{Fore.GREEN}Shell completion script created at: {completion_file}{Style.RESET_ALL}")
+        
+        # Add specific instructions based on shell
+        if "bash" in shell_name:
+            print(f"\nTo enable completion, add this line to your ~/.bashrc:")
+            print(f"{Fore.YELLOW}source {completion_file}{Style.RESET_ALL}")
+        elif "zsh" in shell_name:
+            print(f"\nTo enable completion, add these lines to your ~/.zshrc:")
+            print(f"{Fore.YELLOW}autoload -Uz compinit")
+            print(f"compinit")
+            print(f"source {completion_file}{Style.RESET_ALL}")
+        else:
+            print(f"\nTo enable completion, source the script in your shell's startup file:")
+            print(f"{Fore.YELLOW}source {completion_file}{Style.RESET_ALL}")
+        
+        print(f"\nAfter adding the line, restart your shell or run: {Fore.CYAN}source ~/.bashrc{Style.RESET_ALL} (or equivalent)")
+        
+        return True
+    except Exception as e:
+        print(f"{Fore.RED}Error installing shell completion: {str(e)}{Style.RESET_ALL}", file=sys.stderr)
+        return False
+
+
 def main():
     """Main entry point for the module."""
+    # Handle special "--install-completion" flag before parsing other args
+    if len(sys.argv) == 2 and sys.argv[1] == "--install-completion":
+        install_completion()
+        return
+    
     try:
         run_cli()
     except Exception as e:

@@ -103,9 +103,18 @@ all_runs = await manage_eval_runs_tool(
 
 Whether you're fine-tuning production agents, comparing prompt strategies, or benchmarking different AI models, AgentOptim gives you the tools to make data-driven decisions about conversation quality.
 
-## 🚀 What's New in v2.1.0!
+## 🚀 What's New in v2.1.1!
 
-Version 2.1.0 completes our architectural simplification by removing the legacy compatibility layer and delivering a clean, modern API:
+Version 2.1.1 adds delightful CLI enhancements that make AgentOptim even more user-friendly:
+
+- ✨ **Interactive Conversation Creator** - Create conversations to evaluate with an interactive TUI
+- 📊 **Rich Progress Visualization** - Watch evaluation progress with beautiful progress bars
+- 🎨 **Colorful Output with Emojis** - More readable and visually appealing results
+- 🔠 **Command Auto-Completion** - Tab completion for all commands and options
+- 🔍 **Command Suggestion System** - Get helpful suggestions when commands are mistyped
+- 📱 **Concise Error Messages** - Clear help when something goes wrong
+
+Version 2.1.0 completed our architectural simplification by removing the legacy compatibility layer and delivering a clean, modern API:
 
 - **Removed compatibility layer** - No more legacy code or backward compatibility
 - **Streamlined API** - Just 2 powerful tools for all your evaluation needs
