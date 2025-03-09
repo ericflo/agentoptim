@@ -141,8 +141,8 @@ async def call_llm_api(
                 model = detected_model
                 logger.info(f"Auto-detected model: {model}")
             else:
-                # If detection fails, use a default model that's not meta-llama-3.1-8b-instruct
-                model = "gpt-3.5-turbo"  # Fallback default
+                # If detection fails, use a default fallback model
+                model = "gpt-4o-mini"  # Better fallback default
                 logger.info(f"Model auto-detection failed, using fallback: {model}")
             
         # Allow either messages or prompt parameter

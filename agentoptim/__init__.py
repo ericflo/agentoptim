@@ -69,8 +69,8 @@ conversation = [
 # Run the evaluation on the conversation
 eval_results = await run_evalset_tool(
     evalset_id=evalset_id,
-    conversation=conversation,
-    model="meta-llama-3.1-8b-instruct"
+    conversation=conversation
+    # Model will be auto-detected
 )
 
 # The results include both judgments and a summary

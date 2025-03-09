@@ -34,8 +34,8 @@ QUESTIONS = [
 
 # Models to compare
 MODELS = [
-    "meta-llama-3.1-8b-instruct",  # Default model
-    "meta-llama-3.1-70b-instruct",  # More capable model
+    None,  # Auto-detect a model
+    "gpt-4o-mini",  # OpenAI model
     # Uncomment and add your own models if you have API access
     # "gpt-4o-mini",
     # "claude-3-haiku-20240307",

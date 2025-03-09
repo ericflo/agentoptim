@@ -439,7 +439,7 @@ async def run_evalset_tool(
                 
     (The model used for evaluation is controlled by the server configuration,
     either through the AGENTOPTIM_JUDGE_MODEL environment variable or the judge_model option
-    in client configuration. If neither is specified, the default "meta-llama-3.1-8b-instruct" is used.)
+    in client configuration. If neither is specified, a model will be auto-detected from your API.)
           
     max_parallel: Maximum number of evaluation questions to process simultaneously.
                 OPTIONAL. Defaults to 3.
@@ -502,7 +502,7 @@ async def run_evalset_tool(
             {"role": "user", "content": "I forgot my password and can't log in. How do I reset it?"},
             {"role": "assistant", "content": "To reset your password, please follow these steps:\n\n1. Go to the login page\n2. Click on the 'Forgot Password' link below the login form\n3. Enter the email address associated with your account\n4. Check your email for a password reset link\n5. Click the link and follow the instructions to create a new password\n\nIf you don't receive the email within a few minutes, please check your spam folder."}
         ],
-        model="meta-llama-3.1-8b-instruct",
+        # Model will be auto-detected
         max_parallel=2
     )
     
@@ -647,7 +647,7 @@ async def run_evalset_tool(
                 "Check that the model name is spelled correctly",
                 "Ensure your LLM server or provider supports this model",
                 "Verify that the model can understand and follow instructions",
-                "The default model 'meta-llama-3.1-8b-instruct' should work with LM Studio",
+                "Models will be auto-detected from your LM Studio API",
                 "For cloud APIs, make sure your API key has access to the requested model"
             ]
         else:

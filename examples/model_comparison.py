@@ -92,7 +92,7 @@ async def main():
     # Note: This example assumes you have API keys set for these services
     # You may need to modify this list based on what's available in your environment
     judge_models = [
-        "meta-llama-3.1-8b-instruct",      # Default, smaller model
+        None,                               # Auto-detected model
         "gpt-3.5-turbo",                    # OpenAI's GPT-3.5
         "gpt-4o-mini",                      # OpenAI's smaller GPT-4 variant
         "claude-3-haiku-20240307"           # Anthropic's smaller Claude model
@@ -101,8 +101,8 @@ async def main():
     # Check which models are available by environment variables
     available_models = []
     
-    # Always include the default model
-    available_models.append("meta-llama-3.1-8b-instruct")
+    # Always include the auto-detected model option
+    available_models.append(None)
     
     # Check for OpenAI API key
     if os.environ.get("OPENAI_API_KEY"):

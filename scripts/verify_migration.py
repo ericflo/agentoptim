@@ -66,8 +66,8 @@ async def test_evalset_api():
     print("\nRunning evaluation...")
     eval_result = await run_evalset_tool(
         evalset_id=evalset_id,
-        conversation=conversation,
-        model="meta-llama-3.1-8b-instruct"
+        conversation=conversation
+        # Model will be auto-detected
     )
     
     print(f"Evaluation complete with overall score: {eval_result.get('summary', {}).get('yes_percentage')}%")
