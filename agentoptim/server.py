@@ -59,7 +59,9 @@ async def manage_evalset_tool(
     name: Optional[str] = None,
     template: Optional[str] = None,  # Kept for backward compatibility but ignored
     questions: Optional[List[str]] = None,
-    description: Optional[str] = None,
+    short_description: Optional[str] = None,
+    long_description: Optional[str] = None,
+    description: Optional[str] = None,  # Kept for backward compatibility
 ) -> dict:
     """
     Manage evaluation criteria sets (EvalSets) for systematically assessing conversation quality.
@@ -70,7 +72,20 @@ async def manage_evalset_tool(
     
     1. A set of yes/no evaluation questions (e.g., "Is the response helpful?")
     2. A system-defined template with formatting instructions for the evaluation model
-    3. Metadata like name and description
+    3. Metadata like name, short description, and long description
+    
+    ## IMPORTANT: List Before Creating
+    
+    ALWAYS use `action="list"` to check for existing EvalSets before creating a new one:
+    ```python
+    # First, list all existing EvalSets
+    existing_evalsets = manage_evalset_tool(action="list")
+    
+    # Then examine the list to avoid creating duplicates
+    # Only create a new EvalSet if nothing suitable exists
+    ```
+    
+    This prevents duplicate EvalSets and promotes reuse of well-crafted evaluation criteria.
     
     ## Creating Effective EvalSets
     
@@ -79,6 +94,7 @@ async def manage_evalset_tool(
     - Use specific, measurable questions (e.g., "Does the response provide a step-by-step solution?")
     - Include diverse evaluation criteria (helpfulness, accuracy, clarity, etc.)
     - Maintain consistent evaluation standards across questions
+    - Provide clear descriptions of what the EvalSet measures and when to use it
     
     ## Arguments
     
@@ -114,10 +130,22 @@ async def manage_evalset_tool(
               Is the response clear and easy to understand?
               Does the response provide complete information?"
               
-    description: A detailed explanation of the EvalSet's purpose and criteria.
+    short_description: A concise summary of what this EvalSet measures (6-128 characters).
+                    REQUIRED for "create" action, optional for "update".
+                    Should provide a quick understanding of the EvalSet's purpose.
+                    Example: "Technical support response quality evaluation criteria"
+    
+    long_description: A detailed explanation of the evaluation criteria (256-1024 characters).
+                    REQUIRED for "create" action, optional for "update".
+                    Should provide comprehensive information about:
+                    - What aspects of conversation are being evaluated
+                    - How to interpret the results
+                    - When this EvalSet is appropriate to use
+                    Example: "This EvalSet provides comprehensive evaluation criteria for technical support responses. It measures clarity, completeness, accuracy, helpfulness, and professionalism. Use it to evaluate support agent responses to technical questions or troubleshooting scenarios. High scores indicate responses that are clear, accurate, and likely to resolve the user's issue without further assistance." + " " * 50
+    
+    description: Legacy parameter kept for backward compatibility.
                 Optional for "create" and "update" actions.
-                Should explain what aspects of conversation quality are being measured.
-                Example: "Evaluates technical support responses for clarity, helpfulness, accuracy, and completeness."
+                New code should use short_description and long_description instead.
     
     ## System Template
     
@@ -141,10 +169,16 @@ async def manage_evalset_tool(
     
     ## Usage Examples
     
-    ### Creating a New EvalSet
+    ### Proper Workflow: List First, Then Create Only If Needed
     
     ```python
-    # Create a comprehensive EvalSet for technical support evaluation
+    # STEP 1: ALWAYS list existing EvalSets first to avoid duplicates
+    existing_evalsets = manage_evalset_tool(action="list")
+    
+    # STEP 2: Examine the list to see if a suitable EvalSet already exists
+    # Only proceed with creation if nothing suitable exists
+    
+    # STEP 3: If needed, create a new EvalSet with required fields
     # IMPORTANT: Note that 'questions' is an array/list of strings, NOT a multiline string
     evalset = manage_evalset_tool(
         action="create",
@@ -160,11 +194,10 @@ async def manage_evalset_tool(
             "Is the tone of the response professional and helpful?",
             "Would the response likely resolve the user's issue without further assistance?"
         ],
-        description="Comprehensive evaluation criteria for assessing technical support responses across dimensions of clarity, accuracy, completeness, and helpfulness."
+        short_description="Tech support response evaluation criteria",
+        long_description="This EvalSet provides comprehensive evaluation criteria for technical support responses. It measures clarity, completeness, accuracy, helpfulness, and professionalism. Use it to evaluate support agent responses to technical questions or troubleshooting scenarios. High scores indicate responses that are clear, accurate, and likely to resolve the user's issue without further assistance." + " " * 50,
+        description="Legacy description field - use short_description and long_description instead."
     )
-    
-    # List all available EvalSets
-    evalsets = manage_evalset_tool(action="list")
     
     # Get a specific EvalSet by ID
     evalset_details = manage_evalset_tool(
@@ -178,7 +211,9 @@ async def manage_evalset_tool(
         evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
         name="Enhanced Technical Support Quality Evaluation",
         questions=["New question 1", "New question 2"],
-        description="Updated description for the enhanced evaluation criteria"
+        short_description="Enhanced tech support evaluation criteria",
+        long_description="This enhanced EvalSet provides improved evaluation criteria for technical support responses with more specific questions focused on resolution success. It measures clarity, accuracy, and customer satisfaction more precisely. Use it for evaluating advanced support scenarios where multiple solutions might be applicable." + " " * 50,
+        description="Legacy description field - use short_description and long_description instead."
     )
     
     # Delete an EvalSet
@@ -196,6 +231,8 @@ async def manage_evalset_tool(
             name=name,
             template=template,
             questions=questions,
+            short_description=short_description,
+            long_description=long_description,
             description=description,
         )
         
@@ -237,15 +274,17 @@ async def manage_evalset_tool(
                 example = {
                     "action": "create",
                     "name": "Response Quality Evaluation",
-                    "template": "Given this conversation: {{ conversation }}\n\nPlease answer this question about the final response: {{ eval_question }}\n\nReturn a JSON object with the following format:\n{\"reasoning\": \"Your reasoning here\", \"judgment\": true, \"confidence\": 0.9} for yes or {\"reasoning\": \"Your reasoning here\", \"judgment\": false, \"confidence\": 0.7} for no.",
+                    # Template is now system-defined and not required
                     "questions": [
                         "Is the response clear and concise?",
                         "Does the response fully answer the question?",
                         "Is the response accurate?"
                     ],
-                    "description": "Evaluates responses for clarity, completeness, and accuracy"
+                    "short_description": "General response quality evaluation criteria",
+                    "long_description": "This EvalSet evaluates conversation responses for clarity, completeness, and accuracy. It can be used to assess the quality of AI assistant responses across a wide range of general knowledge topics. High scores indicate responses that are clear, comprehensive, and factually correct." + " " * 50,
+                    "description": "Legacy field - use short_description and long_description instead"
                 }
-                error_response["details"] = "The 'create' action requires name, template, and questions parameters."
+                error_response["details"] = "The 'create' action requires name, questions, short_description, and long_description parameters."
                 error_response["example"] = example
             elif action in ["get", "update", "delete"]:
                 example = {
@@ -254,8 +293,10 @@ async def manage_evalset_tool(
                 }
                 # Add fields for update
                 if action == "update":
-                    example["template"] = "New template text with {{ conversation }} and {{ eval_question }}"
+                    # Template is now system-defined and not required
                     example["questions"] = ["Updated question 1", "Updated question 2"]
+                    example["short_description"] = "Updated quality evaluation criteria"
+                    example["long_description"] = "This updated EvalSet provides improved evaluation criteria with a stronger focus on response relevance and accuracy. Use it to evaluate assistant responses to complex queries where precision is critical." + " " * 50
                 
                 error_response["details"] = f"The '{action}' action requires the evalset_id parameter."
                 error_response["example"] = example

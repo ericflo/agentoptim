@@ -28,6 +28,8 @@ async def test_manage_evalset_tool():
             name=None,
             template=None,
             questions=None,
+            short_description=None,
+            long_description=None,
             description=None
         )
         
