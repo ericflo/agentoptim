@@ -76,14 +76,18 @@ See the [Updates for v2.1.0](#updates-for-v210) section for more details.
   - Guidelines for designing effective evaluation criteria in v2.1.0
 
 - [batch_evaluation.py](./batch_evaluation.py) - Process multiple conversations:
-  - Efficiently evaluate large sets of conversations
-  - Generate comprehensive evaluation reports
-  - Identify patterns across conversation datasets
+  - Load and process datasets of multiple conversations
+  - Generate comprehensive evaluation reports with statistical analysis
+  - Analyze patterns by category, channel, and evaluation criteria
+  - Export results to CSV and create visualizations
+  - Generate data-driven improvement recommendations
 
 - [automated_reporting.py](./automated_reporting.py) - Generate detailed reports:
-  - Create visualization-rich evaluation reports
+  - Create comprehensive, visualization-rich evaluation reports 
+  - Analyze evaluation results across multiple dimensions and criteria
+  - Generate professional HTML reports with interactive elements
   - Export results in multiple formats (HTML, Markdown)
-  - Design custom dashboards for quality monitoring
+  - Produce executive summaries with actionable recommendations
 
 - [caching_performance_example.py](./caching_performance_example.py) - Optimize performance:
   - Demonstrate LRU caching benefits
