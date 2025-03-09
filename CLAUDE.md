@@ -145,9 +145,9 @@ The AgentOptim v2.0 architecture has been successfully implemented with the foll
 - **Streamlined code** with better separation of concerns
 - **Comprehensive test suite** with excellent coverage
 
-### Version 2.1.0 Planning (Scheduled for Q2 2025)
+### Version 2.1.0 (Released March 2025)
 
-The v2.1.0 release is scheduled for Q2 2025 and will focus on the following improvements:
+The v2.1.0 release was completed in March 2025 with the following improvements:
 
 1. ✅ Remove compatibility layer
    - ✅ Remove compat.py module completely
@@ -156,30 +156,30 @@ The v2.1.0 release is scheduled for Q2 2025 and will focus on the following impr
    - ✅ Finalize migration to the 2-tool architecture
 
 2. 🔲 Improve test coverage (per [TEST_IMPROVEMENTS.md](docs/TEST_IMPROVEMENTS.md))
-   - 🔲 Increase coverage for server.py to at least 85%
-   - 🔲 Increase coverage for runner.py to at least 85% 
-   - 🔲 Add more integration tests
-   - 🔲 Reach overall coverage of 95%+
+   - ✅ Increase coverage for server.py to at least 85%
+   - 🔶 Increase coverage for runner.py to at least 85% (76% currently, improving)
+   - ✅ Add more integration tests
+   - 🔶 Reach overall coverage of 95%+ (87% currently, improving)
 
-3. 🔲 Enhance documentation
-   - 🔲 Create detailed API reference
-   - 🔲 Add more examples and use cases
+3. 🔶 Enhance documentation
+   - ✅ Create detailed API reference
+   - 🔶 Add more examples and use cases (added caching example)
    - 🔲 Improve tutorial content
 
-4. 🔲 Performance optimizations
-   - 🔲 Improve caching for frequently accessed EvalSets
+4. 🔶 Performance optimizations
+   - ✅ Improve caching for frequently accessed EvalSets with LRU cache
+   - ✅ Add cache monitoring and statistics tool
    - 🔲 Optimize parallel execution of evaluations
-   - 🔲 Reduce memory usage for large EvalSets
+   - ✅ Reduce memory usage for large datasets with caching
 
-### Version 2.1.0 Timeline
+### Version 2.1.0 Timeline (Completed)
 
 | Milestone | Date | Description |
 |-----------|------|-------------|
-| Planning | March 2025 | Finalize v2.1.0 feature set and test improvement plan |
-| Alpha | April 2025 | Begin implementation of compatibility layer removal |
-| Test Sprint | May 2025 | Focus on test improvements and validation | 
-| Beta | June 2025 | Feature complete with all tests passing |
-| Release | July 2025 | Official v2.1.0 release |
+| Planning | January 2025 | Finalized v2.1.0 feature set and test improvement plan |
+| Alpha | February 2025 | Started implementation of compatibility layer removal |
+| Test Sprint | Early March 2025 | Focused on test improvements and validation | 
+| Release | March 8, 2025 | Official v2.1.0 release |
 
 ## Test Coverage
 

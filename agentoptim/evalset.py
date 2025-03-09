@@ -19,6 +19,12 @@ from agentoptim.utils import (
     format_list,
     ValidationError,
 )
+from agentoptim.cache import (
+    cache_evalset,
+    get_cached_evalset,
+    invalidate_evalset,
+    get_evalset_cache_stats,
+)
 
 # Directory for storing EvalSets
 EVALSETS_DIR = os.path.join(DATA_DIR, "evalsets")
@@ -112,10 +118,23 @@ def list_evalsets() -> List[EvalSet]:
 
 
 def get_evalset(evalset_id: str) -> Optional[EvalSet]:
-    """Get a specific EvalSet by ID."""
+    """Get a specific EvalSet by ID.
+    
+    First checks the LRU cache for the EvalSet, and if not found,
+    loads it from disk and caches it for future use.
+    """
+    # Try to get from cache first
+    cached_evalset = get_cached_evalset(evalset_id)
+    if cached_evalset is not None:
+        return cached_evalset
+        
+    # Not in cache, load from disk
     evalset_data = load_json(get_evalset_path(evalset_id))
     if evalset_data:
-        return EvalSet.from_dict(evalset_data)
+        evalset = EvalSet.from_dict(evalset_data)
+        # Cache for future use
+        cache_evalset(evalset_id, evalset)
+        return evalset
     return None
 
 
@@ -149,7 +168,12 @@ def create_evalset(
         # template will use the DEFAULT_TEMPLATE
     )
     
+    # Save to disk
     save_json(evalset.to_dict(), get_evalset_path(evalset.id))
+    
+    # Cache the new EvalSet
+    cache_evalset(evalset.id, evalset)
+    
     return evalset
 
 
@@ -186,17 +210,36 @@ def update_evalset(
     if long_description is not None:
         evalset.long_description = long_description
     
+    # Save to disk
     save_json(evalset.to_dict(), get_evalset_path(evalset.id))
+    
+    # Update the cache
+    cache_evalset(evalset.id, evalset)
+    
     return evalset
 
 
 def delete_evalset(evalset_id: str) -> bool:
-    """Delete an EvalSet."""
+    """Delete an EvalSet from both disk and cache."""
     path = get_evalset_path(evalset_id)
     if os.path.exists(path):
+        # Remove from disk
         os.remove(path)
+        
+        # Invalidate cache entry
+        invalidate_evalset(evalset_id)
+        
         return True
     return False
+
+
+def get_cache_statistics() -> Dict[str, Any]:
+    """Get statistics about the EvalSet cache performance.
+    
+    Returns:
+        A dictionary with cache statistics including hit rate
+    """
+    return get_evalset_cache_stats()
 
 
 def manage_evalset(
@@ -214,7 +257,7 @@ def manage_evalset(
     to see if a similar one already exists. This promotes reuse and prevents duplication.
     
     Args:
-        action: One of "create", "list", "get", "update", "delete"
+        action: One of "create", "list", "get", "update", "delete", "cache_stats"
         evalset_id: Required for get, update, delete
         name: Required for create
         questions: Required for create, a list of yes/no questions (max 100)
@@ -224,13 +267,30 @@ def manage_evalset(
     Returns:
         A dictionary containing the result of the operation
     """
-    valid_actions = ["create", "list", "get", "update", "delete"]
+    valid_actions = ["create", "list", "get", "update", "delete", "cache_stats"]
     
     try:
         validate_action(action, valid_actions)
         
         # Handle each action
-        if action == "list":
+        if action == "cache_stats":
+            stats = get_cache_statistics()
+            formatted_message = "\n".join([
+                "# EvalSet Cache Statistics",
+                f"- Cache Size: {stats['size']} / {stats['capacity']} (current/max)",
+                f"- Hit Rate: {stats['hit_rate_pct']}%",
+                f"- Hits: {stats['hits']}",
+                f"- Misses: {stats['misses']}",
+                f"- Evictions: {stats['evictions']}",
+                f"- Expirations: {stats['expirations']}"
+            ])
+            return {
+                "status": "success",
+                "stats": stats,
+                "formatted_message": formatted_message
+            }
+            
+        elif action == "list":
             evalsets = list_evalsets()
             return format_list([e.to_dict() for e in evalsets])
         

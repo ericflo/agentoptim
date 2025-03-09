@@ -10,8 +10,8 @@ from typing import Dict, List, Optional, Any, Union
 from mcp.server.fastmcp import FastMCP
 
 # Import EvalSet tools
-from agentoptim.evalset import manage_evalset
-from agentoptim.runner import run_evalset
+from agentoptim.evalset import manage_evalset, get_cache_statistics
+from agentoptim.runner import run_evalset, get_api_cache_stats
 
 # Import necessary utilities
 from agentoptim.utils import DATA_DIR, ensure_data_directories
@@ -50,6 +50,99 @@ logger.info(f"LM Studio compatibility mode: {LMSTUDIO_COMPAT}")
 # Initialize FastMCP server
 mcp = FastMCP("agentoptim")
 
+
+
+@mcp.tool()
+async def get_cache_stats_tool() -> dict:
+    """
+    Get statistics about the caching system for monitoring and diagnostics.
+    
+    This tool provides detailed information about the cache performance for both
+    EvalSets and API responses. Use it to monitor hit rates, evictions, and other
+    metrics to understand how effectively the caching system is working.
+    
+    No parameters required.
+    
+    ## Return Value
+    
+    Returns a dictionary containing:
+    - Statistics for the EvalSet cache (LRU cache for EvalSet objects)
+    - Statistics for the API response cache (LRU cache for model API responses)
+    - Combined summary with overall hit rates and metrics
+    
+    Example:
+    ```json
+    {
+      "status": "success", 
+      "evalset_cache": {
+        "size": 25,
+        "capacity": 50,
+        "hits": 156,
+        "misses": 37,
+        "hit_rate_pct": 80.83,
+        "evictions": 0,
+        "expirations": 3
+      },
+      "api_cache": {
+        "size": 78,
+        "capacity": 100,
+        "hits": 423,
+        "misses": 234,
+        "hit_rate_pct": 64.40,
+        "evictions": 12,
+        "expirations": 5
+      }
+    }
+    ```
+    """
+    evalset_stats = get_cache_statistics()
+    api_stats = get_api_cache_stats()
+    
+    # Calculate overall stats
+    total_hits = evalset_stats["hits"] + api_stats["hits"]
+    total_misses = evalset_stats["misses"] + api_stats["misses"]
+    total_requests = total_hits + total_misses
+    overall_hit_rate = (total_hits / total_requests * 100) if total_requests > 0 else 0
+    
+    # Format a message with the statistics
+    formatted_message = "\n".join([
+        "# Cache Performance Statistics",
+        "",
+        "## EvalSet Cache",
+        f"- Size: {evalset_stats['size']} / {evalset_stats['capacity']} (current/max)",
+        f"- Hit Rate: {evalset_stats['hit_rate_pct']}%",
+        f"- Hits: {evalset_stats['hits']}",
+        f"- Misses: {evalset_stats['misses']}",
+        f"- Evictions: {evalset_stats['evictions']}",
+        f"- Expirations: {evalset_stats['expirations']}",
+        "",
+        "## API Response Cache",
+        f"- Size: {api_stats['size']} / {api_stats['capacity']} (current/max)",
+        f"- Hit Rate: {api_stats['hit_rate_pct']}%",
+        f"- Hits: {api_stats['hits']}",
+        f"- Misses: {api_stats['misses']}",
+        f"- Evictions: {api_stats['evictions']}",
+        f"- Expirations: {api_stats['expirations']}",
+        "",
+        "## Overall Performance",
+        f"- Combined Hit Rate: {round(overall_hit_rate, 2)}%",
+        f"- Total Hits: {total_hits}",
+        f"- Total Misses: {total_misses}",
+        f"- Resource Savings: Approximately {round(total_hits * 0.5, 1)} seconds of API processing time saved"
+    ])
+    
+    return {
+        "status": "success",
+        "evalset_cache": evalset_stats,
+        "api_cache": api_stats,
+        "overall": {
+            "hit_rate_pct": round(overall_hit_rate, 2),
+            "total_hits": total_hits,
+            "total_misses": total_misses,
+            "estimated_time_saved_seconds": round(total_hits * 0.5, 1)  # Assuming 0.5s per cached response
+        },
+        "formatted_message": formatted_message
+    }
 
 
 @mcp.tool()

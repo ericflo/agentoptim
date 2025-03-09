@@ -13,6 +13,7 @@ import jinja2
 import uuid
 
 from agentoptim.evalset import get_evalset
+from agentoptim.cache import cached, LRUCache
 from agentoptim.utils import (
     format_error,
     format_success,
@@ -55,6 +56,10 @@ DEFAULT_TIMEOUT = 60  # seconds
 
 # Get API base URL from environment or use default
 API_BASE = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234/v1")
+
+# Create LRU cache for API responses to avoid re-evaluating identical questions/conversations
+# Default: 100 items capacity, 1 hour TTL
+API_RESPONSE_CACHE = LRUCache(capacity=100, ttl=3600)
 
 
 class EvalResult(BaseModel):
@@ -403,6 +408,8 @@ async def evaluate_question(
     """
     Evaluate a single question against a conversation.
     
+    Utilizes a cache to avoid redundant evaluations of the same conversation/question pairs.
+    
     Args:
         conversation: List of conversation messages
         question: The evaluation question
@@ -413,6 +420,17 @@ async def evaluate_question(
     Returns:
         Evaluation result for the question
     """
+    # Generate a cache key for this specific evaluation
+    # We need to include all parameters that affect the result
+    # Convert conversation to a tuple of tuples for hashability
+    conv_tuple = tuple(tuple((k, v) for k, v in msg.items()) for msg in conversation)
+    cache_key = (conv_tuple, question, judge_model, omit_reasoning)
+    
+    # Check if we have a cached result for this evaluation
+    cached_result = API_RESPONSE_CACHE.get(cache_key)
+    if cached_result is not None:
+        logger.info(f"Cache hit for question: {question}")
+        return cached_result
     try:
         # Format the conversation for better readability
         formatted_conversation = "### BEGIN CONVERSATION ###\n\n"
@@ -884,12 +902,18 @@ CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or st
             else:
                 logger.info("No confidence value provided by model")
             
-            return EvalResult(
+            # Create the result object
+            result = EvalResult(
                 question=question,
                 judgment=judgment,
                 confidence=final_confidence,
                 reasoning=reasoning
             )
+            
+            # Cache the result for future use
+            API_RESPONSE_CACHE.put(cache_key, result)
+            
+            return result
         
         except (KeyError, IndexError, json.JSONDecodeError) as e:
             logger.error(f"Error parsing response for question '{question}': {str(e)}")
@@ -907,6 +931,15 @@ CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or st
             question=question,
             error=f"Error evaluating question: {str(e)}"
         )
+
+
+def get_api_cache_stats() -> Dict[str, Any]:
+    """Get statistics about the API response cache.
+    
+    Returns:
+        Dictionary with statistics about the LRU cache for API responses
+    """
+    return API_RESPONSE_CACHE.get_stats()
 
 
 async def run_evalset(

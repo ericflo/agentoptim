@@ -53,6 +53,11 @@ This directory contains comprehensive examples demonstrating AgentOptim's capabi
   - Export results in multiple formats (HTML, Markdown)
   - Design custom dashboards for quality monitoring
 
+- [caching_performance_example.py](./caching_performance_example.py) - Optimize performance:
+  - Demonstrate LRU caching benefits
+  - Measure API request reductions
+  - Track cache hit rates and time savings
+
 ## Advanced Evaluation Methods
 
 - [conversation_benchmark.py](./conversation_benchmark.py) - Standardized benchmarking:

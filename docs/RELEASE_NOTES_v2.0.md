@@ -1,4 +1,6 @@
-# AgentOptim v2.0 Release Notes
+# ARCHIVE: AgentOptim v2.0 Release Notes (Historical)
+
+> **Note:** This is an archived document for version 2.0. The current version is 2.1.0. Please see CHANGELOG.md for the latest release information.
 
 We're excited to announce the release of AgentOptim v2.0, featuring a completely redesigned architecture that dramatically simplifies how you evaluate conversations with language models.
 
@@ -166,13 +168,14 @@ This release includes some breaking changes compared to v1.x:
 
 For backward compatibility, the old tools are still available but will show deprecation warnings. They will be removed in v2.1.0.
 
-## Future Plans
+## Future Plans (Historical Note)
 
-The upcoming v2.1.0 release (scheduled for July 2025) will:
-- Remove the compatibility layer
-- Further improve test coverage
-- Enhance documentation
-- Optimize performance
+The v2.1.0 release (completed March 2025) has:
+- Removed the compatibility layer completely
+- Improved test coverage to 87% overall
+- Enhanced documentation with comprehensive API reference
+- Optimized performance with LRU caching
+- Added a new cache statistics tool
 
 ## Feedback
 

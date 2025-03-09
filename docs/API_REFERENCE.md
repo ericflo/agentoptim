@@ -9,10 +9,11 @@ AgentOptim is a conversation evaluation framework that provides tools for creati
 1. **EvalSets**: Collections of evaluation criteria for judging conversation quality
 2. **Evaluation Runners**: Tools for executing evaluations against conversations
 
-The API consists of two primary tools:
+The API consists of three primary tools:
 
 - `manage_evalset_tool`: For creating and managing evaluation criteria sets (EvalSets)
 - `run_evalset_tool`: For evaluating conversations against EvalSets
+- `get_cache_stats_tool`: For monitoring cache performance and diagnostics
 
 ## Tool: manage_evalset_tool
 
@@ -378,4 +379,91 @@ Refer to the [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for detailed information o
 
 ---
 
-For more information and practical examples, see the [examples directory](../examples/) in the repository.
+## Tool: get_cache_stats_tool
+
+### Description
+
+This tool provides detailed statistics about the caching system for monitoring and diagnostics. It helps you understand the performance benefits of caching and identify opportunities for optimization.
+
+### Parameters
+
+None required.
+
+### Return Value
+
+The tool returns a comprehensive set of cache statistics:
+
+```json
+{
+  "status": "success", 
+  "evalset_cache": {
+    "size": 25,
+    "capacity": 50,
+    "hits": 156,
+    "misses": 37,
+    "hit_rate_pct": 80.83,
+    "evictions": 0,
+    "expirations": 3
+  },
+  "api_cache": {
+    "size": 78,
+    "capacity": 100,
+    "hits": 423,
+    "misses": 234,
+    "hit_rate_pct": 64.40,
+    "evictions": 12,
+    "expirations": 5
+  },
+  "overall": {
+    "hit_rate_pct": 68.97,
+    "total_hits": 579,
+    "total_misses": 271,
+    "estimated_time_saved_seconds": 289.5
+  },
+  "formatted_message": "# Cache Performance Statistics\n\n## EvalSet Cache\n- Size: 25 / 50 (current/max)\n- Hit Rate: 80.83%\n..."
+}
+```
+
+### Cache Statistics Fields
+
+#### EvalSet Cache
+- `size`: Current number of items in the cache
+- `capacity`: Maximum number of items the cache can hold
+- `hits`: Number of successful cache retrievals
+- `misses`: Number of cache lookups that didn't find the requested item
+- `hit_rate_pct`: Percentage of cache lookups that were hits
+- `evictions`: Number of items removed due to capacity constraints
+- `expirations`: Number of items removed due to TTL expiration
+
+#### API Cache
+Same fields as the EvalSet cache, but for the API response cache.
+
+#### Overall
+- `hit_rate_pct`: Combined hit rate across all caches
+- `total_hits`: Total number of cache hits across all caches
+- `total_misses`: Total number of cache misses across all caches
+- `estimated_time_saved_seconds`: Estimated processing time saved due to caching
+
+### Usage Example
+
+```python
+# Get cache statistics
+cache_stats = get_cache_stats_tool()
+
+# Print cache performance metrics
+print(f"EvalSet cache hit rate: {cache_stats['evalset_cache']['hit_rate_pct']}%")
+print(f"API cache hit rate: {cache_stats['api_cache']['hit_rate_pct']}%")
+print(f"Combined hit rate: {cache_stats['overall']['hit_rate_pct']}%")
+print(f"Estimated time saved: {cache_stats['overall']['estimated_time_saved_seconds']} seconds")
+```
+
+### Important Notes
+
+1. **Time Saved Estimation**: The estimated time saved is an approximation based on average API call duration.
+2. **Cache Size Optimization**: A high number of evictions may indicate the cache capacity is too small.
+3. **Cache Warmup**: Hit rates will be lower initially and improve as the cache warms up with frequently accessed items.
+4. **Cache Monitoring**: Regular monitoring helps optimize cache configuration for your specific usage patterns.
+
+---
+
+For more information and practical examples, see the [examples directory](../examples/) in the repository, particularly the `caching_performance_example.py` file.

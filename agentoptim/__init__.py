@@ -1,7 +1,7 @@
 """
-# AgentOptim v2.0
+# AgentOptim v2.1.0
 
-A streamlined toolset for evaluating conversations with a simplified 2-tool architecture.
+A streamlined toolset for evaluating conversations with a simplified 3-tool architecture.
 
 ## Overview
 
@@ -30,10 +30,11 @@ The package is organized into the following modules:
 
 ## MCP Tools
 
-AgentOptim v2.0 provides 2 powerful MCP tools:
+AgentOptim v2.1.0 provides 3 powerful MCP tools:
 
 1. `manage_evalset_tool`: Create, list, get, update, and delete EvalSets
 2. `run_evalset_tool`: Evaluate conversations against an EvalSet
+3. `get_cache_stats_tool`: Monitor cache performance and statistics
 
 ## Getting Started
 
@@ -77,10 +78,10 @@ print(f"Yes percentage: {eval_results.get('summary', {}).get('yes_percentage')}%
 ```
 """
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 # Make MCP tools available at package level
-from .server import manage_evalset_tool, run_evalset_tool
+from .server import manage_evalset_tool, run_evalset_tool, get_cache_stats_tool
 
 # Also expose core implementation functions for advanced usage
 from .evalset import manage_evalset

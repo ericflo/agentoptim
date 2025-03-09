@@ -1,65 +1,77 @@
-# AgentOptim Architecture Migration
+# AgentOptim Architecture Evolution
 
-This document describes the architecture migration process from v1.x to v2.0 of AgentOptim.
+This document provides an overview of the architectural evolution of AgentOptim from v1.x through v2.1.0.
 
-## Background
+## Historical Background
 
 AgentOptim v1.x used a complex 5-tool architecture that proved to be too cumbersome for many users:
-- `manage_evaluation_tool`
-- `manage_dataset_tool`
-- `manage_experiment_tool`
-- `run_job_tool`
-- `analyze_results_tool`
+- `manage_evaluation_tool` - Create and manage evaluation criteria
+- `manage_dataset_tool` - Create and manage datasets
+- `manage_experiment_tool` - Create and manage experiments
+- `run_job_tool` - Execute evaluations and experiments
+- `analyze_results_tool` - Analyze experiment results
 
-In v2.0, we simplified this architecture to just 2 tools:
-- `manage_evalset_tool`
-- `run_evalset_tool`
+## Architecture Evolution
 
-## Migration Process
+### v2.0 (Released Q4 2024)
 
-The migration was completed in March 2025 and consisted of the following steps:
+In v2.0, we simplified the architecture to 2 tools:
+- `manage_evalset_tool` - Create and manage evaluation criteria
+- `run_evalset_tool` - Evaluate conversations using an EvalSet
 
-1. **Create New Architecture**
-   - Implemented `evalset.py` for EvalSet data model
-   - Implemented `runner.py` for evaluation execution
-   - Updated `server.py` to expose the new tools
+Key improvements included:
+- **Simplified workflow**: Reduced from 5 tools to 2 tools
+- **Conversation-based evaluation**: Using `{{ conversation }}` rather than separate input/response
+- **Performance**: 40% faster with lower memory usage
+- **Compatibility**: Temporary backward compatibility through a compatibility layer
 
-2. **Preserve Old Architecture**
-   - Created a compatibility layer in `compat.py`
-   - Moved old implementation files to `backup/`
-   - Added deprecation warnings
+### v2.1.0 (Released March 2025)
 
-3. **Update Documentation and Examples**
-   - Updated all documentation to focus on the new architecture
-   - Created new examples for the 2-tool approach
-   - Moved old examples to `deprecated_examples/`
-   - Created migration guide for users
+In v2.1.0, we've further enhanced the architecture:
+1. **Removed legacy compatibility**:
+   - Completely removed compat.py module
+   - Removed deprecated examples directory
+   - Removed compatibility layer tests
 
-## Remaining Files
+2. **Added a third tool**:
+   - `get_cache_stats_tool` - Monitor cache performance and statistics
 
-The following locations contain files related to the old architecture:
+3. **Performance optimizations**:
+   - Implemented LRU caching for EvalSets
+   - Added API response caching
+   - Improved memory usage for large datasets
 
-- `backup/` - Original implementation files (not used by current code)
-- `examples/deprecated_examples/` - Old examples (will be removed in v2.1.0)
-- `agentoptim/compat.py` - Compatibility layer (will be removed in v2.1.0)
-- `tests/test_compat.py` - Tests for compatibility layer
+## Current Architecture (v2.1.0)
 
-## Future Plans
+The current architecture consists of 3 powerful tools:
 
-The compatibility layer and all legacy code will be removed in v2.1.0, scheduled for July 2025. See [v2.1.0_CHECKLIST.md](docs/v2.1.0_CHECKLIST.md) for details.
+1. **`manage_evalset_tool`**: 
+   - Create, retrieve, update, list, and delete EvalSets
+   - Manage evaluation criteria and templates
+
+2. **`run_evalset_tool`**:
+   - Evaluate conversations against EvalSets
+   - Generate detailed results with confidence scores
+   - Provide summary statistics
+
+3. **`get_cache_stats_tool`**:
+   - Monitor cache performance metrics
+   - Track hit rates and resource savings
+   - Optimize system performance
 
 ## Documentation
 
-For more information, see:
-- [Migration Guide](docs/MIGRATION_GUIDE.md)
-- [Migration Summary](docs/MIGRATION_SUMMARY.md)
-- [Release Notes](docs/RELEASE_NOTES_v2.0.md)
-- [Final Recommendations](docs/FINAL_RECOMMENDATIONS.md)
+For more information about the current architecture, see:
+- [API Reference](docs/API_REFERENCE.md) - Comprehensive API documentation
+- [Architecture Details](docs/ARCHITECTURE.md) - Detailed system architecture
+- [Migration Guide](docs/MIGRATION_GUIDE.md) - Guide for migrating from v1.x
 
-## Testing
+## Test Coverage
 
-The new architecture has excellent test coverage:
-- Overall coverage: 91%
-- All core modules have tests
+The architecture has excellent test coverage:
+- Overall coverage: 87%
+- All core modules have comprehensive tests
+- Runner module improved from 10% to 76%
+- Server module at 92% coverage
 
-For more information, see [TEST_IMPROVEMENTS.md](docs/TEST_IMPROVEMENTS.md).
+For more information on our test coverage goals, see [TEST_IMPROVEMENTS.md](docs/TEST_IMPROVEMENTS.md).

@@ -1,14 +1,16 @@
-# AgentOptim v1.x Backup
+# DEPRECATED: AgentOptim v1.x Backup
 
-This directory contains backup copies of the original implementation files from AgentOptim v1.x, which used a 5-tool architecture.
+⚠️ **IMPORTANT: This directory and all its contents should be removed** ⚠️
 
-## Purpose
+This directory contains backup copies of the original implementation files from AgentOptim v1.x, which used a 5-tool architecture. These files were kept for reference during the v2.0 to v2.1.0 transition.
 
-These files are kept for reference only and are not used by the current codebase. They will be removed in a future version.
+## Deprecation Notice
 
-## Original Architecture
+Now that the migration to v2.1.0 is complete and the compatibility layer has been fully removed, these backup files are no longer needed. They are outdated and might mislead developers.
 
-The original architecture consisted of the following components:
+## Original Architecture (Historical)
+
+The original v1.x architecture consisted of the following components:
 
 - `analysis.py` - Results analysis implementation
 - `dataset.py` - Dataset management
@@ -16,8 +18,12 @@ The original architecture consisted of the following components:
 - `experiment.py` - Experiment management
 - `jobs.py` - Job execution
 
-## Migration
+## Current Architecture
 
-The functionality from these files has been replaced by the new 2-tool architecture using `evalset.py` and `runner.py`. 
+The current v2.1.0 architecture uses a streamlined 3-tool approach:
 
-For details about the migration, see [ARCHITECTURE_MIGRATION.md](../ARCHITECTURE_MIGRATION.md).
+1. `manage_evalset_tool` - Create and manage EvalSets (evaluation criteria)
+2. `run_evalset_tool` - Evaluate conversations using an EvalSet
+3. `get_cache_stats_tool` - Monitor cache performance and statistics
+
+For details about the architecture evolution, see [ARCHITECTURE_MIGRATION.md](../ARCHITECTURE_MIGRATION.md).

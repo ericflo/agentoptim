@@ -18,9 +18,8 @@ from functools import lru_cache
 import hashlib
 import os
 
-# Import AgentOptim functions
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
-from agentoptim.cache import setup_cache  # We'll use the built-in cache, but also demonstrate custom caching
+# Import MCP Client for direct server communication
+from mcp.client import Client
 
 
 # Sample conversations for testing
@@ -140,7 +139,7 @@ async def create_evalset():
     )
     
     print(f"Created new EvalSet: {result['evalset']['id']}")
-    return result["evalset']['id']
+    return result["evalset"]["id"]
 
 
 async def run_benchmark_no_cache(evalset_id: str, iterations: int = 5):
@@ -471,26 +470,121 @@ def print_performance_recommendations(benchmark_results: Dict):
 
 async def main():
     """Main function to run the example."""
-    print("AgentOptim Caching & Performance Optimization Example")
-    print("===================================================")
+    print("AgentOptim v2.1.0 Caching & Performance Optimization Example")
+    print("===========================================================")
+    
+    # Connect to the MCP server
+    print("Connecting to AgentOptim server...")
+    client = Client("optim")
+    
+    # First, get cache stats before doing anything
+    print("\nChecking initial cache statistics...")
+    initial_stats = await client.call("get_cache_stats_tool", {})
+    print(f"Initial EvalSet cache hit rate: {initial_stats['evalset_cache']['hit_rate_pct']}%")
+    print(f"Initial API cache hit rate: {initial_stats['api_cache']['hit_rate_pct']}%")
     
     # Create or retrieve the evalset for testing
-    evalset_id = await create_evalset()
+    response = await client.call("manage_evalset_tool", {"action": "list"})
+    evalsets = response.get("evalsets", [])
     
-    # Perform benchmarks with fewer iterations to keep the example reasonably fast
-    iterations = 2
-    benchmark_results = await perform_benchmarks(evalset_id, iterations)
+    if evalsets:
+        # Use the first available EvalSet
+        evalset_id = evalsets[0]["id"]
+        print(f"Using existing EvalSet: {evalsets[0]['name']} (ID: {evalset_id})")
+    else:
+        # Create a new EvalSet for benchmarking
+        print("Creating new EvalSet for testing...")
+        response = await client.call("manage_evalset_tool", {
+            "action": "create",
+            "name": "Response Quality Benchmark",
+            "questions": [
+                "Is the response helpful for the user's needs?",
+                "Is the response clear and easy to understand?",
+                "Is the response comprehensive and thorough?",
+                "Is the response accurate and error-free?",
+                "Is the response well-structured and organized?"
+            ],
+            "short_description": "Comprehensive response quality benchmark",
+            "long_description": "This EvalSet provides a thorough assessment of response quality across multiple dimensions including helpfulness, clarity, accuracy, organization, and user satisfaction. It's designed for benchmarking and performance testing with a balanced set of evaluation criteria that apply to most types of assistant responses." + " " * 100
+        })
+        evalset_id = response["evalset"]["id"]
     
-    # Print performance recommendations
-    print_performance_recommendations(benchmark_results)
+    # Simplified test - run the same evaluation multiple times to demonstrate caching
+    print("\nRunning evaluation 3 times to demonstrate caching...")
     
-    # Save benchmark results to a file
-    with open("performance_benchmark_results.json", "w") as f:
-        # Convert any non-serializable objects to strings
-        serializable_results = json.dumps(benchmark_results, default=str, indent=2)
-        f.write(serializable_results)
+    # Conversation for testing
+    conversation = [
+        {"role": "user", "content": "How do I reset my password?"},
+        {"role": "assistant", "content": "To reset your password, go to the login page and click on the 'Forgot Password' link. You'll receive an email with a reset link. Click the link and follow the instructions to create a new password."}
+    ]
     
-    print("\nBenchmark results saved to performance_benchmark_results.json")
+    # First run - should be a cache miss
+    print("\nRun #1 (expect cache miss)...")
+    start_time = time.time()
+    response = await client.call("run_evalset_tool", {
+        "evalset_id": evalset_id,
+        "conversation": conversation
+    })
+    first_run_time = time.time() - start_time
+    print(f"Run #1 completed in {first_run_time:.2f} seconds")
+    print(f"Result: {response['summary']['yes_percentage']}% yes responses")
+    
+    # Check cache stats after first run
+    mid_stats = await client.call("get_cache_stats_tool", {})
+    print(f"EvalSet cache hit rate: {mid_stats['evalset_cache']['hit_rate_pct']}%")
+    print(f"API cache hit rate: {mid_stats['api_cache']['hit_rate_pct']}%")
+    
+    # Second run - should be a cache hit
+    print("\nRun #2 (expect cache hit)...")
+    start_time = time.time()
+    response = await client.call("run_evalset_tool", {
+        "evalset_id": evalset_id,
+        "conversation": conversation
+    })
+    second_run_time = time.time() - start_time
+    print(f"Run #2 completed in {second_run_time:.2f} seconds")
+    print(f"Result: {response['summary']['yes_percentage']}% yes responses")
+    
+    # Third run - should be a cache hit
+    print("\nRun #3 (expect cache hit)...")
+    start_time = time.time()
+    response = await client.call("run_evalset_tool", {
+        "evalset_id": evalset_id,
+        "conversation": conversation
+    })
+    third_run_time = time.time() - start_time
+    print(f"Run #3 completed in {third_run_time:.2f} seconds")
+    print(f"Result: {response['summary']['yes_percentage']}% yes responses")
+    
+    # Get final cache stats
+    final_stats = await client.call("get_cache_stats_tool", {})
+    
+    # Print performance comparison
+    print("\n=== Performance Comparison ===")
+    print(f"First run (cache miss): {first_run_time:.2f} seconds")
+    print(f"Second run (cache hit): {second_run_time:.2f} seconds")
+    print(f"Third run (cache hit): {third_run_time:.2f} seconds")
+    
+    # Calculate improvements
+    first_to_second_improvement = ((first_run_time - second_run_time) / first_run_time) * 100
+    avg_cached_time = (second_run_time + third_run_time) / 2
+    avg_improvement = ((first_run_time - avg_cached_time) / first_run_time) * 100
+    
+    print(f"\nCache hit is {first_run_time / second_run_time:.1f}x faster!")
+    print(f"Performance improvement: {first_to_second_improvement:.1f}%")
+    
+    # Print final cache statistics
+    print("\n=== Final Cache Statistics ===")
+    print(f"EvalSet cache hits: {final_stats['evalset_cache']['hits']}")
+    print(f"EvalSet cache hit rate: {final_stats['evalset_cache']['hit_rate_pct']}%")
+    print(f"API cache hits: {final_stats['api_cache']['hits']}")
+    print(f"API cache hit rate: {final_stats['api_cache']['hit_rate_pct']}%")
+    print(f"Combined hit rate: {final_stats['overall']['hit_rate_pct']}%")
+    print(f"Estimated time saved: {final_stats['overall']['estimated_time_saved_seconds']:.1f} seconds")
+    
+    print("\nThis example demonstrates how LRU caching improves performance by avoiding")
+    print("redundant API calls and file operations when evaluating identical conversations.")
+    print("The built-in caching system in AgentOptim v2.1.0 provides these benefits automatically.")
 
 
 if __name__ == "__main__":

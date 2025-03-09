@@ -5,10 +5,10 @@
 [![PyPI Version](https://img.shields.io/badge/pypi-v2.1.0-blue)](https://pypi.org/project/agentoptim/)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-brightgreen)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Test Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)](https://github.com/agentoptim/agentoptim)
+[![Test Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)](https://github.com/ericflo/agentoptim)
 [![MCP Compatible](https://img.shields.io/badge/MCP-compatible-blue)](https://github.com/anthropics/mcp)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Stars](https://img.shields.io/github/stars/agentoptim/agentoptim?style=social)](https://github.com/agentoptim/agentoptim)
+[![Stars](https://img.shields.io/github/stars/ericflo/agentoptim?style=social)](https://github.com/ericflo/agentoptim)
 
 **Your Complete Toolkit for AI Conversation Evaluation and Optimization**
 ### Measure, Compare, and Improve AI Conversations with Precision
