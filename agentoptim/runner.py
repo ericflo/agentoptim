@@ -45,15 +45,23 @@ logger.info("* Using system prompts for better control")
 logger.info("* Using explicit JSON formatting instructions")
 logger.info("* Using verbalized confidence scores")
 
-# Default timeout for API calls
-DEFAULT_TIMEOUT = 120  # seconds - increased for slower models
+# Import constants
+from agentoptim.constants import (
+    DEFAULT_API_TIMEOUT_SECONDS,
+    DEFAULT_LOCAL_API_BASE,
+    DEFAULT_OPENAI_API_BASE,
+    DEFAULT_ANTHROPIC_API_BASE,
+    DEFAULT_LOCAL_MODEL,
+    DEFAULT_OPENAI_MODEL,
+    DEFAULT_ANTHROPIC_MODEL
+)
 
-# Default API base URL
-DEFAULT_API_BASE = "http://localhost:1234/v1"
+# Default timeout for API calls
+DEFAULT_TIMEOUT = DEFAULT_API_TIMEOUT_SECONDS
 
 # API_BASE function to always get the latest value from environment
 def get_api_base():
-    return os.environ.get("AGENTOPTIM_API_BASE", DEFAULT_API_BASE)
+    return os.environ.get("AGENTOPTIM_API_BASE", DEFAULT_LOCAL_API_BASE)
 
 # Create LRU cache for API responses to avoid re-evaluating identical questions/conversations
 # Default: 100 items capacity, 1 hour TTL
