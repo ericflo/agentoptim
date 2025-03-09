@@ -158,9 +158,30 @@ def setup_parser():
     # run get
     run_get_parser = run_subparsers.add_parser("get", help="Get a specific evaluation run")
     run_get_parser.add_argument("eval_run_id", help="ID of a specific run to retrieve, or simply use 'latest' to get most recent result")
-    run_get_parser.add_argument("--format", choices=["text", "json", "yaml"], default="text",
+    run_get_parser.add_argument("--format", choices=["text", "json", "yaml", "markdown", "html"], default="text",
                             help="Output format (default: text)")
     run_get_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
+    
+    # run export
+    run_export_parser = run_subparsers.add_parser("export", help="Export evaluation results in various formats")
+    run_export_parser.add_argument("eval_run_id", help="ID of a specific run to export, or 'latest' for most recent")
+    run_export_parser.add_argument("--format", choices=["markdown", "csv", "html", "json", "pdf"], default="markdown",
+                               help="Export format (default: markdown)")
+    run_export_parser.add_argument("--output", type=str, help="Output file (required)")
+    run_export_parser.add_argument("--title", type=str, help="Custom title for the export")
+    run_export_parser.add_argument("--template", type=str, help="Custom template file for HTML/PDF export")
+    run_export_parser.add_argument("--color", action="store_true", help="Include colors in HTML output")
+    run_export_parser.add_argument("--charts", action="store_true", help="Include charts in HTML/PDF output")
+    
+    # run compare - Compare two evaluation runs
+    run_compare_parser = run_subparsers.add_parser("compare", help="Compare two evaluation runs side by side")
+    run_compare_parser.add_argument("first_run_id", help="ID of first run to compare (or 'latest')")
+    run_compare_parser.add_argument("second_run_id", help="ID of second run to compare (or 'latest-1')")
+    run_compare_parser.add_argument("--output", type=str, help="Output file to save the comparison")
+    run_compare_parser.add_argument("--format", choices=["text", "html"], default="text", 
+                                help="Output format (default: text)")
+    run_compare_parser.add_argument("--color", action="store_true", help="Use colors in output")
+    run_compare_parser.add_argument("--detailed", action="store_true", help="Show detailed reasoning")
     
     # run create
     run_create_parser = run_subparsers.add_parser("create", help="Run a new evaluation (result ID will be auto-generated)")
@@ -585,7 +606,7 @@ def run_cli():
             
             handle_output(response, args.format, args.output)
         
-        elif args.action == "get":
+        elif args.action in ["get", "export"]:
             # Import run retrieval functions
             from agentoptim.evalrun import get_eval_run, get_formatted_eval_run, list_eval_runs
             
@@ -609,9 +630,147 @@ def run_cli():
                 print(f"{Fore.RED}Error: Evaluation run with ID '{args.eval_run_id}' not found{Style.RESET_ALL}", file=sys.stderr)
                 sys.exit(1)
                 
-            # Format the evaluation run for output
-            formatted_run = get_formatted_eval_run(eval_run)
-            handle_output(formatted_run, args.format, args.output)
+            # Basic get command
+            if args.action == "get":
+                # Format the evaluation run for output
+                formatted_run = get_formatted_eval_run(eval_run)
+                handle_output(formatted_run, args.format, args.output)
+            
+            # Compare two evaluation runs side by side
+            elif args.action == "compare":
+                # Import run retrieval functions
+                from agentoptim.evalrun import list_eval_runs
+                
+                # Resolve latest or latest-N identifiers
+                def resolve_run_id(run_id):
+                    if run_id.lower() == 'latest':
+                        recent_runs, _ = list_eval_runs(page=1, page_size=1)
+                        if not recent_runs:
+                            print(f"{Fore.RED}Error: No evaluation runs found in the system{Style.RESET_ALL}", file=sys.stderr)
+                            sys.exit(1)
+                        latest_id = recent_runs[0]["id"]
+                        print(f"{Fore.CYAN}Using latest run: {latest_id}{Style.RESET_ALL}")
+                        return latest_id
+                    
+                    if run_id.lower().startswith('latest-'):
+                        try:
+                            offset = int(run_id.lower().split('-')[1])
+                            recent_runs, _ = list_eval_runs(page=1, page_size=offset + 1)
+                            if not recent_runs or len(recent_runs) <= offset:
+                                print(f"{Fore.RED}Error: Not enough evaluation runs found in the system for offset {offset}{Style.RESET_ALL}", file=sys.stderr)
+                                sys.exit(1)
+                            offset_id = recent_runs[offset]["id"]
+                            print(f"{Fore.CYAN}Using run with offset {offset}: {offset_id}{Style.RESET_ALL}")
+                            return offset_id
+                        except (ValueError, IndexError):
+                            print(f"{Fore.RED}Error: Invalid offset format in '{run_id}'. Use 'latest-N' where N is a number.{Style.RESET_ALL}", file=sys.stderr)
+                            sys.exit(1)
+                    
+                    return run_id
+                
+                # Get actual run IDs
+                first_id = resolve_run_id(args.first_run_id)
+                second_id = resolve_run_id(args.second_run_id)
+                
+                # Get both eval runs
+                first_run = get_eval_run(first_id)
+                second_run = get_eval_run(second_id)
+                
+                if first_run is None:
+                    print(f"{Fore.RED}Error: Evaluation run with ID '{first_id}' not found{Style.RESET_ALL}", file=sys.stderr)
+                    sys.exit(1)
+                
+                if second_run is None:
+                    print(f"{Fore.RED}Error: Evaluation run with ID '{second_id}' not found{Style.RESET_ALL}", file=sys.stderr)
+                    sys.exit(1)
+                
+                # Generate comparison output based on format
+                if args.format == "text":
+                    comparison = generate_text_comparison(first_run, second_run, use_color=args.color, detailed=args.detailed)
+                    
+                    # Print to output file or stdout
+                    if args.output:
+                        with open(args.output, "w", encoding="utf-8") as f:
+                            f.write(comparison)
+                        print(f"{Fore.GREEN}✓ Comparison saved to {args.output}{Style.RESET_ALL}")
+                    else:
+                        print(comparison)
+                        
+                elif args.format == "html":
+                    # Ensure output file is specified for HTML
+                    if not args.output:
+                        print(f"{Fore.RED}Error: --output is required for HTML format{Style.RESET_ALL}", file=sys.stderr)
+                        sys.exit(1)
+                        
+                    # Generate HTML comparison
+                    html_comparison = generate_html_comparison(first_run, second_run, use_color=args.color, detailed=args.detailed)
+                    
+                    # Write to file
+                    with open(args.output, "w", encoding="utf-8") as f:
+                        f.write(html_comparison)
+                    print(f"{Fore.GREEN}✓ HTML comparison saved to {args.output}{Style.RESET_ALL}")
+                    
+                    # Try to open in browser
+                    try:
+                        if sys.platform == "darwin":  # macOS
+                            subprocess.run(["open", args.output], check=False)
+                        elif sys.platform == "win32":  # Windows
+                            os.startfile(args.output)
+                        elif sys.platform.startswith("linux"):  # Linux
+                            subprocess.run(["xdg-open", args.output], check=False)
+                    except Exception as e:
+                        logger.warning(f"Failed to open comparison in browser: {str(e)}")
+            
+            # Enhanced export command with more format options
+            elif args.action == "export":
+                # Validate output file is specified
+                if not args.output:
+                    print(f"{Fore.RED}Error: --output is required for export{Style.RESET_ALL}", file=sys.stderr)
+                    sys.exit(1)
+                    
+                # Get title from args or default
+                title = args.title or f"Evaluation Results: {eval_run.evalset_name}"
+                
+                # Prepare export based on requested format
+                if args.format == "markdown":
+                    export_markdown(eval_run, args.output, title, args.charts)
+                    
+                elif args.format == "csv":
+                    export_csv(eval_run, args.output)
+                    
+                elif args.format == "html":
+                    export_html(eval_run, args.output, title, args.template, args.color, args.charts)
+                    
+                elif args.format == "pdf":
+                    try:
+                        # Check if we have the required dependencies
+                        import weasyprint
+                        # First generate HTML, then convert to PDF
+                        html_content = generate_html_report(eval_run, title, args.template, args.color, args.charts)
+                        weasyprint.HTML(string=html_content).write_pdf(args.output)
+                        print(f"{Fore.GREEN}✓ PDF report exported to {args.output}{Style.RESET_ALL}")
+                    except ImportError:
+                        print(f"{Fore.RED}Error: PDF export requires the weasyprint package.{Style.RESET_ALL}", file=sys.stderr)
+                        print(f"{Fore.YELLOW}Install with: pip install weasyprint{Style.RESET_ALL}")
+                        sys.exit(1)
+                        
+                elif args.format == "json":
+                    # Full JSON export
+                    with open(args.output, "w", encoding="utf-8") as f:
+                        json.dump(eval_run.__dict__, f, indent=2, default=str)
+                    print(f"{Fore.GREEN}✓ JSON data exported to {args.output}{Style.RESET_ALL}")
+                
+                # Open the file automatically if on a desktop system
+                try:
+                    if sys.platform == "darwin":  # macOS
+                        subprocess.run(["open", args.output], check=False)
+                    elif sys.platform == "win32":  # Windows
+                        os.startfile(args.output)
+                    elif sys.platform.startswith("linux"):  # Linux
+                        subprocess.run(["xdg-open", args.output], check=False)
+                except Exception as e:
+                    # Don't fail if we can't open the file, just log it
+                    logger.warning(f"Failed to open exported file: {str(e)}")
         
         elif args.action == "create":
             # Check if evalset_id is provided
@@ -928,6 +1087,1405 @@ def run_cli():
                     for line in lines[-args.lines:]:
                         print(line, end="")
 
+
+# Export helper functions
+def export_markdown(eval_run, output_file, title, include_charts=False):
+    """Export evaluation run to a Markdown file."""
+    # Create markdown content
+    markdown_lines = []
+    markdown_lines.append(f"# {title}")
+    markdown_lines.append("")
+    markdown_lines.append(f"**Evaluation Set**: {eval_run.evalset_name}  ")
+    markdown_lines.append(f"**ID**: {eval_run.id}  ")
+    markdown_lines.append(f"**Date**: {eval_run.timestamp}  ")
+    markdown_lines.append(f"**Model**: {eval_run.judge_model}  ")
+    markdown_lines.append("")
+    
+    # Summary section
+    markdown_lines.append("## Summary")
+    markdown_lines.append("")
+    
+    # Calculate summary statistics
+    total_questions = len(eval_run.results)
+    yes_count = sum(1 for r in eval_run.results if r.get("judgment") is True)
+    no_count = sum(1 for r in eval_run.results if r.get("judgment") is False)
+    error_count = sum(1 for r in eval_run.results if r.get("error") is not None)
+    
+    # Calculate yes percentage
+    if total_questions - error_count > 0:
+        yes_percentage = (yes_count / (total_questions - error_count)) * 100
+    else:
+        yes_percentage = 0
+    
+    # Add summary statistics
+    markdown_lines.append(f"- **Total questions**: {total_questions}")
+    markdown_lines.append(f"- **Success rate**: {total_questions - error_count}/{total_questions} questions evaluated successfully")
+    markdown_lines.append(f"- **Score**: {round(yes_percentage, 1)}%")
+    markdown_lines.append(f"- **Yes responses**: {yes_count} ({round(yes_percentage, 1)}%)")
+    markdown_lines.append(f"- **No responses**: {no_count} ({round(100 - yes_percentage, 1)}%)")
+    
+    # Add confidence information
+    if eval_run.summary and "mean_confidence" in eval_run.summary:
+        markdown_lines.append(f"- **Mean confidence**: {eval_run.summary['mean_confidence']:.2f}")
+        if "mean_yes_confidence" in eval_run.summary and yes_count > 0:
+            markdown_lines.append(f"  - **Yes confidence**: {eval_run.summary['mean_yes_confidence']:.2f}")
+        if "mean_no_confidence" in eval_run.summary and no_count > 0:
+            markdown_lines.append(f"  - **No confidence**: {eval_run.summary['mean_no_confidence']:.2f}")
+    
+    # Add ASCII chart if requested
+    if include_charts:
+        markdown_lines.append("")
+        markdown_lines.append("### Score Chart")
+        markdown_lines.append("```")
+        # Create bar chart for yes percentage
+        yes_bar_length = min(40, int(yes_percentage / 2.5))  # Scale to max 40 chars for markdown
+        no_bar_length = 40 - yes_bar_length
+        yes_bar = "█" * yes_bar_length
+        no_bar = "░" * no_bar_length
+        markdown_lines.append(f"{yes_bar}{no_bar} {round(yes_percentage, 1)}%")
+        markdown_lines.append("```")
+    
+    markdown_lines.append("")
+    
+    # Detailed results section
+    markdown_lines.append("## Detailed Results")
+    markdown_lines.append("")
+    
+    # Add each question, judgment, and reasoning
+    for i, result in enumerate(eval_run.results, 1):
+        if result.get("error"):
+            markdown_lines.append(f"{i}. **Q**: {result.get('question')}")
+            markdown_lines.append(f"   **Error**: {result.get('error')}")
+        else:
+            judgment_text = "Yes" if result.get("judgment") else "No"
+            markdown_lines.append(f"{i}. **Q**: {result.get('question')}")
+            
+            # Add confidence if available
+            confidence_display = ""
+            if result.get("confidence") is not None:
+                confidence_display = f" (confidence: {result.get('confidence'):.2f})"
+            
+            markdown_lines.append(f"   **A**: {judgment_text}{confidence_display}")
+            
+            # Add reasoning if available
+            if result.get("reasoning"):
+                markdown_lines.append(f"   **Reasoning**: {result.get('reasoning')}")
+        
+        markdown_lines.append("")  # Add blank line between results
+    
+    # Add conversation section
+    markdown_lines.append("## Conversation")
+    markdown_lines.append("")
+    markdown_lines.append("```")
+    for msg in eval_run.conversation:
+        role = msg.get("role", "").upper()
+        content = msg.get("content", "")
+        markdown_lines.append(f"{role}: {content}")
+        markdown_lines.append("")
+    markdown_lines.append("```")
+    
+    # Write to file
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write("\n".join(markdown_lines))
+    
+    print(f"{Fore.GREEN}✓ Markdown report exported to {output_file}{Style.RESET_ALL}")
+
+def export_csv(eval_run, output_file):
+    """Export evaluation run results to a CSV file."""
+    import csv
+    
+    # Prepare data for CSV
+    header = ["Question", "Judgment", "Confidence", "Reasoning", "Error"]
+    rows = []
+    
+    for result in eval_run.results:
+        rows.append([
+            result.get("question", ""),
+            "Yes" if result.get("judgment") is True else "No" if result.get("judgment") is False else "N/A",
+            f"{result.get('confidence', 'N/A')}" if result.get("confidence") is not None else "N/A",
+            result.get("reasoning", ""),
+            result.get("error", "")
+        ])
+    
+    # Write to CSV file
+    with open(output_file, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(rows)
+    
+    print(f"{Fore.GREEN}✓ CSV data exported to {output_file}{Style.RESET_ALL}")
+
+def generate_html_report(eval_run, title, template_file=None, use_color=True, include_charts=False):
+    """Generate HTML report content."""
+    # Try to import jinja2 for templating
+    try:
+        import jinja2
+    except ImportError:
+        print(f"{Fore.YELLOW}Warning: jinja2 not found, using basic HTML template.{Style.RESET_ALL}")
+        return generate_basic_html_report(eval_run, title, use_color, include_charts)
+    
+    # Calculate summary statistics
+    total_questions = len(eval_run.results)
+    yes_count = sum(1 for r in eval_run.results if r.get("judgment") is True)
+    no_count = sum(1 for r in eval_run.results if r.get("judgment") is False)
+    error_count = sum(1 for r in eval_run.results if r.get("error") is not None)
+    
+    # Calculate yes percentage
+    if total_questions - error_count > 0:
+        yes_percentage = (yes_count / (total_questions - error_count)) * 100
+    else:
+        yes_percentage = 0
+    
+    # Load template
+    template_content = ''
+    if template_file and os.path.exists(template_file):
+        with open(template_file, 'r', encoding='utf-8') as f:
+            template_content = f.read()
+    else:
+        # Default HTML template with modern styling
+        template_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        :root {
+            --primary-color: {% if use_color %}#3498db{% else %}#444{% endif %};
+            --secondary-color: {% if use_color %}#2ecc71{% else %}#777{% endif %};
+            --error-color: {% if use_color %}#e74c3c{% else %}#999{% endif %};
+            --text-color: #333;
+            --light-bg: #f9f9f9;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1, h2, h3 {
+            color: var(--primary-color);
+        }
+        
+        .metadata {
+            background-color: var(--light-bg);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .metadata p {
+            margin: 5px 0;
+        }
+        
+        .summary {
+            background-color: var(--light-bg);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .progress-bar {
+            height: 25px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        
+        .progress-bar .filled {
+            height: 100%;
+            background-color: var(--secondary-color);
+            width: {{ yes_percentage }}%;
+            transition: width 0.5s ease-in-out;
+        }
+        
+        .results {
+            margin-top: 20px;
+        }
+        
+        .question {
+            border: 1px solid #eee;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+        }
+        
+        .question h3 {
+            margin-top: 0;
+        }
+        
+        .yes {
+            border-left: 5px solid var(--secondary-color);
+        }
+        
+        .no {
+            border-left: 5px solid var(--error-color);
+        }
+        
+        .error {
+            border-left: 5px solid var(--error-color);
+            background-color: #ffeeee;
+        }
+        
+        .conversation {
+            background-color: var(--light-bg);
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        
+        .system {
+            color: {% if use_color %}#f39c12{% else %}#555{% endif %};
+        }
+        
+        .user {
+            color: {% if use_color %}#3498db{% else %}#333{% endif %};
+        }
+        
+        .assistant {
+            color: {% if use_color %}#2ecc71{% else %}#555{% endif %};
+        }
+        
+        {% if include_charts %}
+        canvas {
+            max-width: 500px;
+            margin: 20px auto;
+            display: block;
+        }
+        {% endif %}
+        
+        footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 0.8em;
+            color: #888;
+        }
+    </style>
+    {% if include_charts %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    {% endif %}
+</head>
+<body>
+    <h1>{{ title }}</h1>
+    
+    <div class="metadata">
+        <p><strong>Evaluation Set:</strong> {{ eval_run.evalset_name }}</p>
+        <p><strong>ID:</strong> {{ eval_run.id }}</p>
+        <p><strong>Date:</strong> {{ eval_run.timestamp }}</p>
+        <p><strong>Model:</strong> {{ eval_run.judge_model }}</p>
+    </div>
+    
+    <h2>Summary</h2>
+    <div class="summary">
+        <p><strong>Total questions:</strong> {{ total_questions }}</p>
+        <p><strong>Success rate:</strong> {{ total_questions - error_count }}/{{ total_questions }} questions evaluated successfully</p>
+        <p><strong>Score:</strong> {{ "%.1f"|format(yes_percentage) }}%</p>
+        
+        <div class="progress-bar">
+            <div class="filled"></div>
+        </div>
+        
+        <p><strong>Yes responses:</strong> {{ yes_count }} ({{ "%.1f"|format(yes_percentage) }}%)</p>
+        <p><strong>No responses:</strong> {{ no_count }} ({{ "%.1f"|format(100 - yes_percentage) }}%)</p>
+        
+        {% if eval_run.summary and eval_run.summary.mean_confidence is defined %}
+        <p><strong>Mean confidence:</strong> {{ "%.2f"|format(eval_run.summary.mean_confidence) }}</p>
+            {% if eval_run.summary.mean_yes_confidence is defined and yes_count > 0 %}
+            <p><strong>Yes confidence:</strong> {{ "%.2f"|format(eval_run.summary.mean_yes_confidence) }}</p>
+            {% endif %}
+            {% if eval_run.summary.mean_no_confidence is defined and no_count > 0 %}
+            <p><strong>No confidence:</strong> {{ "%.2f"|format(eval_run.summary.mean_no_confidence) }}</p>
+            {% endif %}
+        {% endif %}
+    </div>
+    
+    {% if include_charts %}
+    <div>
+        <canvas id="resultsChart"></canvas>
+    </div>
+    {% endif %}
+    
+    <h2>Detailed Results</h2>
+    <div class="results">
+        {% for i, result in results %}
+            <div class="question {% if result.error %}error{% elif result.judgment %}yes{% else %}no{% endif %}">
+                <h3>{{ i }}. {{ result.question }}</h3>
+                
+                {% if result.error %}
+                    <p><strong>Error:</strong> {{ result.error }}</p>
+                {% else %}
+                    <p><strong>Answer:</strong> 
+                        {% if result.judgment %}Yes{% else %}No{% endif %}
+                        {% if result.confidence is defined %}
+                            (confidence: {{ "%.2f"|format(result.confidence) }})
+                        {% endif %}
+                    </p>
+                    
+                    {% if result.reasoning %}
+                        <p><strong>Reasoning:</strong> {{ result.reasoning }}</p>
+                    {% endif %}
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+    
+    <h2>Conversation</h2>
+    <div class="conversation">
+        {% for msg in eval_run.conversation %}
+            <div class="{{ msg.role }}">
+                <strong>{{ msg.role|upper }}:</strong> {{ msg.content }}
+            </div>
+        {% endfor %}
+    </div>
+    
+    {% if include_charts %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var ctx = document.getElementById('resultsChart').getContext('2d');
+            var resultsChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Yes', 'No', 'Error'],
+                    datasets: [{
+                        data: [{{ yes_count }}, {{ no_count }}, {{ error_count }}],
+                        backgroundColor: [
+                            {% if use_color %}'#2ecc71', '#e74c3c', '#f39c12'{% else %}'#777', '#999', '#bbb'{% endif %}
+                        ],
+                        borderColor: '#ffffff',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Evaluation Results'
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+    {% endif %}
+    
+    <footer>
+        Generated with AgentOptim on {{ timestamp }}
+    </footer>
+</body>
+</html>
+"""
+    
+    # Create Jinja2 environment and template
+    template = jinja2.Template(template_content)
+    
+    # Prepare template variables
+    import datetime
+    now = datetime.datetime.now()
+    
+    # Create indexed results for the template
+    indexed_results = [(i+1, r) for i, r in enumerate(eval_run.results)]
+    
+    # Render the template
+    html_content = template.render(
+        title=title,
+        eval_run=eval_run,
+        results=indexed_results,
+        total_questions=total_questions,
+        yes_count=yes_count,
+        no_count=no_count,
+        error_count=error_count,
+        yes_percentage=yes_percentage,
+        use_color=use_color,
+        include_charts=include_charts,
+        timestamp=now.strftime("%Y-%m-%d %H:%M:%S")
+    )
+    
+    return html_content
+
+def generate_basic_html_report(eval_run, title, use_color=True, include_charts=False):
+    """Generate a basic HTML report without using Jinja."""
+    # Calculate summary statistics
+    total_questions = len(eval_run.results)
+    yes_count = sum(1 for r in eval_run.results if r.get("judgment") is True)
+    no_count = sum(1 for r in eval_run.results if r.get("judgment") is False)
+    error_count = sum(1 for r in eval_run.results if r.get("error") is not None)
+    
+    # Calculate yes percentage
+    if total_questions - error_count > 0:
+        yes_percentage = (yes_count / (total_questions - error_count)) * 100
+    else:
+        yes_percentage = 0
+    
+    # Basic HTML with inline style
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>{title}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        h1, h2 {{ color: {"#3498db" if use_color else "#444"}; }}
+        .result {{ margin-bottom: 15px; padding: 10px; border: 1px solid #eee; }}
+        .yes {{ border-left: 5px solid {"#2ecc71" if use_color else "#777"}; }}
+        .no {{ border-left: 5px solid {"#e74c3c" if use_color else "#999"}; }}
+        .error {{ border-left: 5px solid {"#e74c3c" if use_color else "#999"}; background-color: #ffeeee; }}
+        .progress {{ width: 100%; height: 20px; background-color: #f3f3f3; }}
+        .progress-bar {{ width: {yes_percentage}%; height: 20px; background-color: {"#2ecc71" if use_color else "#777"}; }}
+    </style>
+</head>
+<body>
+    <h1>{title}</h1>
+    
+    <p><strong>Evaluation Set:</strong> {eval_run.evalset_name}</p>
+    <p><strong>ID:</strong> {eval_run.id}</p>
+    <p><strong>Date:</strong> {eval_run.timestamp}</p>
+    <p><strong>Model:</strong> {eval_run.judge_model}</p>
+    
+    <h2>Summary</h2>
+    <p><strong>Total questions:</strong> {total_questions}</p>
+    <p><strong>Success rate:</strong> {total_questions - error_count}/{total_questions} questions evaluated successfully</p>
+    <p><strong>Score:</strong> {round(yes_percentage, 1)}%</p>
+    
+    <div class="progress">
+        <div class="progress-bar"></div>
+    </div>
+    
+    <p><strong>Yes responses:</strong> {yes_count} ({round(yes_percentage, 1)}%)</p>
+    <p><strong>No responses:</strong> {no_count} ({round(100 - yes_percentage, 1)}%)</p>
+    """
+    
+    # Add confidence info if available
+    if eval_run.summary and "mean_confidence" in eval_run.summary:
+        html += f"""
+        <p><strong>Mean confidence:</strong> {eval_run.summary["mean_confidence"]:.2f}</p>
+        """
+        if "mean_yes_confidence" in eval_run.summary and yes_count > 0:
+            html += f"""
+            <p><strong>Yes confidence:</strong> {eval_run.summary["mean_yes_confidence"]:.2f}</p>
+            """
+        if "mean_no_confidence" in eval_run.summary and no_count > 0:
+            html += f"""
+            <p><strong>No confidence:</strong> {eval_run.summary["mean_no_confidence"]:.2f}</p>
+            """
+    
+    # Detailed results
+    html += """
+    <h2>Detailed Results</h2>
+    """
+    
+    for i, result in enumerate(eval_run.results, 1):
+        if result.get("error"):
+            html += f"""
+            <div class="result error">
+                <h3>{i}. {result.get("question")}</h3>
+                <p><strong>Error:</strong> {result.get("error")}</p>
+            </div>
+            """
+        else:
+            judgment_text = "Yes" if result.get("judgment") else "No"
+            result_class = "yes" if result.get("judgment") else "no"
+            
+            confidence_display = ""
+            if result.get("confidence") is not None:
+                confidence_display = f" (confidence: {result.get('confidence'):.2f})"
+            
+            html += f"""
+            <div class="result {result_class}">
+                <h3>{i}. {result.get("question")}</h3>
+                <p><strong>Answer:</strong> {judgment_text}{confidence_display}</p>
+                """
+            
+            if result.get("reasoning"):
+                html += f"""
+                <p><strong>Reasoning:</strong> {result.get("reasoning")}</p>
+                """
+            
+            html += """
+            </div>
+            """
+    
+    # Conversation section
+    html += """
+    <h2>Conversation</h2>
+    <pre>
+    """
+    
+    for msg in eval_run.conversation:
+        role = msg.get("role", "").upper()
+        content = msg.get("content", "")
+        html += f"{role}: {content}\n\n"
+    
+    html += """
+    </pre>
+    
+    <p><small>Generated with AgentOptim</small></p>
+</body>
+</html>
+    """
+    
+    return html
+
+def export_html(eval_run, output_file, title, template_file=None, use_color=True, include_charts=False):
+    """Export evaluation run to an HTML file."""
+    # Generate HTML content
+    html_content = generate_html_report(eval_run, title, template_file, use_color, include_charts)
+    
+    # Write to file
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
+    print(f"{Fore.GREEN}✓ HTML report exported to {output_file}{Style.RESET_ALL}")
+
+def generate_text_comparison(first_run, second_run, use_color=True, detailed=False):
+    """Generate a text-based comparison between two evaluation runs."""
+    lines = []
+    
+    # Title
+    lines.append("=" * 80)
+    title = f"EVALUATION COMPARISON: {first_run.evalset_name}"
+    lines.append(title.center(80))
+    lines.append("=" * 80)
+    lines.append("")
+    
+    # Format run metadata
+    lines.append("RUN INFORMATION:")
+    lines.append("")
+    lines.append(f"{'':4}{'RUN A':^36}{'RUN B':^36}")
+    lines.append(f"{'':4}{'-' * 36}{'-' * 36}")
+    lines.append(f"{'ID:':4}{first_run.id:36}{second_run.id:36}")
+    lines.append(f"{'Date:':4}{str(first_run.timestamp):36}{str(second_run.timestamp):36}")
+    lines.append(f"{'Model:':4}{str(first_run.judge_model):36}{str(second_run.judge_model):36}")
+    lines.append("")
+    
+    # Calculate summary statistics
+    first_total = len(first_run.results)
+    second_total = len(second_run.results)
+    
+    first_yes = sum(1 for r in first_run.results if r.get("judgment") is True)
+    second_yes = sum(1 for r in second_run.results if r.get("judgment") is True)
+    
+    first_no = sum(1 for r in first_run.results if r.get("judgment") is False)
+    second_no = sum(1 for r in second_run.results if r.get("judgment") is False)
+    
+    first_errors = sum(1 for r in first_run.results if r.get("error") is not None)
+    second_errors = sum(1 for r in second_run.results if r.get("error") is not None)
+    
+    # Calculate yes percentages
+    first_yes_pct = (first_yes / (first_total - first_errors)) * 100 if first_total - first_errors > 0 else 0
+    second_yes_pct = (second_yes / (second_total - second_errors)) * 100 if second_total - second_errors > 0 else 0
+    
+    # Determine score change
+    score_change = second_yes_pct - first_yes_pct
+    
+    # Format scores with colors if requested
+    if use_color:
+        first_score = f"{Fore.CYAN}{first_yes_pct:.1f}%{Style.RESET_ALL}"
+        
+        if score_change > 0:
+            change_str = f"{Fore.GREEN}+{score_change:.1f}%{Style.RESET_ALL}"
+            second_score = f"{Fore.GREEN}{second_yes_pct:.1f}%{Style.RESET_ALL}"
+        elif score_change < 0:
+            change_str = f"{Fore.RED}{score_change:.1f}%{Style.RESET_ALL}"
+            second_score = f"{Fore.RED}{second_yes_pct:.1f}%{Style.RESET_ALL}"
+        else:
+            change_str = f"{Fore.YELLOW}0.0%{Style.RESET_ALL}"
+            second_score = f"{Fore.YELLOW}{second_yes_pct:.1f}%{Style.RESET_ALL}"
+    else:
+        first_score = f"{first_yes_pct:.1f}%"
+        second_score = f"{second_yes_pct:.1f}%"
+        change_str = f"{score_change:+.1f}%" if score_change != 0 else "0.0%"
+    
+    # Add summary comparison
+    lines.append("SUMMARY COMPARISON:")
+    lines.append("")
+    lines.append(f"{'':20}{'RUN A':^20}{'RUN B':^20}{'CHANGE':^20}")
+    lines.append(f"{'-' * 80}")
+    lines.append(f"{'Overall Score:':20}{first_score:^20}{second_score:^20}{change_str:^20}")
+    lines.append(f"{'Yes Responses:':20}{first_yes:^20}{second_yes:^20}{second_yes - first_yes:+^20}")
+    lines.append(f"{'No Responses:':20}{first_no:^20}{second_no:^20}{second_no - first_no:+^20}")
+    lines.append(f"{'Total Questions:':20}{first_total:^20}{second_total:^20}{'-':^20}")
+    
+    # Add confidence info if available
+    if (first_run.summary and "mean_confidence" in first_run.summary and
+        second_run.summary and "mean_confidence" in second_run.summary):
+        first_conf = first_run.summary["mean_confidence"]
+        second_conf = second_run.summary["mean_confidence"]
+        conf_change = second_conf - first_conf
+        
+        lines.append(f"{'Mean Confidence:':20}{first_conf:.2f:^20}{second_conf:.2f:^20}{conf_change:+.2f:^20}")
+    
+    lines.append("")
+    
+    # Add ASCII charts if the terminal supports it
+    first_bar_len = int(first_yes_pct / 5)  # 20 chars = 100%
+    second_bar_len = int(second_yes_pct / 5)
+    
+    lines.append("SCORE VISUALIZATION:")
+    lines.append("")
+    lines.append(f"Run A: [{'█' * first_bar_len}{' ' * (20 - first_bar_len)}] {first_yes_pct:.1f}%")
+    lines.append(f"Run B: [{'█' * second_bar_len}{' ' * (20 - second_bar_len)}] {second_yes_pct:.1f}%")
+    lines.append("")
+    
+    # Question-by-question comparison
+    lines.append("QUESTION-BY-QUESTION COMPARISON:")
+    lines.append("")
+    
+    # Map for easier comparison
+    first_results_map = {r.get("question"): r for r in first_run.results}
+    second_results_map = {r.get("question"): r for r in second_run.results}
+    
+    # Get all questions from both runs
+    all_questions = set()
+    for r in first_run.results:
+        all_questions.add(r.get("question"))
+    for r in second_run.results:
+        all_questions.add(r.get("question"))
+    
+    # Sort questions for consistent output
+    sorted_questions = sorted(list(all_questions))
+    
+    # Generate comparison for each question
+    for q_idx, question in enumerate(sorted_questions, 1):
+        # Get results for this question from both runs
+        first_result = first_results_map.get(question, {"error": "Question not in Run A"})
+        second_result = second_results_map.get(question, {"error": "Question not in Run B"})
+        
+        # Determine if there's a change in judgment
+        first_judgment = first_result.get("judgment")
+        second_judgment = second_result.get("judgment")
+        
+        if first_judgment is None or second_judgment is None:
+            change_indicator = "[ERROR]"
+            if use_color:
+                change_indicator = f"{Fore.RED}{change_indicator}{Style.RESET_ALL}"
+        elif first_judgment == second_judgment:
+            change_indicator = "[SAME]"
+            if use_color:
+                change_indicator = f"{Fore.BLUE}{change_indicator}{Style.RESET_ALL}"
+        elif first_judgment is False and second_judgment is True:
+            change_indicator = "[IMPROVED]"
+            if use_color:
+                change_indicator = f"{Fore.GREEN}{change_indicator}{Style.RESET_ALL}"
+        else:
+            change_indicator = "[REGRESSED]"
+            if use_color:
+                change_indicator = f"{Fore.RED}{change_indicator}{Style.RESET_ALL}"
+        
+        # Add question header with change indicator
+        lines.append(f"Q{q_idx}: {question} {change_indicator}")
+        
+        # Format judgments with colors
+        first_judge = format_judgment(first_judgment, use_color)
+        second_judge = format_judgment(second_judgment, use_color)
+        
+        # Add judgments
+        lines.append(f"  Run A: {first_judge}")
+        lines.append(f"  Run B: {second_judge}")
+        
+        # Add reasoning if detailed mode
+        if detailed:
+            if "reasoning" in first_result and first_result["reasoning"]:
+                lines.append(f"  Run A reasoning: {first_result['reasoning']}")
+            if "reasoning" in second_result and second_result["reasoning"]:
+                lines.append(f"  Run B reasoning: {second_result['reasoning']}")
+        
+        lines.append("")
+    
+    # Return the formatted text comparison
+    return "\n".join(lines)
+
+def format_judgment(judgment, use_color=True):
+    """Format judgment with color if supported."""
+    if judgment is None:
+        result = "ERROR"
+        return f"{Fore.RED}{result}{Style.RESET_ALL}" if use_color else result
+    elif judgment is True:
+        result = "Yes"
+        return f"{Fore.GREEN}{result}{Style.RESET_ALL}" if use_color else result
+    else:
+        result = "No"
+        return f"{Fore.RED}{result}{Style.RESET_ALL}" if use_color else result
+
+def generate_html_comparison(first_run, second_run, use_color=True, detailed=False):
+    """Generate HTML comparison between two evaluation runs."""
+    # Try to import Jinja for templating
+    try:
+        import jinja2
+    except ImportError:
+        print(f"{Fore.YELLOW}Warning: jinja2 not found, using basic HTML template{Style.RESET_ALL}")
+        return generate_basic_html_comparison(first_run, second_run, use_color, detailed)
+    
+    # Calculate summary statistics
+    first_total = len(first_run.results)
+    second_total = len(second_run.results)
+    
+    first_yes = sum(1 for r in first_run.results if r.get("judgment") is True)
+    second_yes = sum(1 for r in second_run.results if r.get("judgment") is True)
+    
+    first_no = sum(1 for r in first_run.results if r.get("judgment") is False)
+    second_no = sum(1 for r in second_run.results if r.get("judgment") is False)
+    
+    first_errors = sum(1 for r in first_run.results if r.get("error") is not None)
+    second_errors = sum(1 for r in second_run.results if r.get("error") is not None)
+    
+    # Calculate yes percentages
+    first_yes_pct = (first_yes / (first_total - first_errors)) * 100 if first_total - first_errors > 0 else 0
+    second_yes_pct = (second_yes / (second_total - second_errors)) * 100 if second_total - second_errors > 0 else 0
+    
+    # Determine score change
+    score_change = second_yes_pct - first_yes_pct
+    score_change_class = "positive" if score_change > 0 else "negative" if score_change < 0 else "neutral"
+    
+    # Map for easier comparison
+    first_results_map = {r.get("question"): r for r in first_run.results}
+    second_results_map = {r.get("question"): r for r in second_run.results}
+    
+    # Get all questions from both runs
+    all_questions = set()
+    for r in first_run.results:
+        all_questions.add(r.get("question"))
+    for r in second_run.results:
+        all_questions.add(r.get("question"))
+    
+    # Sort questions for consistent output
+    sorted_questions = sorted(list(all_questions))
+    
+    # Prepare question comparisons
+    comparisons = []
+    for question in sorted_questions:
+        first_result = first_results_map.get(question, {"error": "Question not in Run A"})
+        second_result = second_results_map.get(question, {"error": "Question not in Run B"})
+        
+        # Determine status
+        first_judgment = first_result.get("judgment")
+        second_judgment = second_result.get("judgment")
+        
+        if first_judgment is None or second_judgment is None:
+            status = "error"
+            status_text = "ERROR"
+        elif first_judgment == second_judgment:
+            status = "same"
+            status_text = "SAME"
+        elif first_judgment is False and second_judgment is True:
+            status = "improved"
+            status_text = "IMPROVED"
+        else:
+            status = "regressed"
+            status_text = "REGRESSED"
+        
+        comparisons.append({
+            "question": question,
+            "first_result": first_result,
+            "second_result": second_result,
+            "status": status,
+            "status_text": status_text
+        })
+    
+    # HTML Template
+    template_content = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentOptim Evaluation Comparison</title>
+    <style>
+        :root {
+            --primary-color: {% if use_color %}#3498db{% else %}#444{% endif %};
+            --secondary-color: {% if use_color %}#2ecc71{% else %}#777{% endif %};
+            --negative-color: {% if use_color %}#e74c3c{% else %}#999{% endif %};
+            --neutral-color: {% if use_color %}#f39c12{% else %}#aaa{% endif %};
+            --text-color: #333;
+            --light-bg: #f9f9f9;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1, h2, h3 {
+            color: var(--primary-color);
+        }
+        
+        .metadata {
+            display: flex;
+            justify-content: space-between;
+            background-color: var(--light-bg);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .run-info {
+            flex: 1;
+            padding: 10px;
+        }
+        
+        .run-info h3 {
+            margin-top: 0;
+        }
+        
+        .summary {
+            background-color: var(--light-bg);
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        
+        .comparison-table th {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }
+        
+        .comparison-table td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .positive {
+            color: {% if use_color %}var(--secondary-color){% else %}inherit{% endif %};
+        }
+        
+        .negative {
+            color: {% if use_color %}var(--negative-color){% else %}inherit{% endif %};
+        }
+        
+        .neutral {
+            color: {% if use_color %}var(--neutral-color){% else %}inherit{% endif %};
+        }
+        
+        .progress-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .progress-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .progress-label {
+            width: 60px;
+            text-align: right;
+        }
+        
+        .progress-bar {
+            height: 25px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+        
+        .progress-bar .filled {
+            height: 100%;
+            background-color: var(--primary-color);
+            width: 0%;
+            transition: width 0.5s ease-in-out;
+        }
+        
+        .run-a .filled {
+            background-color: var(--primary-color);
+            width: {{ first_yes_pct }}%;
+        }
+        
+        .run-b .filled {
+            background-color: var(--secondary-color);
+            width: {{ second_yes_pct }}%;
+        }
+        
+        .question-comparison {
+            margin-bottom: 15px;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        .question-header {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background-color: var(--light-bg);
+            border-bottom: 1px solid #eee;
+        }
+        
+        .question-content {
+            padding: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        
+        .run-result {
+            flex: 1;
+            min-width: 300px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .status-same {
+            background-color: var(--neutral-color);
+        }
+        
+        .status-improved {
+            background-color: var(--secondary-color);
+        }
+        
+        .status-regressed {
+            background-color: var(--negative-color);
+        }
+        
+        .status-error {
+            background-color: #777;
+        }
+        
+        .judgment {
+            font-weight: bold;
+        }
+        
+        .judgment-yes {
+            color: {% if use_color %}var(--secondary-color){% else %}inherit{% endif %};
+        }
+        
+        .judgment-no {
+            color: {% if use_color %}var(--negative-color){% else %}inherit{% endif %};
+        }
+        
+        .judgment-error {
+            color: #777;
+        }
+        
+        footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 0.8em;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <h1>AgentOptim Evaluation Comparison</h1>
+    
+    <div class="metadata">
+        <div class="run-info">
+            <h3>Run A</h3>
+            <p><strong>ID:</strong> {{ first_run.id }}</p>
+            <p><strong>Date:</strong> {{ first_run.timestamp }}</p>
+            <p><strong>Model:</strong> {{ first_run.judge_model }}</p>
+        </div>
+        
+        <div class="run-info">
+            <h3>Run B</h3>
+            <p><strong>ID:</strong> {{ second_run.id }}</p>
+            <p><strong>Date:</strong> {{ second_run.timestamp }}</p>
+            <p><strong>Model:</strong> {{ second_run.judge_model }}</p>
+        </div>
+    </div>
+    
+    <h2>Summary Comparison</h2>
+    
+    <div class="summary">
+        <table class="comparison-table">
+            <tr>
+                <th>Metric</th>
+                <th>Run A</th>
+                <th>Run B</th>
+                <th>Change</th>
+            </tr>
+            <tr>
+                <td>Overall Score</td>
+                <td>{{ "%.1f"|format(first_yes_pct) }}%</td>
+                <td>{{ "%.1f"|format(second_yes_pct) }}%</td>
+                <td class="{{ score_change_class }}">{{ "%+.1f"|format(score_change) }}%</td>
+            </tr>
+            <tr>
+                <td>Yes Responses</td>
+                <td>{{ first_yes }}</td>
+                <td>{{ second_yes }}</td>
+                <td class="{{ 'positive' if second_yes > first_yes else 'negative' if second_yes < first_yes else 'neutral' }}">{{ "%+d"|format(second_yes - first_yes) }}</td>
+            </tr>
+            <tr>
+                <td>No Responses</td>
+                <td>{{ first_no }}</td>
+                <td>{{ second_no }}</td>
+                <td class="{{ 'negative' if second_no > first_no else 'positive' if second_no < first_no else 'neutral' }}">{{ "%+d"|format(second_no - first_no) }}</td>
+            </tr>
+            <tr>
+                <td>Errors</td>
+                <td>{{ first_errors }}</td>
+                <td>{{ second_errors }}</td>
+                <td class="{{ 'negative' if second_errors > first_errors else 'positive' if second_errors < first_errors else 'neutral' }}">{{ "%+d"|format(second_errors - first_errors) }}</td>
+            </tr>
+            <tr>
+                <td>Total Questions</td>
+                <td>{{ first_total }}</td>
+                <td>{{ second_total }}</td>
+                <td>{{ second_total - first_total }}</td>
+            </tr>
+            {% if first_run.summary and first_run.summary.mean_confidence is defined and second_run.summary and second_run.summary.mean_confidence is defined %}
+            <tr>
+                <td>Mean Confidence</td>
+                <td>{{ "%.2f"|format(first_run.summary.mean_confidence) }}</td>
+                <td>{{ "%.2f"|format(second_run.summary.mean_confidence) }}</td>
+                <td class="{{ 'positive' if second_run.summary.mean_confidence > first_run.summary.mean_confidence else 'negative' if second_run.summary.mean_confidence < first_run.summary.mean_confidence else 'neutral' }}">
+                    {{ "%+.2f"|format(second_run.summary.mean_confidence - first_run.summary.mean_confidence) }}
+                </td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+    
+    <h3>Score Visualization</h3>
+    
+    <div class="progress-bars">
+        <div class="progress-container">
+            <div class="progress-label">Run A:</div>
+            <div class="progress-bar run-a">
+                <div class="filled"></div>
+            </div>
+            <div>{{ "%.1f"|format(first_yes_pct) }}%</div>
+        </div>
+        
+        <div class="progress-container">
+            <div class="progress-label">Run B:</div>
+            <div class="progress-bar run-b">
+                <div class="filled"></div>
+            </div>
+            <div>{{ "%.1f"|format(second_yes_pct) }}%</div>
+        </div>
+    </div>
+    
+    <h2>Question-by-Question Comparison</h2>
+    
+    {% for comparison in comparisons %}
+    <div class="question-comparison">
+        <div class="question-header">
+            <div><strong>Q{{ loop.index }}:</strong> {{ comparison.question }}</div>
+            <div>
+                <span class="status-badge status-{{ comparison.status }}">{{ comparison.status_text }}</span>
+            </div>
+        </div>
+        
+        <div class="question-content">
+            <div class="run-result">
+                <h4>Run A</h4>
+                {% if comparison.first_result.error %}
+                    <p><strong>Error:</strong> {{ comparison.first_result.error }}</p>
+                {% else %}
+                    <p>
+                        <strong>Judgment:</strong> 
+                        <span class="judgment judgment-{{ 'yes' if comparison.first_result.judgment else 'no' }}">
+                            {{ "Yes" if comparison.first_result.judgment else "No" }}
+                        </span>
+                        {% if comparison.first_result.confidence is defined %}
+                            (confidence: {{ "%.2f"|format(comparison.first_result.confidence) }})
+                        {% endif %}
+                    </p>
+                    
+                    {% if detailed and comparison.first_result.reasoning %}
+                        <p><strong>Reasoning:</strong><br>{{ comparison.first_result.reasoning }}</p>
+                    {% endif %}
+                {% endif %}
+            </div>
+            
+            <div class="run-result">
+                <h4>Run B</h4>
+                {% if comparison.second_result.error %}
+                    <p><strong>Error:</strong> {{ comparison.second_result.error }}</p>
+                {% else %}
+                    <p>
+                        <strong>Judgment:</strong> 
+                        <span class="judgment judgment-{{ 'yes' if comparison.second_result.judgment else 'no' }}">
+                            {{ "Yes" if comparison.second_result.judgment else "No" }}
+                        </span>
+                        {% if comparison.second_result.confidence is defined %}
+                            (confidence: {{ "%.2f"|format(comparison.second_result.confidence) }})
+                        {% endif %}
+                    </p>
+                    
+                    {% if detailed and comparison.second_result.reasoning %}
+                        <p><strong>Reasoning:</strong><br>{{ comparison.second_result.reasoning }}</p>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    
+    <footer>
+        Generated with AgentOptim on {{ timestamp }}
+    </footer>
+</body>
+</html>
+"""
+    
+    # Create template and render
+    template = jinja2.Template(template_content)
+    
+    # Prepare variables
+    import datetime
+    now = datetime.datetime.now()
+    
+    # Render HTML
+    html_content = template.render(
+        first_run=first_run,
+        second_run=second_run,
+        first_yes_pct=first_yes_pct,
+        second_yes_pct=second_yes_pct,
+        first_yes=first_yes,
+        second_yes=second_yes,
+        first_no=first_no,
+        second_no=second_no,
+        first_errors=first_errors,
+        second_errors=second_errors,
+        first_total=first_total,
+        second_total=second_total,
+        score_change=score_change,
+        score_change_class=score_change_class,
+        comparisons=comparisons,
+        use_color=use_color,
+        detailed=detailed,
+        timestamp=now.strftime("%Y-%m-%d %H:%M:%S")
+    )
+    
+    return html_content
+
+def generate_basic_html_comparison(first_run, second_run, use_color=True, detailed=False):
+    """Generate basic HTML comparison without Jinja."""
+    # Calculate statistics
+    first_total = len(first_run.results)
+    second_total = len(second_run.results)
+    
+    first_yes = sum(1 for r in first_run.results if r.get("judgment") is True)
+    second_yes = sum(1 for r in second_run.results if r.get("judgment") is True)
+    
+    first_no = sum(1 for r in first_run.results if r.get("judgment") is False)
+    second_no = sum(1 for r in second_run.results if r.get("judgment") is False)
+    
+    first_errors = sum(1 for r in first_run.results if r.get("error") is not None)
+    second_errors = sum(1 for r in second_run.results if r.get("error") is not None)
+    
+    # Calculate yes percentages
+    first_yes_pct = (first_yes / (first_total - first_errors)) * 100 if first_total - first_errors > 0 else 0
+    second_yes_pct = (second_yes / (second_total - second_errors)) * 100 if second_total - second_errors > 0 else 0
+    
+    # Determine score change
+    score_change = second_yes_pct - first_yes_pct
+    
+    # Simple HTML content
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>AgentOptim Evaluation Comparison</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        h1, h2, h3 {{ color: {"#3498db" if use_color else "#444"}; }}
+        .comparison {{ display: flex; justify-content: space-between; margin-bottom: 20px; }}
+        .run {{ flex: 1; padding: 10px; border: 1px solid #eee; margin: 0 10px; }}
+        table {{ width: 100%; border-collapse: collapse; }}
+        th {{ background-color: {"#3498db" if use_color else "#eee"}; color: {"white" if use_color else "#333"}; padding: 10px; text-align: left; }}
+        td {{ padding: 8px; border-bottom: 1px solid #ddd; }}
+        .positive {{ color: {"#2ecc71" if use_color else "#333"}; }}
+        .negative {{ color: {"#e74c3c" if use_color else "#333"}; }}
+        .neutral {{ color: {"#f39c12" if use_color else "#333"}; }}
+        .yes {{ color: {"#2ecc71" if use_color else "#333"}; font-weight: bold; }}
+        .no {{ color: {"#e74c3c" if use_color else "#333"}; font-weight: bold; }}
+        .question {{ border: 1px solid #eee; margin-bottom: 15px; padding: 10px; }}
+        .status {{ display: inline-block; padding: 3px 8px; border-radius: 10px; color: white; font-size: 12px; }}
+        .improved {{ background-color: {"#2ecc71" if use_color else "#aaa"}; }}
+        .regressed {{ background-color: {"#e74c3c" if use_color else "#aaa"}; }}
+        .same {{ background-color: {"#f39c12" if use_color else "#aaa"}; }}
+        .error {{ background-color: #777; }}
+    </style>
+</head>
+<body>
+    <h1>AgentOptim Evaluation Comparison</h1>
+    
+    <div class="comparison">
+        <div class="run">
+            <h3>Run A</h3>
+            <p><strong>ID:</strong> {first_run.id}</p>
+            <p><strong>Date:</strong> {first_run.timestamp}</p>
+            <p><strong>Model:</strong> {first_run.judge_model}</p>
+        </div>
+        
+        <div class="run">
+            <h3>Run B</h3>
+            <p><strong>ID:</strong> {second_run.id}</p>
+            <p><strong>Date:</strong> {second_run.timestamp}</p>
+            <p><strong>Model:</strong> {second_run.judge_model}</p>
+        </div>
+    </div>
+    
+    <h2>Summary Comparison</h2>
+    
+    <table>
+        <tr>
+            <th>Metric</th>
+            <th>Run A</th>
+            <th>Run B</th>
+            <th>Change</th>
+        </tr>
+        <tr>
+            <td>Overall Score</td>
+            <td>{first_yes_pct:.1f}%</td>
+            <td>{second_yes_pct:.1f}%</td>
+            <td class="{"positive" if score_change > 0 else "negative" if score_change < 0 else "neutral"}">{score_change:+.1f}%</td>
+        </tr>
+        <tr>
+            <td>Yes Responses</td>
+            <td>{first_yes}</td>
+            <td>{second_yes}</td>
+            <td class="{"positive" if second_yes > first_yes else "negative" if second_yes < first_yes else "neutral"}">{second_yes - first_yes:+d}</td>
+        </tr>
+        <tr>
+            <td>No Responses</td>
+            <td>{first_no}</td>
+            <td>{second_no}</td>
+            <td class="{"negative" if second_no > first_no else "positive" if second_no < first_no else "neutral"}">{second_no - first_no:+d}</td>
+        </tr>
+        <tr>
+            <td>Total Questions</td>
+            <td>{first_total}</td>
+            <td>{second_total}</td>
+            <td>{second_total - first_total}</td>
+        </tr>
+    </table>
+    
+    <h2>Question-by-Question Comparison</h2>
+    """
+    
+    # Map for easier comparison
+    first_results_map = {r.get("question"): r for r in first_run.results}
+    second_results_map = {r.get("question"): r for r in second_run.results}
+    
+    # Get all questions from both runs
+    all_questions = set()
+    for r in first_run.results:
+        all_questions.add(r.get("question"))
+    for r in second_run.results:
+        all_questions.add(r.get("question"))
+    
+    # Sort questions for consistent output
+    sorted_questions = sorted(list(all_questions))
+    
+    # Generate comparison for each question
+    for q_idx, question in enumerate(sorted_questions, 1):
+        # Get results for this question from both runs
+        first_result = first_results_map.get(question, {"error": "Question not in Run A"})
+        second_result = second_results_map.get(question, {"error": "Question not in Run B"})
+        
+        # Determine status
+        first_judgment = first_result.get("judgment")
+        second_judgment = second_result.get("judgment")
+        
+        if first_judgment is None or second_judgment is None:
+            status = "error"
+            status_text = "ERROR"
+        elif first_judgment == second_judgment:
+            status = "same"
+            status_text = "SAME"
+        elif first_judgment is False and second_judgment is True:
+            status = "improved"
+            status_text = "IMPROVED"
+        else:
+            status = "regressed"
+            status_text = "REGRESSED"
+        
+        html += f"""
+        <div class="question">
+            <div>
+                <strong>Q{q_idx}:</strong> {question}
+                <span class="status {status}">{status_text}</span>
+            </div>
+            
+            <div class="comparison">
+                <div class="run">
+                    <h4>Run A</h4>
+                    """
+        
+        if "error" in first_result and first_result["error"]:
+            html += f"<p><strong>Error:</strong> {first_result['error']}</p>"
+        else:
+            html += f"""
+                    <p><strong>Judgment:</strong> 
+                        <span class="{'yes' if first_judgment else 'no'}">
+                            {"Yes" if first_judgment else "No"}
+                        </span>
+                        {f" (confidence: {first_result.get('confidence'):.2f})" if "confidence" in first_result and first_result["confidence"] is not None else ""}
+                    </p>
+                    """
+            
+            if detailed and "reasoning" in first_result and first_result["reasoning"]:
+                html += f"<p><strong>Reasoning:</strong><br>{first_result['reasoning']}</p>"
+        
+        html += """
+                </div>
+                
+                <div class="run">
+                    <h4>Run B</h4>
+                    """
+        
+        if "error" in second_result and second_result["error"]:
+            html += f"<p><strong>Error:</strong> {second_result['error']}</p>"
+        else:
+            html += f"""
+                    <p><strong>Judgment:</strong> 
+                        <span class="{'yes' if second_judgment else 'no'}">
+                            {"Yes" if second_judgment else "No"}
+                        </span>
+                        {f" (confidence: {second_result.get('confidence'):.2f})" if "confidence" in second_result and second_result["confidence"] is not None else ""}
+                    </p>
+                    """
+            
+            if detailed and "reasoning" in second_result and second_result["reasoning"]:
+                html += f"<p><strong>Reasoning:</strong><br>{second_result['reasoning']}</p>"
+        
+        html += """
+                </div>
+            </div>
+        </div>
+        """
+    
+    # Close HTML
+    html += """
+    <p><small>Generated with AgentOptim</small></p>
+</body>
+</html>
+    """
+    
+    return html
 
 def generate_completion_script():
     """Generate a bash completion script for the agentoptim CLI."""
