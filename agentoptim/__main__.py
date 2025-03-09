@@ -83,6 +83,8 @@ Examples:
     server_parser = subparsers.add_parser("server", help="Start the MCP server")
     server_parser.add_argument("--port", type=int, help="Port to run the server on")
     server_parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    server_parser.add_argument("--provider", choices=["local", "openai", "anthropic"], default="local", 
+                          help="API provider (default: local)")
     
     # List command
     list_parser = subparsers.add_parser("list", help="List all available evaluation sets")
@@ -230,11 +232,34 @@ def run_cli():
             os.environ["AGENTOPTIM_DEBUG"] = "1"
         if args.port:
             os.environ["AGENTOPTIM_PORT"] = str(args.port)
+            
+        # Configure provider settings
+        if args.provider:
+            # Only set API_BASE if not already set by user
+            if "AGENTOPTIM_API_BASE" not in os.environ:
+                if args.provider == "openai":
+                    os.environ["AGENTOPTIM_API_BASE"] = "https://api.openai.com/v1"
+                    # Only set default model if not explicitly specified
+                    if "AGENTOPTIM_JUDGE_MODEL" not in os.environ:
+                        os.environ["AGENTOPTIM_JUDGE_MODEL"] = "gpt-4o-mini"
+                elif args.provider == "anthropic":
+                    os.environ["AGENTOPTIM_API_BASE"] = "https://api.anthropic.com/v1"
+                    # Only set default model if not explicitly specified
+                    if "AGENTOPTIM_JUDGE_MODEL" not in os.environ:
+                        os.environ["AGENTOPTIM_JUDGE_MODEL"] = "claude-3-5-haiku-20241022"
+                elif args.provider == "local":
+                    os.environ["AGENTOPTIM_API_BASE"] = "http://localhost:1234/v1"
+                    # Only set default model if not explicitly specified
+                    if "AGENTOPTIM_JUDGE_MODEL" not in os.environ:
+                        os.environ["AGENTOPTIM_JUDGE_MODEL"] = "meta-llama-3.1-8b-instruct"
         
         # Log configuration info
         logger.info("AgentOptim MCP Server starting")
         logger.info(f"Logging to {log_file_path}")
         logger.info(f"Debug mode: {os.environ.get('AGENTOPTIM_DEBUG', '0') == '1'}")
+        logger.info(f"Provider: {args.provider}")
+        logger.info(f"API base: {os.environ.get('AGENTOPTIM_API_BASE')}")
+        logger.info(f"Judge model: {os.environ.get('AGENTOPTIM_JUDGE_MODEL')}")
         
         # Start the server
         try:
