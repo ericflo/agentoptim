@@ -312,7 +312,8 @@ The tool returns different results based on the action performed:
     "no_count": 1,
     "yes_percentage": 85.71,
     ...
-  }
+  },
+  "formatted_message": "# Evaluation Results\n\n## Summary\n\n- Overall Score: 85.71%\n..."
 }
 ```
 
@@ -329,7 +330,8 @@ The tool returns different results based on the action performed:
     "timestamp_formatted": "2024-06-01 12:00:00",
     "judge_model": "meta-llama-3.1-8b-instruct",
     "results": [...],
-    "summary": {...}
+    "summary": {...},
+    "conversation": [...]
   },
   "formatted_message": "# Evaluation Results: Technical Support Quality Evaluation..."
 }
@@ -418,6 +420,9 @@ past_eval = await manage_eval_runs_tool(
 # Access the evaluation data
 print(f"Evaluation from {past_eval['eval_run']['timestamp_formatted']}")
 print(f"Score: {past_eval['eval_run']['summary']['yes_percentage']}%")
+
+# Display the formatted evaluation results
+print(past_eval['formatted_message'])
 ```
 
 #### Listing Evaluation Runs
@@ -442,15 +447,64 @@ filtered_runs = await manage_eval_runs_tool(
     page=1,
     page_size=10
 )
+
+# Display only the most recent run for a specific EvalSet
+recent_run = await manage_eval_runs_tool(
+    action="list",
+    evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+    page=1,
+    page_size=1
+)
+if recent_run['eval_runs']:
+    most_recent = recent_run['eval_runs'][0]
+    print(f"Most recent evaluation: {most_recent['timestamp_formatted']}")
+    print(f"Score: {most_recent['summary']['yes_percentage']}%")
+```
+
+#### Comparing Evaluation Runs
+
+```python
+# Get two evaluation runs for comparison
+run1 = await manage_eval_runs_tool(
+    action="get",
+    eval_run_id="first-run-id"
+)
+
+run2 = await manage_eval_runs_tool(
+    action="get",
+    eval_run_id="second-run-id"
+)
+
+# Compare scores
+run1_score = run1['eval_run']['summary']['yes_percentage']
+run2_score = run2['eval_run']['summary']['yes_percentage']
+difference = run2_score - run1_score
+
+print(f"Run 1 score: {run1_score}%")
+print(f"Run 2 score: {run2_score}%")
+print(f"Improvement: {difference:.2f}%")
+
+# Compare individual question results
+for q1, q2 in zip(run1['eval_run']['results'], run2['eval_run']['results']):
+    if q1['judgment'] != q2['judgment']:
+        print(f"Question: {q1['question']}")
+        print(f"  - Run 1: {'Yes' if q1['judgment'] else 'No'}")
+        print(f"  - Run 2: {'Yes' if q2['judgment'] else 'No'}")
+        print(f"  - Change: {'Improved' if q2['judgment'] else 'Regressed'}")
 ```
 
 ### Important Notes
 
-1. **Persistent Storage**: All evaluation results are stored persistently and can be retrieved later.
+1. **Persistent Storage**: All evaluation results are stored persistently and can be retrieved later for historical analysis.
 2. **Pagination**: The `list` action supports pagination to efficiently handle large numbers of evaluation runs.
 3. **Filtering**: When listing evaluation runs, you can filter by `evalset_id` to find specific evaluations.
 4. **Judge Model**: By default, the tool uses "meta-llama-3.1-8b-instruct" as the judge model, but this can be configured.
-5. **Backward Compatibility**: This tool replaces and extends the functionality of the previous `manage_eval_runs_tool`.
+5. **Backward Compatibility**: This tool replaces and extends the functionality of the previous `run_evalset_tool`.
+6. **Storage Cleanup**: The system automatically manages storage by cleaning up old evaluation runs when necessary.
+7. **Caching**: Evaluation runs are cached for fast retrieval of frequently accessed results.
+8. **Conversation Storage**: The full conversation context is stored with each evaluation for complete reference.
+9. **Formatted Output**: All actions return a `formatted_message` field with a human-readable summary of the results.
+10. **Timestamp Formatting**: All timestamps are provided in both Unix epoch and human-readable formats.
 
 ## Environment Variables
 

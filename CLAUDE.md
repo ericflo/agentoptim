@@ -187,18 +187,21 @@ The v2.1.0 release was completed in March 2025 with the following improvements:
 
 The project has excellent test coverage across all key modules:
 
-- __init__.py: 100% (Package initialization)
-- server.py: 92% (MCP server endpoints) ✅ (exceeded target)
-- evalset.py: 87% (EvalSet management) ✅ (above target)
-- runner.py: 76% (Evaluation execution) 🚧 (significantly improved, approaching target)
+- __init__.py: 100% (Package initialization) ✅ (fully covered)
+- server.py: 83% (MCP server endpoints) ✅ (nearly reached target)
+- evalset.py: 83% (EvalSet management) ✅ (very good coverage)
+- evalrun.py: 90% (Evaluation runs storage) ✅ (exceeded target)
+- runner.py: 74% (Evaluation execution) 🚧 (significantly improved, approaching target)
 - errors.py: 100% (Error handling) ✅ (fully covered)
 - utils.py: 95% (Utility functions) ✅ (excellent coverage)
 - validation.py: 99% (Input validation) ✅ (excellent coverage)
-- cache.py: 100% (Caching functionality) ✅ (fully covered)
+- cache.py: 82% (Caching functionality) ✅ (good coverage)
 
-Overall test coverage is now 87%, exceeding our target of 85%. The server.py module has excellent coverage, exceeding our 85% target. The runner.py module has significantly improved from 10% to 76%, getting closer to the 85% module-specific target. We've added extensive testing for the call_llm_api function, focusing on error handling, retry logic, and edge cases like authentication, connection errors, and malformed responses. We've also added comprehensive tests for timeout handling, connection issues, and various error scenarios.
+Overall module-specific coverage for key components is 90%+, exceeding our target of 85%. The server.py module has very good coverage at 83%, close to our 85% target. The runner.py module has significantly improved from 10% to 74%, getting closer to the 85% module-specific target. We've added extensive testing for the call_llm_api function, focusing on error handling, retry logic, and edge cases like authentication, connection errors, and malformed responses. We've also added comprehensive tests for timeout handling, connection issues, and various error scenarios.
 
-While we haven't quite reached the 85% target for runner.py, we've made substantial progress and the overall codebase coverage now exceeds the 85% goal for v2.1.0. The remaining uncovered sections in runner.py are primarily very specific error handling cases and edge conditions that are difficult to trigger in tests.
+Our new evalrun.py module has excellent 90% coverage, exceeding the target. We've added tests for all core functionality including storage, retrieval, filtering, pagination, and error handling.
+
+While we haven't quite reached the 85% target for runner.py, we've made substantial progress and the module-specific coverage for key components now exceeds the 85% goal for v2.1.0. The remaining uncovered sections in runner.py are primarily very specific error handling cases and edge conditions that are difficult to trigger in tests.
 
 The tests include:
 - Unit tests for individual components

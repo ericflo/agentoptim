@@ -56,13 +56,14 @@ class TestEvalSet(unittest.TestCase):
     
     def test_create_evalset(self):
         """Test creating an EvalSet."""
-        evalset = create_evalset(
+        evalset, is_new = create_evalset(
             self.test_name,
             self.test_questions,
             self.test_short_description,
             self.test_long_description
         )
         
+        self.assertTrue(is_new)
         self.assertEqual(evalset.name, self.test_name)
         # Templates are now system-defined, so we don't test for that
         self.assertEqual(evalset.questions, self.test_questions)
@@ -76,7 +77,7 @@ class TestEvalSet(unittest.TestCase):
     
     def test_get_evalset(self):
         """Test retrieving an EvalSet."""
-        created = create_evalset(
+        created, _ = create_evalset(
             self.test_name,
             self.test_questions,
             self.test_short_description,
@@ -99,7 +100,7 @@ class TestEvalSet(unittest.TestCase):
     
     def test_update_evalset(self):
         """Test updating an EvalSet."""
-        evalset = create_evalset(
+        evalset, _ = create_evalset(
             self.test_name,
             self.test_questions,
             self.test_short_description,
@@ -134,7 +135,7 @@ class TestEvalSet(unittest.TestCase):
     
     def test_delete_evalset(self):
         """Test deleting an EvalSet."""
-        evalset = create_evalset(
+        evalset, _ = create_evalset(
             self.test_name,
             self.test_questions,
             self.test_short_description,
@@ -158,13 +159,13 @@ class TestEvalSet(unittest.TestCase):
         # Create a few EvalSets
         # Fixed to match required function signature
         long_desc = "Long description must be at least 256 characters long so this is a very long string. " + " " * 220
-        eval1 = create_evalset(
+        eval1, _ = create_evalset(
             "Eval 1",
             ["Q1", "Q2"],
             "Short description 1",
             long_desc
         )
-        eval2 = create_evalset(
+        eval2, _ = create_evalset(
             "Eval 2",
             ["Q3", "Q4"],
             "Short description 2",
@@ -197,13 +198,13 @@ class TestEvalSet(unittest.TestCase):
     def test_manage_evalset_list(self):
         """Test the manage_evalset function for listing EvalSets."""
         # Create a few EvalSets
-        create_evalset(
+        _, _ = create_evalset(
             "Eval 1",
             ["Q1", "Q2"],
             "Short description 1",
             "Long description must be at least 256 characters long so this is a very long string that I am creating to satisfy the requirement. It needs to contain enough text to exceed the minimum length. Here is more filler text to ensure we have enough characters in this description to meet the validation requirements from the EvalSet class." + " " * 50
         )
-        create_evalset(
+        _, _ = create_evalset(
             "Eval 2",
             ["Q3", "Q4"],
             "Short description 2",
@@ -222,7 +223,7 @@ class TestEvalSet(unittest.TestCase):
     
     def test_manage_evalset_get(self):
         """Test the manage_evalset function for getting an EvalSet."""
-        evalset = create_evalset(
+        evalset, _ = create_evalset(
             self.test_name,
             self.test_questions,
             self.test_short_description,
@@ -247,7 +248,7 @@ class TestEvalSet(unittest.TestCase):
     
     def test_manage_evalset_update(self):
         """Test the manage_evalset function for updating EvalSets."""
-        evalset = create_evalset(
+        evalset, _ = create_evalset(
             self.test_name,
             self.test_questions,
             self.test_short_description,
@@ -274,7 +275,7 @@ class TestEvalSet(unittest.TestCase):
     
     def test_manage_evalset_delete(self):
         """Test the manage_evalset function for deleting EvalSets."""
-        evalset = create_evalset(
+        evalset, _ = create_evalset(
             self.test_name,
             self.test_questions,
             self.test_short_description,
@@ -343,7 +344,7 @@ class TestEvalSet(unittest.TestCase):
         """Test that template validation works correctly."""
         # Templates are now system-defined, so we skip direct validation tests
         # Instead, let's just check that the default template has the required placeholders
-        evalset = create_evalset(
+        evalset, _ = create_evalset(
             self.test_name,
             self.test_questions,
             self.test_short_description,

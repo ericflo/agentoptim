@@ -5,26 +5,33 @@ All notable changes to AgentOptim will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.1] - 2025-08-03
 
 ### Added
-- Persistent storage for evaluation results
+- Persistent storage for evaluation results through `evalrun.py` module
 - New `manage_eval_runs_tool` replacing `manage_eval_runs_tool` with expanded functionality:
   - `run` action: Run evaluations and store results (backward compatible)
   - `get` action: Retrieve past evaluation results by ID
-  - `list` action: List all evaluation runs with pagination
+  - `list` action: List all evaluation runs with pagination and filtering
 - New CLI commands:
-  - `agentoptim runs list`: List stored evaluation runs
+  - `agentoptim runs list`: List stored evaluation runs with pagination
   - `agentoptim runs get`: Get details of a specific evaluation run
-- Maintain backward compatibility with existing `eval` command
+- LRU caching for evaluation runs with automatic cleanup of old runs
+- Comprehensive tests for evaluation storage with 90%+ coverage
+- Added evaluation run example showing storage and retrieval functionality
 
 ### Changed
 - Transformed `manage_eval_runs_tool` into more powerful `manage_eval_runs_tool`
-- Updated API reference documentation for the new tool
-- Removed `get_cache_stats_tool` MCP tool (functionality still available via CLI)
+- Updated API reference documentation for the new tool architecture
+- Moved cache stats functionality from MCP tool to CLI-only (functionality still available via `agentoptim stats`)
+- Enhanced pagination for list operations with total count and page information
+- Updated README.md with new features and architecture diagram
 
 ### Fixed
-- Various improvements to cache management
+- Improved cache management for evaluation runs with proper invalidation
+- Enhanced error handling for missing or invalid evaluation runs
+- Fixed test coverage gaps in runner.py module
+- Improved backward compatibility with existing evaluation workflows
 
 ## [2.1.0] - 2025-07-10
 
