@@ -267,82 +267,201 @@ def run_cli():
                 evalset_count = len(formatted_result)
                 
                 if args.format == "table":
-                    # Use pandas for a nice table display
-                    df = pd.DataFrame(formatted_result)
-                    # Rename columns for better display
-                    df = df.rename(columns={
-                        "id": "ID",
-                        "name": "Name",
-                        "description": "Description",
-                        "questions": "Questions"
-                    })
-                    formatted_data = df.to_string(index=False)
+                    # Create a prettier, more readable table
+                    title = f"{Fore.CYAN}╭──────────────────────────────────────────────────╮{Style.RESET_ALL}"
+                    title += f"\n{Fore.CYAN}│    Available Evaluation Sets ({evalset_count})             │{Style.RESET_ALL}"
+                    title += f"\n{Fore.CYAN}╰──────────────────────────────────────────────────╯{Style.RESET_ALL}"
                     
-                    # Add a title and guidance
-                    title = f"{Fore.CYAN}Available Evaluation Sets ({evalset_count}){Style.RESET_ALL}"
-                    guidance = f"\n{Fore.YELLOW}Use 'agentoptim get <id>' to see details of a specific evaluation set{Style.RESET_ALL}"
+                    # Format table manually for better control
+                    id_max_len = max(len(item["id"]) for item in formatted_result)
+                    name_max_len = max(len(item["name"]) for item in formatted_result)
+                    name_max_len = min(name_max_len, 30)  # Limit name length
                     
-                    # Print with custom formatting
-                    print(f"{title}\n\n{formatted_data}{guidance}")
+                    # Table header
+                    table = [
+                        f"{Fore.WHITE}┌{'─' * (id_max_len + 2)}┬{'─' * (name_max_len + 2)}┬{'─' * 12}┬{'─' * 12}┐{Style.RESET_ALL}",
+                        f"{Fore.WHITE}│ {Fore.YELLOW}{'ID'.ljust(id_max_len)}{Style.RESET_ALL} │ {Fore.YELLOW}{'Name'.ljust(name_max_len)}{Style.RESET_ALL} │ {Fore.YELLOW}{'Questions'.ljust(10)}{Style.RESET_ALL} │ {Fore.YELLOW}{'Actions'.ljust(10)}{Style.RESET_ALL} │{Style.RESET_ALL}",
+                        f"{Fore.WHITE}├{'─' * (id_max_len + 2)}┼{'─' * (name_max_len + 2)}┼{'─' * 12}┼{'─' * 12}┤{Style.RESET_ALL}"
+                    ]
+                    
+                    # Table rows
+                    for i, item in enumerate(formatted_result):
+                        name = item["name"]
+                        if len(name) > name_max_len:
+                            name = name[:name_max_len-3] + "..."
+                            
+                        row = f"{Fore.WHITE}│ {Fore.GREEN}{item['id'].ljust(id_max_len)}{Style.RESET_ALL} │ "
+                        row += f"{Fore.GREEN}{name.ljust(name_max_len)}{Style.RESET_ALL} │ "
+                        row += f"{Fore.CYAN}{str(item['questions']).ljust(10)}{Style.RESET_ALL} │ "
+                        row += f"{Fore.BLUE}{'get/eval'.ljust(10)}{Style.RESET_ALL} │"
+                        table.append(row)
+                        
+                        # Add separator between rows except after the last row
+                        if i < len(formatted_result) - 1:
+                            table.append(f"{Fore.WHITE}├{'─' * (id_max_len + 2)}┼{'─' * (name_max_len + 2)}┼{'─' * 12}┼{'─' * 12}┤{Style.RESET_ALL}")
+                    
+                    # Table footer
+                    table.append(f"{Fore.WHITE}└{'─' * (id_max_len + 2)}┴{'─' * (name_max_len + 2)}┴{'─' * 12}┴{'─' * 12}┘{Style.RESET_ALL}")
+                    
+                    # Add guidance
+                    guidance = [
+                        f"\n{Fore.YELLOW}Usage:{Style.RESET_ALL}",
+                        f"  {Fore.GREEN}agentoptim get <id> {Style.RESET_ALL}- View details of an evaluation set",
+                        f"  {Fore.GREEN}agentoptim eval <id> <conversation.json> {Style.RESET_ALL}- Evaluate a conversation"
+                    ]
+                    
+                    # Print everything
+                    table_str = "\n".join(table)
+                    guidance_str = "\n".join(guidance)
+                    print(f"{title}\n\n{table_str}\n{guidance_str}")
+                    
                     if args.output:
-                        # Write to file without ANSI colors if output file is specified
+                        # Create plain version without colors for file output
+                        plain_title = f"Available Evaluation Sets ({evalset_count})"
+                        
+                        plain_table = [
+                            f"┌{'─' * (id_max_len + 2)}┬{'─' * (name_max_len + 2)}┬{'─' * 12}┬{'─' * 12}┐",
+                            f"│ {'ID'.ljust(id_max_len)} │ {'Name'.ljust(name_max_len)} │ {'Questions'.ljust(10)} │ {'Actions'.ljust(10)} │",
+                            f"├{'─' * (id_max_len + 2)}┼{'─' * (name_max_len + 2)}┼{'─' * 12}┼{'─' * 12}┤"
+                        ]
+                        
+                        for i, item in enumerate(formatted_result):
+                            name = item["name"]
+                            if len(name) > name_max_len:
+                                name = name[:name_max_len-3] + "..."
+                            
+                            row = f"│ {item['id'].ljust(id_max_len)} │ {name.ljust(name_max_len)} │ "
+                            row += f"{str(item['questions']).ljust(10)} │ {'get/eval'.ljust(10)} │"
+                            plain_table.append(row)
+                            
+                            if i < len(formatted_result) - 1:
+                                plain_table.append(f"├{'─' * (id_max_len + 2)}┼{'─' * (name_max_len + 2)}┼{'─' * 12}┼{'─' * 12}┤")
+                        
+                        plain_table.append(f"└{'─' * (id_max_len + 2)}┴{'─' * (name_max_len + 2)}┴{'─' * 12}┴{'─' * 12}┘")
+                        
+                        plain_guidance = [
+                            "\nUsage:",
+                            "  agentoptim get <id> - View details of an evaluation set",
+                            "  agentoptim eval <id> <conversation.json> - Evaluate a conversation"
+                        ]
+                        
                         with open(args.output, "w", encoding="utf-8") as f:
-                            plain_title = f"Available Evaluation Sets ({evalset_count})"
-                            plain_guidance = f"\nUse 'agentoptim get <id>' to see details of a specific evaluation set"
-                            f.write(f"{plain_title}\n\n{df.to_string(index=False)}{plain_guidance}")
+                            plain_table_str = "\n".join(plain_table)
+                            plain_guidance_str = "\n".join(plain_guidance)
+                            f.write(f"{plain_title}\n\n{plain_table_str}\n{plain_guidance_str}")
+                        
                         print(f"Output saved to: {args.output}")
+                    
                     return  # Skip the default handle_output
                     
                 elif args.format == "text":
-                    # Create a more readable text format
-                    lines = [f"{Fore.CYAN}Available Evaluation Sets ({evalset_count}){Style.RESET_ALL}\n"]
+                    # Create a more visually appealing text format with box drawing
+                    title = f"{Fore.CYAN}╭──────────────────────────────────────────╮{Style.RESET_ALL}"
+                    title += f"\n{Fore.CYAN}│  Available Evaluation Sets ({evalset_count})       │{Style.RESET_ALL}"
+                    title += f"\n{Fore.CYAN}╰──────────────────────────────────────────╯{Style.RESET_ALL}\n"
                     
-                    for item in formatted_result:
-                        # Add name and ID with color
-                        lines.append(f"{Fore.GREEN}* {item['name']}{Style.RESET_ALL}")
-                        lines.append(f"  {Fore.YELLOW}ID:{Style.RESET_ALL} {item['id']}")
+                    # Format each evalset as a card
+                    cards = []
+                    for i, item in enumerate(formatted_result):
+                        card = []
                         
-                        # Add description
+                        # Card header with name
+                        name = item['name']
+                        name_padding = 36 - len(name)
+                        left_pad = name_padding // 2
+                        right_pad = name_padding - left_pad
+                        
+                        card.append(f"{Fore.GREEN}┌{'─' * 38}┐{Style.RESET_ALL}")
+                        card.append(f"{Fore.GREEN}│{' ' * left_pad}{Fore.WHITE}{name}{Style.RESET_ALL}{Fore.GREEN}{' ' * right_pad}│{Style.RESET_ALL}")
+                        card.append(f"{Fore.GREEN}├{'─' * 38}┤{Style.RESET_ALL}")
+                        
+                        # Card content
+                        card.append(f"{Fore.GREEN}│ {Fore.YELLOW}ID:{Style.RESET_ALL} {item['id'].ljust(33-3)}{Fore.GREEN} │{Style.RESET_ALL}")
+                        
+                        # Description
                         if item['description']:
                             # If description is too long, truncate it
                             desc = item['description']
-                            if len(desc) > 100:
-                                desc = desc[:97] + "..."
-                            lines.append(f"  {Fore.YELLOW}Description:{Style.RESET_ALL} {desc}")
+                            if len(desc) > 30:
+                                desc = desc[:27] + "..."
+                            card.append(f"{Fore.GREEN}│ {Fore.YELLOW}Description:{Style.RESET_ALL} {desc.ljust(33-12)}{Fore.GREEN} │{Style.RESET_ALL}")
                         
-                        # Add question count
-                        lines.append(f"  {Fore.YELLOW}Questions:{Style.RESET_ALL} {item['questions']}")
+                        # Question count
+                        card.append(f"{Fore.GREEN}│ {Fore.YELLOW}Questions:{Style.RESET_ALL} {str(item['questions']).ljust(33-10)}{Fore.GREEN} │{Style.RESET_ALL}")
                         
-                        # Add separator
-                        lines.append("")
+                        # Card footer with actions
+                        card.append(f"{Fore.GREEN}├{'─' * 38}┤{Style.RESET_ALL}")
+                        card.append(f"{Fore.GREEN}│ {Fore.BLUE}Actions:{Style.RESET_ALL} get, eval{' ' * 20}{Fore.GREEN} │{Style.RESET_ALL}")
+                        card.append(f"{Fore.GREEN}└{'─' * 38}┘{Style.RESET_ALL}")
+                        
+                        cards.append("\n".join(card))
+                    
+                    # Join all cards with a separator
+                    all_cards = "\n\n".join(cards)
                     
                     # Add guidance
-                    lines.append(f"{Fore.BLUE}Use 'agentoptim get <id>' to see details of a specific evaluation set{Style.RESET_ALL}")
+                    guidance = [
+                        f"\n{Fore.YELLOW}Usage:{Style.RESET_ALL}",
+                        f"  {Fore.WHITE}agentoptim get <id> {Style.RESET_ALL}- View details of an evaluation set",
+                        f"  {Fore.WHITE}agentoptim eval <id> <conversation.json> {Style.RESET_ALL}- Evaluate a conversation"
+                    ]
                     
-                    # Print the formatted output
-                    print("\n".join(lines))
+                    # Print everything
+                    guidance_str = "\n".join(guidance)
+                    print(f"{title}\n{all_cards}\n{guidance_str}")
                     
                     # If output file is specified, write without ANSI colors
                     if args.output:
-                        plain_lines = [f"Available Evaluation Sets ({evalset_count})\n"]
+                        plain_title = f"Available Evaluation Sets ({evalset_count})\n"
                         
+                        # Create plain version of cards
+                        plain_cards = []
                         for item in formatted_result:
-                            plain_lines.append(f"* {item['name']}")
-                            plain_lines.append(f"  ID: {item['id']}")
+                            plain_card = []
                             
+                            # Card header with name
+                            name = item['name']
+                            name_padding = 36 - len(name)
+                            left_pad = name_padding // 2
+                            right_pad = name_padding - left_pad
+                            
+                            plain_card.append(f"┌{'─' * 38}┐")
+                            plain_card.append(f"│{' ' * left_pad}{name}{' ' * right_pad}│")
+                            plain_card.append(f"├{'─' * 38}┤")
+                            
+                            # Card content
+                            plain_card.append(f"│ ID: {item['id'].ljust(33-3)} │")
+                            
+                            # Description
                             if item['description']:
                                 desc = item['description']
-                                if len(desc) > 100:
-                                    desc = desc[:97] + "..."
-                                plain_lines.append(f"  Description: {desc}")
+                                if len(desc) > 30:
+                                    desc = desc[:27] + "..."
+                                plain_card.append(f"│ Description: {desc.ljust(33-12)} │")
                             
-                            plain_lines.append(f"  Questions: {item['questions']}")
-                            plain_lines.append("")
+                            # Question count
+                            plain_card.append(f"│ Questions: {str(item['questions']).ljust(33-10)} │")
+                            
+                            # Card footer with actions
+                            plain_card.append(f"├{'─' * 38}┤")
+                            plain_card.append(f"│ Actions: get, eval{' ' * 20} │")
+                            plain_card.append(f"└{'─' * 38}┘")
+                            
+                            plain_cards.append("\n".join(plain_card))
                         
-                        plain_lines.append(f"Use 'agentoptim get <id>' to see details of a specific evaluation set")
+                        # Join all cards with a separator
+                        all_plain_cards = "\n\n".join(plain_cards)
+                        
+                        # Add plain guidance
+                        plain_guidance = [
+                            "\nUsage:",
+                            "  agentoptim get <id> - View details of an evaluation set",
+                            "  agentoptim eval <id> <conversation.json> - Evaluate a conversation"
+                        ]
                         
                         with open(args.output, "w", encoding="utf-8") as f:
-                            f.write("\n".join(plain_lines))
+                            plain_guidance_str = "\n".join(plain_guidance)
+                            f.write(f"{plain_title}\n{all_plain_cards}\n{plain_guidance_str}")
                         
                         print(f"Output saved to: {args.output}")
                     
