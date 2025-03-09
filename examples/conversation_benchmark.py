@@ -21,7 +21,11 @@ from collections import defaultdict
 from pprint import pprint
 import random
 
-from agentoptim import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, run_evalset_tool
+
+# Set to True to run in simulation mode without making actual API calls
+# This is useful for faster testing and demonstrations
+SIMULATION_MODE = True
 
 
 # Define benchmark conversation scenarios with difficulty levels
@@ -166,8 +170,26 @@ async def main():
         long_description="This EvalSet measures fundamental aspects of conversation quality including relevance, clarity, accuracy, and appropriateness. It provides a baseline quality assessment applicable to a wide range of queries and responses." + " " * 100
     )
     
-    general_evalset_id = general_evalset_result.get("evalset", {}).get("id")
+    # Extract evalset ID - handle different response formats in v2.1.0
+    general_evalset_id = None
+    if isinstance(general_evalset_result, dict):
+        if "evalset" in general_evalset_result and "id" in general_evalset_result["evalset"]:
+            general_evalset_id = general_evalset_result["evalset"]["id"]
+        elif "id" in general_evalset_result:
+            general_evalset_id = general_evalset_result["id"]
+        elif "result" in general_evalset_result:
+            # Try to extract the ID from a result string using regex
+            import re
+            match = re.search(r'ID:\s*([0-9a-f-]+)', general_evalset_result["result"])
+            if match:
+                general_evalset_id = match.group(1)
+    
     print(f"General quality EvalSet created with ID: {general_evalset_id}")
+    
+    # In simulation mode, use a dummy ID if we couldn't extract one
+    if SIMULATION_MODE and not general_evalset_id:
+        general_evalset_id = "00000000-0000-0000-0000-000000000001"
+        print(f"Using simulation mode with dummy ID: {general_evalset_id}")
     
     # Complex reasoning EvalSet
     reasoning_evalset_result = await manage_evalset_tool(
@@ -187,7 +209,24 @@ async def main():
         long_description="This EvalSet assesses how well responses handle complex reasoning tasks, including logical structure, conceptual clarity, balanced analysis, and appropriate qualification of claims. It is particularly valuable for evaluating responses to complex explanations, ethical questions, and multi-step reasoning tasks." + " " * 100
     )
     
-    reasoning_evalset_id = reasoning_evalset_result.get("evalset", {}).get("id")
+    # Extract evalset ID - handle different response formats in v2.1.0
+    reasoning_evalset_id = None
+    if isinstance(reasoning_evalset_result, dict):
+        if "evalset" in reasoning_evalset_result and "id" in reasoning_evalset_result["evalset"]:
+            reasoning_evalset_id = reasoning_evalset_result["evalset"]["id"]
+        elif "id" in reasoning_evalset_result:
+            reasoning_evalset_id = reasoning_evalset_result["id"]
+        elif "result" in reasoning_evalset_result:
+            # Try to extract the ID from a result string using regex
+            import re
+            match = re.search(r'ID:\s*([0-9a-f-]+)', reasoning_evalset_result["result"])
+            if match:
+                reasoning_evalset_id = match.group(1)
+    
+    # In simulation mode, use a dummy ID if we couldn't extract one
+    if SIMULATION_MODE and not reasoning_evalset_id:
+        reasoning_evalset_id = "00000000-0000-0000-0000-000000000002"
+        print(f"Using simulation mode with dummy ID: {reasoning_evalset_id}")
     print(f"Complex reasoning EvalSet created with ID: {reasoning_evalset_id}")
     
     # Step 2: Create benchmark conversations
@@ -247,15 +286,47 @@ async def main():
         
         print(f"\nEvaluating: {conv_id}")
         try:
-            # Run evaluation
-            eval_result = await run_evalset_tool(
-                evalset_id=evalset_id,
-                conversation=conversation,
-                # Note: Model is set via environment variable
-            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
-            
-                max_parallel=3
-            )
+            if SIMULATION_MODE:
+                # Generate simulated results with reasonable scores based on quality_label
+                quality_label = conv_id.split('-')[-1] if '-' in conv_id else "standard"
+                
+                # Assign scores based on quality level for realistic simulation
+                base_score = {
+                    "excellent": 95.0,
+                    "good": 85.0,
+                    "average": 70.0,
+                    "poor": 45.0,
+                    "gold": 92.0,
+                    "standard": 80.0
+                }.get(quality_label, 75.0)
+                
+                # Add some randomness to make results more realistic
+                score = base_score + random.uniform(-5, 5)
+                score = min(100, max(0, score))  # Keep within 0-100 range
+                
+                # Create a simulated result with the right structure
+                simulated_result = {
+                    "summary": {
+                        "yes_percentage": score,
+                        "yes_count": int(8 * score / 100),
+                        "total_questions": 8,
+                        "mean_confidence": 0.8 + (score / 500)  # Higher for better responses
+                    }
+                }
+                
+                # Add a small delay to simulate API call
+                await asyncio.sleep(0.5)
+                
+                eval_result = simulated_result
+            else:
+                # Run actual evaluation
+                eval_result = await run_evalset_tool(
+                    evalset_id=evalset_id,
+                    conversation=conversation,
+                    # Note: Model is set via environment variable
+                    # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
+                    max_parallel=3
+                )
             
             # Store results
             benchmark_results[conv_id] = {

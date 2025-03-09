@@ -1,6 +1,14 @@
-# AgentOptim CLI Usage Examples
+# AgentOptim v2.1.0 CLI Usage Examples
 
-This guide demonstrates how to use the AgentOptim command-line interface for common evaluation and optimization tasks. The CLI makes it easy to create, manage, and execute evaluations without writing any code.
+This guide demonstrates how to use the AgentOptim v2.1.0 command-line interface for common evaluation and optimization tasks. The CLI makes it easy to create, manage, and execute evaluations without writing any code.
+
+**Note about v2.1.0**: The CLI and API in AgentOptim v2.1.0 includes several important changes from previous versions:
+
+1. Templates are now system-defined (the `--template` parameter has been removed)
+2. All EvalSets require `--short-desc` and `--long-desc` parameters when creating
+3. The compatibility layer has been removed
+4. Error handling has been improved with more detailed error messages
+5. Caching has been enhanced for better performance
 
 ## Getting Started
 
@@ -139,14 +147,14 @@ Then evaluate it:
 # Basic evaluation
 agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e conversation.json
 
-# Evaluate with a specific judge model
-agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e conversation.json --model "gpt-4o-mini"
+# Evaluate with a specific judge model (using environment variable)
+AGENTOPTIM_JUDGE_MODEL=gpt-4o-mini agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e conversation.json
 
 # Evaluate with more parallel processes (faster, but uses more resources)
 agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e conversation.json --parallel 5
 
 # Skip reasoning in results (faster evaluation)
-agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e conversation.json --no-reasoning
+AGENTOPTIM_OMIT_REASONING=1 agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e conversation.json
 ```
 
 ### Evaluating a Simple Text Response
@@ -340,7 +348,7 @@ python analyze_results.py
 3. **Start with broader criteria** and then refine with more specific evaluation sets
 4. **Save evaluation results** to files for tracking and analysis over time
 5. **Compare multiple judge models** to reduce evaluation bias
-6. **Use the `--no-reasoning` flag** for faster evaluations when detailed reasoning isn't needed
+6. **Use the `AGENTOPTIM_OMIT_REASONING=1` environment variable** for faster evaluations when detailed reasoning isn't needed
 7. **Create dedicated question files** for reuse across similar evaluation sets
 8. **Set the appropriate parallel level** based on your machine's capabilities
 9. **Use JSON output format** for programmatic processing in other tools
