@@ -77,13 +77,24 @@ def setup_parser():
           # View all your evaluation runs
           agentoptim run list
           
+          # Compare two evaluation runs
+          agentoptim run compare latest latest-1
+          
+          # Export evaluation results to a file
+          agentoptim run export latest --format html --output report.html
+          
           # Install shell tab completion
           agentoptim --install-completion
+          
+        Environment variables:
+          AGENTOPTIM_SHOW_TIMER=1   Show execution time for commands
+          AGENTOPTIM_DEBUG=1        Enable detailed debug logging
         """)
     )
     
     parser.add_argument('--version', action='version', version=f'AgentOptim v{VERSION}')
     parser.add_argument('--install-completion', action='store_true', help='Install shell completion script')
+    parser.add_argument('--quiet', '-q', action='store_true', help='Suppress non-error output for scripting')
     
     # Create subparsers for resources
     subparsers = parser.add_subparsers(dest="resource", help="Resource to manage")
@@ -222,6 +233,9 @@ def setup_parser():
 
 def handle_output(data: Any, format_type: str, output_file: Optional[str] = None):
     """Format and output data according to the specified format and destination."""
+    # Check if we're in quiet mode
+    quiet_mode = os.environ.get("AGENTOPTIM_QUIET", "0") == "1"
+    
     if format_type == "json":
         formatted_data = json.dumps(data, indent=2)
     elif format_type == "yaml":
@@ -249,9 +263,11 @@ def handle_output(data: Any, format_type: str, output_file: Optional[str] = None
     if output_file:
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(formatted_data)
-        print(f"Output saved to: {output_file}")
+        if not quiet_mode:
+            print(f"Output saved to: {output_file}")
     else:
-        print(formatted_data)
+        if not quiet_mode or format_type in ["json", "yaml", "csv"]:  # Always print data output in machine-readable formats
+            print(formatted_data)
 
 
 def parse_questions(questions_input: str) -> List[str]:
@@ -379,6 +395,19 @@ def run_cli():
     """Run the AgentOptim CLI based on the provided arguments."""
     parser = setup_parser()
     
+    # First check for quiet flag
+    quiet_mode = False
+    for arg in sys.argv:
+        if arg in ['--quiet', '-q']:
+            quiet_mode = True
+            os.environ["AGENTOPTIM_QUIET"] = "1"
+            break
+    
+    # Custom print function that respects quiet mode
+    def cli_print(*args, error=False, **kwargs):
+        if error or not quiet_mode:
+            print(*args, **kwargs)
+    
     # Split into two stages: first check for mistyped commands without raising errors,
     # then parse properly for execution
     if len(sys.argv) > 1:
@@ -390,8 +419,8 @@ def run_cli():
             # Check for typos
             suggestion = get_suggestion(resource, main_resources)
             if suggestion:
-                print(f"{Fore.YELLOW}Command '{resource}' not found. Did you mean '{suggestion}'?{Style.RESET_ALL}")
-                print(f"Run {Fore.CYAN}agentoptim --help{Style.RESET_ALL} to see available commands.")
+                cli_print(f"{Fore.YELLOW}Command '{resource}' not found. Did you mean '{suggestion}'?{Style.RESET_ALL}", error=True)
+                cli_print(f"Run {Fore.CYAN}agentoptim --help{Style.RESET_ALL} to see available commands.", error=True)
                 sys.exit(1)
                 
         # Check for action typos if appropriate
@@ -413,8 +442,8 @@ def run_cli():
                 # Check for typos in action
                 suggestion = get_suggestion(action, valid_actions)
                 if suggestion:
-                    print(f"{Fore.YELLOW}Action '{action}' not found for '{resource}'. Did you mean '{suggestion}'?{Style.RESET_ALL}")
-                    print(f"Valid actions for '{resource}': {', '.join(valid_actions)}")
+                    cli_print(f"{Fore.YELLOW}Action '{action}' not found for '{resource}'. Did you mean '{suggestion}'?{Style.RESET_ALL}", error=True)
+                    cli_print(f"Valid actions for '{resource}': {', '.join(valid_actions)}", error=True)
                     sys.exit(1)
     
     args = parser.parse_args()
@@ -2612,9 +2641,43 @@ def main():
         install_completion()
         return
     
+    start_time = time.time()
+    show_timer = os.environ.get("AGENTOPTIM_SHOW_TIMER", "0") == "1"
+    
     try:
+        # Execute the CLI command
         run_cli()
+        
+        # Show execution time if enabled
+        if show_timer:
+            elapsed_time = time.time() - start_time
+            if elapsed_time < 0.1:
+                time_str = f"{elapsed_time * 1000:.0f}ms"
+            elif elapsed_time < 1:
+                time_str = f"{elapsed_time * 1000:.0f}ms"
+            elif elapsed_time < 60:
+                time_str = f"{elapsed_time:.2f}s"
+            else:
+                mins, secs = divmod(int(elapsed_time), 60)
+                time_str = f"{mins}m {secs}s"
+                
+            # Print execution time in a subtle way
+            print(f"\n{Fore.CYAN}⏱ Command completed in {time_str}{Style.RESET_ALL}", file=sys.stderr)
+            
     except Exception as e:
+        # Show execution time even for errors if enabled
+        if show_timer:
+            elapsed_time = time.time() - start_time
+            if elapsed_time < 1:
+                time_str = f"{elapsed_time * 1000:.0f}ms"
+            elif elapsed_time < 60:
+                time_str = f"{elapsed_time:.2f}s"
+            else:
+                mins, secs = divmod(int(elapsed_time), 60)
+                time_str = f"{mins}m {secs}s"
+            
+            print(f"\n{Fore.CYAN}⏱ Command failed after {time_str}{Style.RESET_ALL}", file=sys.stderr)
+        
         logger.error(f"Error in AgentOptim CLI: {str(e)}", exc_info=True)
         print(f"{Fore.RED}Error: {str(e)}{Style.RESET_ALL}", file=sys.stderr)
         sys.exit(1)
