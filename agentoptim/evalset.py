@@ -58,7 +58,9 @@ class EvalSet(BaseModel):
     name: str
     template: str = Field(default=DEFAULT_TEMPLATE)  # Use the system default template
     questions: List[str] = Field(default_factory=list)
-    description: Optional[str] = None
+    short_description: Optional[str] = None  # Concise summary (6-128 chars)
+    long_description: Optional[str] = None  # Detailed explanation (256-1024 chars)
+    description: Optional[str] = None  # Kept for backward compatibility
     
     @field_validator('questions')
     def validate_questions(cls, questions):
@@ -66,6 +68,24 @@ class EvalSet(BaseModel):
         if len(questions) > 100:
             raise ValueError("Maximum of 100 questions allowed per EvalSet")
         return questions
+    
+    @field_validator('short_description')
+    def validate_short_description(cls, short_description):
+        """Validate short_description length (6-128 characters)."""
+        if short_description and len(short_description) < 6:
+            raise ValueError("short_description must be at least 6 characters long")
+        if short_description and len(short_description) > 128:
+            raise ValueError("short_description must not exceed 128 characters")
+        return short_description
+    
+    @field_validator('long_description')
+    def validate_long_description(cls, long_description):
+        """Validate long_description length (256-1024 characters)."""
+        if long_description and len(long_description) < 256:
+            raise ValueError("long_description must be at least 256 characters long")
+        if long_description and len(long_description) > 1024:
+            raise ValueError("long_description must not exceed 1024 characters")
+        return long_description
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -103,15 +123,23 @@ def get_evalset(evalset_id: str) -> Optional[EvalSet]:
 def create_evalset(
     name: str, 
     questions: List[str],
+    short_description: str,
+    long_description: str,
     description: Optional[str] = None
 ) -> EvalSet:
     """
     Create a new EvalSet.
     
+    Before creating a new EvalSet, consider using list_evalsets() to see if a similar one
+    already exists. This helps prevent duplication and promotes reuse of well-crafted EvalSets.
+    
     Args:
         name: The name of the EvalSet
         questions: List of yes/no evaluation questions
-        description: Optional description
+        short_description: A concise summary (6-128 chars) of what this EvalSet measures
+        long_description: A detailed explanation (256-1024 chars) of the evaluation criteria, 
+                         how to interpret results, and when to use this EvalSet
+        description: Optional description (for backward compatibility)
         
     Returns:
         The created EvalSet object
@@ -119,6 +147,8 @@ def create_evalset(
     evalset = EvalSet(
         name=name, 
         questions=questions, 
+        short_description=short_description,
+        long_description=long_description,
         description=description
         # template will use the DEFAULT_TEMPLATE
     )
@@ -131,6 +161,8 @@ def update_evalset(
     evalset_id: str,
     name: Optional[str] = None,
     questions: Optional[List[str]] = None,
+    short_description: Optional[str] = None,
+    long_description: Optional[str] = None,
     description: Optional[str] = None,
 ) -> Optional[EvalSet]:
     """
@@ -140,7 +172,9 @@ def update_evalset(
         evalset_id: ID of the EvalSet to update
         name: Optional new name
         questions: Optional new list of questions
-        description: Optional new description
+        short_description: Optional new concise summary (6-128 chars)
+        long_description: Optional new detailed explanation (256-1024 chars)
+        description: Optional new description (for backward compatibility)
         
     Returns:
         The updated EvalSet object, or None if not found
@@ -153,6 +187,10 @@ def update_evalset(
         evalset.name = name
     if questions is not None:
         evalset.questions = questions
+    if short_description is not None:
+        evalset.short_description = short_description
+    if long_description is not None:
+        evalset.long_description = long_description
     if description is not None:
         evalset.description = description
     
@@ -175,10 +213,15 @@ def manage_evalset(
     name: Optional[str] = None,
     template: Optional[str] = None,  # Kept for backward compatibility but ignored
     questions: Optional[List[str]] = None,
+    short_description: Optional[str] = None,
+    long_description: Optional[str] = None,
     description: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Manage EvalSet definitions for assessing conversation quality.
+    
+    Before creating a new EvalSet, consider first listing existing EvalSets with action="list" 
+    to see if a similar one already exists. This promotes reuse and prevents duplication.
     
     Args:
         action: One of "create", "list", "get", "update", "delete"
@@ -186,7 +229,9 @@ def manage_evalset(
         name: Required for create
         template: Deprecated - templates are now system-defined (ignored)
         questions: Required for create, a list of yes/no questions (max 100)
-        description: Optional description
+        short_description: A concise summary (6-128 chars) of what this EvalSet measures (required for create)
+        long_description: A detailed explanation (256-1024 chars) of the evaluation criteria (required for create)
+        description: Optional description (for backward compatibility)
     
     Returns:
         A dictionary containing the result of the operation
@@ -211,6 +256,8 @@ def manage_evalset(
             result = {
                 "id": eval_dict["id"],
                 "name": eval_dict["name"],
+                "short_description": eval_dict.get("short_description", ""),
+                "long_description": eval_dict.get("long_description", ""),
                 "description": eval_dict.get("description"),
                 "template": eval_dict["template"],
                 "questions": eval_dict["questions"],
@@ -222,7 +269,9 @@ def manage_evalset(
                 "evalset": result,
                 "formatted_message": "\n".join([
                     f"EvalSet: {eval_dict['name']} (ID: {eval_dict['id']})",
-                    f"Description: {eval_dict.get('description', 'None')}",
+                    f"Short Description: {eval_dict.get('short_description', 'None')}",
+                    f"Long Description: {eval_dict.get('long_description', 'None')}",
+                    f"Legacy Description: {eval_dict.get('description', 'None')}",
                     f"Template:\n{eval_dict['template']}",
                     f"\nQuestions ({len(eval_dict['questions'])}):",
                     *[f"{i}. {q}" for i, q in enumerate(eval_dict['questions'], 1)]
@@ -232,8 +281,10 @@ def manage_evalset(
         elif action == "create":
             validate_required_params({
                 "name": name, 
-                "questions": questions
-            }, ["name", "questions"])
+                "questions": questions,
+                "short_description": short_description,
+                "long_description": long_description
+            }, ["name", "questions", "short_description", "long_description"])
             
             # Validate questions
             if not isinstance(questions, list):
@@ -242,11 +293,25 @@ def manage_evalset(
             if len(questions) > 100:
                 return format_error("Maximum of 100 questions allowed per EvalSet")
             
+            # Validate short_description
+            if short_description and len(short_description) < 6:
+                return format_error("short_description must be at least 6 characters long")
+            if short_description and len(short_description) > 128:
+                return format_error("short_description must not exceed 128 characters")
+                
+            # Validate long_description
+            if long_description and len(long_description) < 256:
+                return format_error("long_description must be at least 256 characters long")
+            if long_description and len(long_description) > 1024:
+                return format_error("long_description must not exceed 1024 characters")
+            
             # Template is now system-defined, no need to validate
             
             evalset = create_evalset(
                 name=name,
                 questions=questions,
+                short_description=short_description,
+                long_description=long_description,
                 description=description
             )
             
@@ -276,10 +341,26 @@ def manage_evalset(
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Attempt to update template for EvalSet {evalset_id} ignored - templates are now system-defined")
             
+            # Validate short_description if provided
+            if short_description is not None:
+                if len(short_description) < 6:
+                    return format_error("short_description must be at least 6 characters long")
+                if len(short_description) > 128:
+                    return format_error("short_description must not exceed 128 characters")
+                
+            # Validate long_description if provided
+            if long_description is not None:
+                if len(long_description) < 256:
+                    return format_error("long_description must be at least 256 characters long")
+                if len(long_description) > 1024:
+                    return format_error("long_description must not exceed 1024 characters")
+            
             evalset = update_evalset(
                 evalset_id=evalset_id,
                 name=name,
                 questions=questions,
+                short_description=short_description,
+                long_description=long_description,
                 description=description
             )
             
