@@ -16,22 +16,30 @@ Both interfaces provide the same core functionality around two main concepts:
 
 ## Python API
 
-The Python API consists of three primary tools:
+The Python API consists of two primary tools:
 
 - `manage_evalset_tool`: For creating and managing evaluation criteria sets (EvalSets)
-- `run_evalset_tool`: For evaluating conversations against EvalSets
-- `get_cache_stats_tool`: For monitoring cache performance and diagnostics
+- `manage_eval_runs_tool`: For running evaluations, storing results, and retrieving past evaluation runs
+
+The system also provides cache performance statistics functionality through internal utilities.
 
 ## Command-Line Interface (CLI)
 
 The CLI provides the same functionality through intuitive commands:
 
+### EvalSet Management
 - `agentoptim list`: List all available EvalSets
 - `agentoptim create`: Create a new EvalSet
 - `agentoptim get`: Get details about a specific EvalSet
 - `agentoptim update`: Update an existing EvalSet
 - `agentoptim delete`: Delete an EvalSet
-- `agentoptim eval`: Evaluate a conversation against an EvalSet
+
+### Evaluation Management
+- `agentoptim runs run`: Run a new evaluation against an EvalSet (alias: `eval`)
+- `agentoptim runs list`: List all past evaluation runs
+- `agentoptim runs get`: Get details about a specific evaluation run
+
+### Utilities
 - `agentoptim stats`: Get cache performance statistics
 
 For detailed CLI usage examples, see [CLI Usage Examples](../examples/cli_usage_examples.md).
@@ -215,19 +223,25 @@ delete_result = manage_evalset_tool(
    - `short_description` must be 6-128 characters
    - `long_description` must be 256-1024 characters
 
-## Tool: run_evalset_tool
+## Tool: manage_eval_runs_tool
 
 ### Description
 
-This tool systematically evaluates a conversation against a predefined set of criteria (an EvalSet), using a language model as a judge. It provides detailed insights into conversation quality with reasoned judgments, confidence scores, and summary statistics.
+This tool manages evaluation runs - it allows you to run evaluations on conversations using predefined criteria (EvalSets), store the results persistently, retrieve past evaluation results, and list evaluation runs with pagination. All evaluation results are stored and can be retrieved by ID for later analysis.
 
 ### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `evalset_id` | string | Yes | The unique identifier (UUID) of the EvalSet to use |
-| `conversation` | array of objects | Yes | A chronological list of conversation messages to evaluate |
+| Parameter | Type | Required For | Description |
+|-----------|------|--------------|-------------|
+| `action` | string | All actions | The operation to perform. Must be one of: "run", "get", "list" |
+| `evalset_id` | string | run, optional for list | The unique identifier of the EvalSet to use |
+| `conversation` | array of objects | run | A chronological list of conversation messages to evaluate |
+| `judge_model` | string | No | The LLM to use as the evaluation judge |
 | `max_parallel` | integer | No (default: 3) | Maximum number of evaluation questions to process simultaneously |
+| `omit_reasoning` | boolean | No (default: false) | If true, don't generate detailed reasoning in results |
+| `eval_run_id` | string | get | ID of a specific evaluation run to retrieve |
+| `page` | integer | No (default: 1) | Page number for paginated list of runs (1-indexed) |
+| `page_size` | integer | No (default: 10) | Number of items per page (range: 1-100) |
 
 #### Conversation Format
 
@@ -269,14 +283,16 @@ These options can also be set using environment variables:
 - `AGENTOPTIM_JUDGE_MODEL`: Set the judge model
 - `AGENTOPTIM_OMIT_REASONING`: Set to "1", "true", or "yes" to omit reasoning
 
-### Return Value
+### Return Values
 
-The tool returns a comprehensive evaluation result with these components:
+The tool returns different results based on the action performed:
+
+#### For `run` action
 
 ```json
 {
   "status": "success",
-  "id": "unique-evaluation-id",
+  "id": "9f8d7e6a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
   "evalset_id": "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
   "evalset_name": "Technical Support Quality Evaluation",
   "judge_model": "meta-llama-3.1-8b-instruct",
@@ -285,7 +301,7 @@ The tool returns a comprehensive evaluation result with these components:
       "question": "Does the response directly address the user's specific question?",
       "judgment": true,
       "confidence": 0.95,
-      "reasoning": "The assistant's response directly addresses the user's question about resetting their password by providing step-by-step instructions specifically for that task. The response begins with 'To reset your password, please follow these steps:' which clearly indicates that the assistant understood the question and is providing a solution to the exact problem the user described."
+      "reasoning": "The assistant's response directly addresses..."
     },
     ...
   ],
@@ -294,17 +310,61 @@ The tool returns a comprehensive evaluation result with these components:
     "successful_evaluations": 7,
     "yes_count": 6,
     "no_count": 1,
-    "error_count": 0,
     "yes_percentage": 85.71,
-    "mean_confidence": 0.89,
-    "mean_yes_confidence": 0.92,
-    "mean_no_confidence": 0.75
-  },
-  "formatted_message": "# Evaluation Results for 'Technical Support Quality Evaluation'..."
+    ...
+  }
 }
 ```
 
-If `omit_reasoning` is set to true, the `reasoning` field will be omitted from each result.
+#### For `get` action
+
+```json
+{
+  "status": "success",
+  "eval_run": {
+    "id": "9f8d7e6a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+    "evalset_id": "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+    "evalset_name": "Technical Support Quality Evaluation",
+    "timestamp": 1717286400.0,
+    "timestamp_formatted": "2024-06-01 12:00:00",
+    "judge_model": "meta-llama-3.1-8b-instruct",
+    "results": [...],
+    "summary": {...}
+  },
+  "formatted_message": "# Evaluation Results: Technical Support Quality Evaluation..."
+}
+```
+
+#### For `list` action (with pagination)
+
+```json
+{
+  "status": "success",
+  "eval_runs": [
+    {
+      "id": "9f8d7e6a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+      "evalset_id": "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+      "evalset_name": "Technical Support Quality Evaluation",
+      "timestamp": 1717286400.0,
+      "timestamp_formatted": "2024-06-01 12:00:00",
+      "judge_model": "meta-llama-3.1-8b-instruct",
+      "summary": {...}
+    },
+    ...
+  ],
+  "pagination": {
+    "page": 1,
+    "page_size": 10,
+    "total_count": 25,
+    "total_pages": 3,
+    "has_next": true,
+    "has_prev": false,
+    "next_page": 2,
+    "prev_page": null
+  },
+  "formatted_message": "# Evaluation Runs\nPage 1 of 3 (25 total)..."
+}
+```
 
 ### Error Responses
 
@@ -324,47 +384,73 @@ If an error occurs, the tool returns a detailed error message:
 
 ### Usage Examples
 
-#### Basic evaluation
+#### Running a New Evaluation
 
 ```python
-results = run_evalset_tool(
+# Evaluate a conversation and get results with a stored ID
+evaluation = await manage_eval_runs_tool(
+    action="run",
     evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
     conversation=[
-        {"role": "system", "content": "You are a helpful technical support assistant."},
-        {"role": "user", "content": "I forgot my password and can't log in. How do I reset it?"},
-        {"role": "assistant", "content": "To reset your password, please follow these steps:\n\n1. Go to the login page\n2. Click on the 'Forgot Password' link below the login form\n3. Enter the email address associated with your account\n4. Check your email for a password reset link\n5. Click the link and follow the instructions to create a new password\n\nIf you don't receive the email within a few minutes, please check your spam folder."}
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "How do I reset my password?"},
+        {"role": "assistant", "content": "Go to the login page and click 'Forgot Password'."}
     ],
-    max_parallel=2
+    judge_model="gpt-4o-mini",
+    max_parallel=3
 )
+
+# Extract the evaluation run ID for later retrieval
+eval_run_id = evaluation["id"]
+print(f"Evaluation score: {evaluation['summary']['yes_percentage']}%")
+print(f"Saved as run ID: {eval_run_id}")
 ```
 
-#### Comparing multiple responses
+#### Retrieving a Past Evaluation
 
 ```python
-def evaluate_response(response_text):
-    return run_evalset_tool(
-        evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
-        conversation=[
-            {"role": "user", "content": "How do I reset my password?"},
-            {"role": "assistant", "content": response_text}
-        ]
-    )["summary"]["yes_percentage"]
+# Get a previous evaluation result by ID
+past_eval = await manage_eval_runs_tool(
+    action="get",
+    eval_run_id="9f8d7e6a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
+)
 
-response1_score = evaluate_response("Go to Settings > Account > Reset Password.")
-response2_score = evaluate_response("To reset your password, go to the login page and click 'Forgot Password'.")
-response3_score = evaluate_response("To reset your password, follow these steps:\n1. Go to the login page\n2. Click 'Forgot Password'\n3. Follow the on-screen instructions")
+# Access the evaluation data
+print(f"Evaluation from {past_eval['eval_run']['timestamp_formatted']}")
+print(f"Score: {past_eval['eval_run']['summary']['yes_percentage']}%")
+```
 
-print(f"Response 1: {response1_score}%")
-print(f"Response 2: {response2_score}%")
-print(f"Response 3: {response3_score}%")
+#### Listing Evaluation Runs
+
+```python
+# List all evaluation runs (paginated)
+all_runs = await manage_eval_runs_tool(
+    action="list",
+    page=1,
+    page_size=10
+)
+
+# Print summary of runs
+print(f"Found {all_runs['pagination']['total_count']} evaluation runs")
+for run in all_runs['eval_runs']:
+    print(f"Run {run['id']}: {run['summary']['yes_percentage']}% on {run['timestamp_formatted']}")
+
+# Filter runs by EvalSet ID
+filtered_runs = await manage_eval_runs_tool(
+    action="list",
+    evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+    page=1,
+    page_size=10
+)
 ```
 
 ### Important Notes
 
-1. **Judge Model**: By default, the tool uses "meta-llama-3.1-8b-instruct" as the judge model, but this can be configured.
-2. **Parallel Processing**: The `max_parallel` parameter controls how many questions are evaluated simultaneously. Higher values can improve speed but increase resource requirements.
-3. **Conversation Format**: The conversation must include at least one user message and one assistant message.
-4. **LM Studio Compatibility**: The tool includes special handling for LM Studio to ensure proper JSON processing.
+1. **Persistent Storage**: All evaluation results are stored persistently and can be retrieved later.
+2. **Pagination**: The `list` action supports pagination to efficiently handle large numbers of evaluation runs.
+3. **Filtering**: When listing evaluation runs, you can filter by `evalset_id` to find specific evaluations.
+4. **Judge Model**: By default, the tool uses "meta-llama-3.1-8b-instruct" as the judge model, but this can be configured.
+5. **Backward Compatibility**: This tool replaces and extends the functionality of the previous `run_evalset_tool`.
 
 ## Environment Variables
 
@@ -399,52 +485,57 @@ Refer to the [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for detailed information o
 
 ---
 
-## Tool: get_cache_stats_tool
+## Cache Statistics
 
 ### Description
 
-This tool provides detailed statistics about the caching system for monitoring and diagnostics. It helps you understand the performance benefits of caching and identify opportunities for optimization.
+The system provides detailed statistics about the caching system for monitoring and diagnostics through the CLI. While the `get_cache_stats_tool` MCP tool has been removed in v2.1.0, the functionality remains accessible via the CLI `stats` command, which helps you understand the performance benefits of caching and identify opportunities for optimization.
 
-### Parameters
+### CLI Command
 
-None required.
-
-### Return Value
-
-The tool returns a comprehensive set of cache statistics:
-
-```json
-{
-  "status": "success", 
-  "evalset_cache": {
-    "size": 25,
-    "capacity": 50,
-    "hits": 156,
-    "misses": 37,
-    "hit_rate_pct": 80.83,
-    "evictions": 0,
-    "expirations": 3
-  },
-  "api_cache": {
-    "size": 78,
-    "capacity": 100,
-    "hits": 423,
-    "misses": 234,
-    "hit_rate_pct": 64.40,
-    "evictions": 12,
-    "expirations": 5
-  },
-  "overall": {
-    "hit_rate_pct": 68.97,
-    "total_hits": 579,
-    "total_misses": 271,
-    "estimated_time_saved_seconds": 289.5
-  },
-  "formatted_message": "# Cache Performance Statistics\n\n## EvalSet Cache\n- Size: 25 / 50 (current/max)\n- Hit Rate: 80.83%\n..."
-}
+```bash
+agentoptim stats
 ```
 
-### Cache Statistics Fields
+### Statistics Output
+
+The command outputs a comprehensive set of cache statistics:
+
+```
+# Cache Performance Statistics
+
+## EvalSet Cache
+- Size: 25 / 50 (current/max)
+- Hit Rate: 80.83%
+- Hits: 156
+- Misses: 37
+- Evictions: 0
+- Expirations: 3
+
+## API Response Cache
+- Size: 78 / 100 (current/max)
+- Hit Rate: 64.40%
+- Hits: 423
+- Misses: 234
+- Evictions: 12
+- Expirations: 5
+
+## Eval Runs Cache
+- Size: 15 / 50 (current/max)
+- Hit Rate: 83.33%
+- Hits: 150
+- Misses: 30
+- Evictions: 3
+- Expirations: 1
+
+## Overall Performance
+- Combined Hit Rate: 68.97%
+- Total Hits: 579
+- Total Misses: 271
+- Resource Savings: Approximately 289.5 seconds of API processing time saved
+```
+
+### Statistics Fields
 
 #### EvalSet Cache
 - `size`: Current number of items in the cache
@@ -458,31 +549,22 @@ The tool returns a comprehensive set of cache statistics:
 #### API Cache
 Same fields as the EvalSet cache, but for the API response cache.
 
+#### Eval Runs Cache
+Same fields as the other caches, but for the evaluation runs cache.
+
 #### Overall
 - `hit_rate_pct`: Combined hit rate across all caches
 - `total_hits`: Total number of cache hits across all caches
 - `total_misses`: Total number of cache misses across all caches
 - `estimated_time_saved_seconds`: Estimated processing time saved due to caching
 
-### Usage Example
-
-```python
-# Get cache statistics
-cache_stats = get_cache_stats_tool()
-
-# Print cache performance metrics
-print(f"EvalSet cache hit rate: {cache_stats['evalset_cache']['hit_rate_pct']}%")
-print(f"API cache hit rate: {cache_stats['api_cache']['hit_rate_pct']}%")
-print(f"Combined hit rate: {cache_stats['overall']['hit_rate_pct']}%")
-print(f"Estimated time saved: {cache_stats['overall']['estimated_time_saved_seconds']} seconds")
-```
-
 ### Important Notes
 
-1. **Time Saved Estimation**: The estimated time saved is an approximation based on average API call duration.
-2. **Cache Size Optimization**: A high number of evictions may indicate the cache capacity is too small.
-3. **Cache Warmup**: Hit rates will be lower initially and improve as the cache warms up with frequently accessed items.
-4. **Cache Monitoring**: Regular monitoring helps optimize cache configuration for your specific usage patterns.
+1. **Access Method**: In v2.1.0, cache statistics are accessed via the CLI rather than an MCP tool.
+2. **Time Saved Estimation**: The estimated time saved is an approximation based on average API call duration.
+3. **Cache Size Optimization**: A high number of evictions may indicate the cache capacity is too small.
+4. **Cache Warmup**: Hit rates will be lower initially and improve as the cache warms up with frequently accessed items.
+5. **Cache Monitoring**: Regular monitoring helps optimize cache configuration for your specific usage patterns.
 
 ---
 

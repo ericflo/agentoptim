@@ -5,6 +5,27 @@ All notable changes to AgentOptim will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Persistent storage for evaluation results
+- New `manage_eval_runs_tool` replacing `run_evalset_tool` with expanded functionality:
+  - `run` action: Run evaluations and store results (backward compatible)
+  - `get` action: Retrieve past evaluation results by ID
+  - `list` action: List all evaluation runs with pagination
+- New CLI commands:
+  - `agentoptim runs list`: List stored evaluation runs
+  - `agentoptim runs get`: Get details of a specific evaluation run
+- Maintain backward compatibility with existing `eval` command
+
+### Changed
+- Transformed `run_evalset_tool` into more powerful `manage_eval_runs_tool`
+- Updated API reference documentation for the new tool
+- Removed `get_cache_stats_tool` MCP tool (functionality still available via CLI)
+
+### Fixed
+- Various improvements to cache management
+
 ## [2.1.0] - 2025-07-10
 
 ### Removed
