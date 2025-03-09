@@ -246,9 +246,64 @@ def handle_output(data: Any, format_type: str, output_file: Optional[str] = None
         df = pd.DataFrame(data)
         formatted_data = df.to_csv(index=False)
     elif format_type == "table" and isinstance(data, list):
-        import pandas as pd
-        df = pd.DataFrame(data)
-        formatted_data = df.to_string(index=False)
+        # Try to use rich tables if available
+        try:
+            from rich.console import Console
+            from rich.table import Table
+            from rich.style import Style
+            
+            # Create a table
+            table = Table(show_header=True, header_style="bold cyan")
+            
+            # Add columns
+            if len(data) > 0:
+                sample_row = data[0]
+                for column in sample_row.keys():
+                    # Make ID column narrower
+                    if column.lower() == "id":
+                        table.add_column(column.upper(), style="dim", no_wrap=True, width=10)
+                    elif "description" in column.lower():
+                        table.add_column(column.title(), style="green", width=50)
+                    elif "name" in column.lower():
+                        table.add_column(column.title(), style="yellow", width=30)
+                    elif "questions" in column.lower() or "count" in column.lower():
+                        table.add_column(column.title(), style="blue", justify="right")
+                    elif "percentage" in column.lower() or "score" in column.lower():
+                        table.add_column(column.title(), style="magenta", justify="right")
+                    elif "date" in column.lower() or "time" in column.lower():
+                        table.add_column(column.title(), style="cyan")
+                    else:
+                        table.add_column(column.title())
+                
+                # Add rows
+                for row in data:
+                    # Format certain columns specially
+                    formatted_row = []
+                    for col, val in row.items():
+                        if isinstance(val, float) and ("percentage" in col.lower() or "score" in col.lower()):
+                            formatted_row.append(f"{val:.1f}%")
+                        elif isinstance(val, (dict, list)):
+                            formatted_row.append(str(val)[:20] + "..." if len(str(val)) > 20 else str(val))
+                        elif col.lower() == "id":
+                            # Truncate IDs for readability
+                            formatted_row.append(f"{str(val)[:8]}...")
+                        else:
+                            formatted_row.append(str(val))
+                    
+                    table.add_row(*formatted_row)
+                
+                # Render the table to a string
+                console = Console(record=True, width=MAX_WIDTH)
+                console.print(table)
+                formatted_data = console.export_text()
+            else:
+                formatted_data = "No data available."
+        except ImportError:
+            # Fall back to pandas if rich isn't available
+            import pandas as pd
+            df = pd.DataFrame(data)
+            formatted_data = df.to_string(index=False)
+            formatted_data = f"{Fore.YELLOW}Tip: Install 'rich' for better table formatting: pip install rich{Style.RESET_ALL}\n\n{formatted_data}"
     else:
         # Default to text format (using the formatted_message if available)
         if isinstance(data, dict) and "formatted_message" in data:
@@ -264,7 +319,7 @@ def handle_output(data: Any, format_type: str, output_file: Optional[str] = None
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(formatted_data)
         if not quiet_mode:
-            print(f"Output saved to: {output_file}")
+            print(f"{Fore.GREEN}✅ Output saved to: {output_file}{Style.RESET_ALL}")
     else:
         if not quiet_mode or format_type in ["json", "yaml", "csv"]:  # Always print data output in machine-readable formats
             print(formatted_data)
@@ -532,12 +587,115 @@ def run_cli():
                         "questions": len(evalset_data["questions"])
                     })
                 
+                # Add a pretty header if not in quiet mode and using table format
+                quiet_mode = os.environ.get("AGENTOPTIM_QUIET", "0") == "1"
+                if not quiet_mode and args.format == "table":
+                    try:
+                        # Try to use rich for a prettier header
+                        from rich.console import Console
+                        from rich.panel import Panel
+                        console = Console()
+                        
+                        header = f"[bold cyan]Evaluation Sets[/bold cyan]\n[dim]{len(formatted_result)} sets available[/dim]"
+                        console.print(Panel(header, expand=False))
+                    except ImportError:
+                        # Fall back to simple ANSI colors
+                        print(f"{Fore.CYAN}===== Evaluation Sets ====={Style.RESET_ALL}")
+                        print(f"{len(formatted_result)} sets available\n")
+                
+                # Sort the evalsets by name for better readability
+                formatted_result.sort(key=lambda x: x["name"].lower())
+                
                 handle_output(formatted_result, args.format, args.output)
+                
+                # Add a helpful footer for table format
+                if not quiet_mode and args.format == "table" and not args.output:
+                    print(f"\n{Fore.CYAN}Tip:{Style.RESET_ALL} Use {Fore.GREEN}agentoptim evalset get <id>{Style.RESET_ALL} to view details of a specific evaluation set")
+                    print(f"{Fore.CYAN}Tip:{Style.RESET_ALL} Use {Fore.GREEN}agentoptim run create <evalset-id> --interactive{Style.RESET_ALL} to run an evaluation")
             else:
                 handle_output(result, args.format, args.output)
         
         elif args.action == "get":
             result = manage_evalset(action="get", evalset_id=args.evalset_id)
+            
+            # Enhanced output for text format
+            if args.format == "text" and "evalset" in result:
+                evalset = result["evalset"]
+                
+                try:
+                    # Try to use rich for a prettier output
+                    from rich.console import Console
+                    from rich.panel import Panel
+                    from rich.markdown import Markdown
+                    from rich.table import Table
+                    
+                    console = Console(record=True, width=MAX_WIDTH)
+                    
+                    # Header with evalset info
+                    title = f"[bold cyan]{evalset['name']}[/bold cyan]"
+                    metadata = f"[dim]ID:[/dim] [yellow]{evalset['id']}[/yellow]"
+                    console.print(Panel(f"{title}\n{metadata}", expand=False))
+                    
+                    # Description section
+                    if evalset.get("short_description"):
+                        console.print(f"\n[bold cyan]Description[/bold cyan]")
+                        console.print(f"{evalset['short_description']}")
+                    
+                    # Detailed description if available
+                    if evalset.get("long_description"):
+                        console.print(f"\n[bold cyan]Detailed Description[/bold cyan]")
+                        console.print(Panel(evalset['long_description'], border_style="blue"))
+                    
+                    # Questions section
+                    console.print(f"\n[bold cyan]Evaluation Questions[/bold cyan] [dim]({len(evalset['questions'])} questions)[/dim]")
+                    
+                    # Create a table for questions
+                    question_table = Table(show_header=True, header_style="bold blue", box=None, padding=(0, 1, 0, 1))
+                    question_table.add_column("#", style="dim", justify="right")
+                    question_table.add_column("Question", style="green")
+                    
+                    # Add each question
+                    for i, question in enumerate(evalset['questions'], 1):
+                        question_table.add_row(str(i), question)
+                    
+                    console.print(question_table)
+                    
+                    # Add a helpful call to action
+                    console.print(f"\n[bold cyan]Usage Example[/bold cyan]")
+                    console.print(f"To evaluate a conversation with this evalset, run:")
+                    console.print(f"[green]agentoptim run create {evalset['id']} --interactive[/green]")
+                    
+                    # Update the output
+                    result["formatted_message"] = console.export_text()
+                    
+                except ImportError:
+                    # If rich is not available, create a simple formatted text output
+                    lines = []
+                    lines.append(f"{Fore.CYAN}===== {evalset['name']} ====={Style.RESET_ALL}")
+                    lines.append(f"ID: {evalset['id']}")
+                    lines.append("")
+                    
+                    if evalset.get("short_description"):
+                        lines.append(f"{Fore.CYAN}Description:{Style.RESET_ALL}")
+                        lines.append(evalset["short_description"])
+                        lines.append("")
+                    
+                    if evalset.get("long_description"):
+                        lines.append(f"{Fore.CYAN}Detailed Description:{Style.RESET_ALL}")
+                        lines.append(evalset["long_description"])
+                        lines.append("")
+                    
+                    lines.append(f"{Fore.CYAN}Evaluation Questions ({len(evalset['questions'])} questions):{Style.RESET_ALL}")
+                    for i, question in enumerate(evalset['questions'], 1):
+                        lines.append(f"{i}. {question}")
+                    
+                    lines.append("")
+                    lines.append(f"{Fore.CYAN}Usage Example:{Style.RESET_ALL}")
+                    lines.append(f"To evaluate a conversation with this evalset, run:")
+                    lines.append(f"{Fore.GREEN}agentoptim run create {evalset['id']} --interactive{Style.RESET_ALL}")
+                    
+                    result["formatted_message"] = "\n".join(lines)
+            
             handle_output(result, args.format, args.output)
         
         elif args.action == "create":
@@ -617,23 +775,87 @@ def run_cli():
             has_next = args.page < total_pages
             has_prev = args.page > 1
             
-            # For other formats, create a structured response
-            response = {
-                "status": "success",
-                "eval_runs": eval_runs,
-                "pagination": {
-                    "page": args.page,
-                    "page_size": args.page_size,
-                    "total_count": total_count,
-                    "total_pages": total_pages,
-                    "has_next": has_next,
-                    "has_prev": has_prev,
-                    "next_page": args.page + 1 if has_next else None,
-                    "prev_page": args.page - 1 if has_prev else None
+            # Format the eval runs for table display with prettier output
+            formatted_eval_runs = []
+            for run in eval_runs:
+                # Format time nicely
+                timestamp = run.get("timestamp_formatted", "Unknown")
+                
+                # Format score nicely
+                score = run.get("summary", {}).get("yes_percentage", 0)
+                score_formatted = f"{score:.1f}%" if isinstance(score, (int, float)) else "N/A"
+                
+                # Format model nicely
+                model = run.get("judge_model") or "default"
+                if len(str(model)) > 15:
+                    model = str(model)[:12] + "..."
+                
+                # Create a nice entry for the table with standardized fields
+                formatted_run = {
+                    "id": run.get("id", "Unknown"),
+                    "date": timestamp,
+                    "evalset": run.get("evalset_name", "Unknown"),
+                    "model": model,
+                    "score": score,
+                    "questions": run.get("result_count", 0),
+                    "conv_len": run.get("conversation_length", 0),
                 }
-            }
+                formatted_eval_runs.append(formatted_run)
             
-            handle_output(response, args.format, args.output)
+            # If using table format, just output the formatted runs directly
+            if args.format == "table":
+                # Add a pretty header if not in quiet mode
+                quiet_mode = os.environ.get("AGENTOPTIM_QUIET", "0") == "1"
+                if not quiet_mode:
+                    try:
+                        # Try to use rich for a prettier header
+                        from rich.console import Console
+                        from rich.panel import Panel
+                        console = Console()
+                        
+                        # Create pagination indicator
+                        pagination_text = f"Page {args.page} of {total_pages} • {total_count} total runs"
+                        if has_prev:
+                            pagination_text = f"← Previous • {pagination_text}"
+                        if has_next:
+                            pagination_text = f"{pagination_text} • Next →"
+                            
+                        header = f"[bold cyan]Evaluation Runs[/bold cyan]\n[dim]{pagination_text}[/dim]"
+                        console.print(Panel(header, expand=False))
+                    except ImportError:
+                        # Fall back to simple ANSI colors
+                        print(f"{Fore.CYAN}===== Evaluation Runs ====={Style.RESET_ALL}")
+                        pagination_text = f"Page {args.page} of {total_pages} • {total_count} total runs"
+                        print(f"{pagination_text}\n")
+                
+                # Output the formatted table
+                handle_output(formatted_eval_runs, args.format, args.output)
+                
+                # Add pagination footer if not in quiet mode and not outputting to a file
+                if not quiet_mode and not args.output:
+                    print(f"\n{Fore.CYAN}Page {args.page} of {total_pages}{Style.RESET_ALL}")
+                    if has_prev:
+                        print(f"{Fore.BLUE}Use 'agentoptim run list --page {args.page-1}' for previous page{Style.RESET_ALL}")
+                    if has_next:
+                        print(f"{Fore.GREEN}Use 'agentoptim run list --page {args.page+1}' for next page{Style.RESET_ALL}")
+            else:
+                # For other formats, create a structured response with all details
+                response = {
+                    "status": "success",
+                    "eval_runs": eval_runs,
+                    "pagination": {
+                        "page": args.page,
+                        "page_size": args.page_size,
+                        "total_count": total_count,
+                        "total_pages": total_pages,
+                        "has_next": has_next,
+                        "has_prev": has_prev,
+                        "next_page": args.page + 1 if has_next else None,
+                        "prev_page": args.page - 1 if has_prev else None
+                    }
+                }
+                
+                handle_output(response, args.format, args.output)
         
         elif args.action in ["get", "export"]:
             # Import run retrieval functions
@@ -663,6 +885,148 @@ def run_cli():
             if args.action == "get":
                 # Format the evaluation run for output
                 formatted_run = get_formatted_eval_run(eval_run)
+                
+                # If using text format, enhance the display
+                if args.format == "text":
+                    try:
+                        # Try to use rich for a prettier output
+                        from rich.console import Console
+                        from rich.panel import Panel
+                        from rich.markdown import Markdown
+                        from rich.table import Table
+                        from rich.progress import BarColumn, TextColumn
+                        from rich.layout import Layout
+                        from rich.text import Text
+                        from rich.console import Group
+                        
+                        console = Console(record=True, width=MAX_WIDTH)
+                        
+                        # Create a layout
+                        layout = Layout()
+                        layout.split(
+                            Layout(name="header", size=4),
+                            Layout(name="main")
+                        )
+                        
+                        # Header with run info
+                        title = f"[bold cyan]{eval_run.evalset_name}[/bold cyan]"
+                        metadata = (
+                            f"[dim]Run ID:[/dim] [yellow]{eval_run.id}[/yellow]  "
+                            f"[dim]Date:[/dim] [blue]{eval_run.timestamp}[/blue]  "
+                            f"[dim]Model:[/dim] [green]{eval_run.judge_model or 'default'}[/green]"
+                        )
+                        console.print(Panel(f"{title}\n{metadata}", expand=False))
+                        
+                        # Summary section
+                        console.print("\n[bold cyan]Summary[/bold cyan]")
+                        
+                        # Create a table for summary stats
+                        summary_table = Table(show_header=False, box=None, padding=(0, 1, 0, 1))
+                        summary_table.add_column("Key", style="dim")
+                        summary_table.add_column("Value")
+                        
+                        # Calculate summary metrics
+                        total_questions = len(eval_run.results)
+                        yes_count = sum(1 for r in eval_run.results if r.get("judgment") is True)
+                        no_count = sum(1 for r in eval_run.results if r.get("judgment") is False)
+                        error_count = sum(1 for r in eval_run.results if r.get("error") is not None)
+                        
+                        # Calculate yes percentage
+                        if total_questions - error_count > 0:
+                            yes_percentage = (yes_count / (total_questions - error_count)) * 100
+                        else:
+                            yes_percentage = 0
+                            
+                        # Add summary rows
+                        summary_table.add_row("Total questions", f"[blue]{total_questions}[/blue]")
+                        summary_table.add_row("Success rate", f"[cyan]{total_questions - error_count}[/cyan]/[blue]{total_questions}[/blue] questions evaluated successfully")
+                        summary_table.add_row("Score", f"[magenta]{yes_percentage:.1f}%[/magenta]")
+                        
+                        # Create a simple text-based progress bar for the score
+                        bar_width = 40
+                        filled_width = int(bar_width * yes_percentage / 100)
+                        bar_text = f"[magenta]{'█' * filled_width}{'░' * (bar_width - filled_width)}[/magenta] {yes_percentage:.1f}%"
+                        summary_table.add_row("", bar_text)
+                        
+                        # More detailed stats
+                        summary_table.add_row("Yes responses", f"[green]{yes_count}[/green] ({yes_percentage:.1f}%)")
+                        summary_table.add_row("No responses", f"[red]{no_count}[/red] ({100-yes_percentage:.1f}%)")
+                        
+                        # Add confidence information if available
+                        if eval_run.summary and "mean_confidence" in eval_run.summary:
+                            summary_table.add_row("Mean confidence", f"{eval_run.summary['mean_confidence']:.2f}")
+                            if "mean_yes_confidence" in eval_run.summary and yes_count > 0:
+                                summary_table.add_row("Mean confidence in Yes", f"{eval_run.summary['mean_yes_confidence']:.2f}")
+                            if "mean_no_confidence" in eval_run.summary and no_count > 0:
+                                summary_table.add_row("Mean confidence in No", f"{eval_run.summary['mean_no_confidence']:.2f}")
+                                
+                        console.print(summary_table)
+                        
+                        # Results section
+                        console.print("\n[bold cyan]Detailed Results[/bold cyan]")
+                        
+                        # Print each question with its judgment
+                        for i, result in enumerate(eval_run.results, 1):
+                            # Create a panel for each result
+                            if result.get("error"):
+                                panel_title = f"Q{i}: {result.get('question')}"
+                                panel_content = f"[red]Error:[/red] {result.get('error')}"
+                                panel_style = "red"
+                            else:
+                                judgment = result.get("judgment")
+                                judgment_text = "[green]Yes[/green]" if judgment else "[red]No[/red]"
+                                confidence = result.get("confidence")
+                                confidence_text = f" (confidence: {confidence:.2f})" if confidence is not None else ""
+                                
+                                panel_title = f"Q{i}: {result.get('question')}"
+                                panel_content = f"[bold]Judgment:[/bold] {judgment_text}{confidence_text}"
+                                
+                                # Add reasoning if available
+                                if result.get("reasoning"):
+                                    # Truncate reasoning if too long
+                                    reasoning = result.get("reasoning")
+                                    if len(reasoning) > 200:
+                                        reasoning = reasoning[:197] + "..."
+                                    panel_content += f"\n\n[bold]Reasoning:[/bold] {reasoning}"
+                                
+                                panel_style = "green" if judgment else "red"
+                            
+                            console.print(Panel(panel_content, title=panel_title, title_align="left", border_style=panel_style))
+                        
+                        # Conversation section
+                        console.print("\n[bold cyan]Conversation[/bold cyan]")
+                        
+                        # Format the conversation
+                        conversation_text = ""
+                        for msg in eval_run.conversation:
+                            role = msg.get("role", "").upper()
+                            content = msg.get("content", "")
+                            
+                            # Color based on role
+                            if role == "SYSTEM":
+                                role_formatted = f"[yellow]{role}:[/yellow]"
+                            elif role == "USER":
+                                role_formatted = f"[blue]{role}:[/blue]"
+                            elif role == "ASSISTANT":
+                                role_formatted = f"[green]{role}:[/green]"
+                            else:
+                                role_formatted = f"[dim]{role}:[/dim]"
+                                
+                            # Truncate content if too long
+                            if len(content) > 200:
+                                content = content[:197] + "..."
+                                
+                            conversation_text += f"{role_formatted} {content}\n\n"
+                        
+                        console.print(Panel(conversation_text, border_style="cyan"))
+                        
+                        # Export the console output
+                        formatted_run["formatted_message"] = console.export_text()
+                        
+                    except ImportError:
+                        # If rich is not available, keep original formatting
+                        pass
+                    
                 handle_output(formatted_run, args.format, args.output)
             
             # Compare two evaluation runs side by side
