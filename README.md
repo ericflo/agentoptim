@@ -28,73 +28,48 @@ AgentOptim is a powerful toolkit built on the Model Context Protocol (MCP) that 
 - **Parallel processing** for efficient large-scale evaluation
 - **Standardized metrics** to track progress over time
 
-## 📋 Evaluation Results Storage Implementation
+## 📋 Evaluation Results Storage
 
-We've successfully completed the implementation of persistent storage for evaluation results. This powerful feature allows users to retrieve past evaluation results by ID and list all evaluation runs, just like they can with EvalSets. The implementation is now fully integrated and tested with comprehensive documentation.
+AgentOptim provides persistent storage for evaluation results, allowing you to retrieve past evaluation results by ID and list all evaluation runs. This feature is fully integrated and tested with comprehensive documentation.
 
-### Implementation Checklist
+### Key Features
 
-- [x] **1. Design Data Model for Evaluation Results**
-  - [x] Create `EvalRun` class in new `evalrun.py` module
-  - [x] Define fields: id, evalset_id, timestamp, judge_model, results, summary
-  - [x] Add JSON serialization/deserialization methods
+- **Persistent Storage**: Evaluations are stored on disk and can be retrieved at any time
+- **Consistent IDs**: Each evaluation has a unique ID that remains consistent when retrieved
+- **Pagination Support**: Browse through large numbers of evaluations with pagination
+- **Rich Metadata**: Each evaluation stores its timestamp, EvalSet details, judge model, and full results
+- **Powerful Filtering**: List evaluations filtered by EvalSet ID
+- **Complete Access**: Get both summary metrics and detailed judgments for each evaluation
 
-- [x] **2. Create Storage System for Evaluation Results**
-  - [x] Add eval_runs directory in DATA_DIR
-  - [x] Implement save/load functions for eval runs
-  - [x] Create LRU caching for eval runs (similar to evalset cache)
+### API Usage
 
-- [x] **3. Transform `manage_eval_runs_tool` into `manage_eval_runs_tool`**
-  - [x] Rename function to `manage_eval_runs_tool` in server.py
-  - [x] Add action parameter (run, get, list) like in manage_evalset_tool
-  - [x] Create get and list actions for retrieving past runs
-  - [x] Implement pagination for list operation
+```python
+# Run evaluation and store results
+eval_result = await manage_eval_runs_tool(
+    action="run",
+    evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+    conversation=[
+        {"role": "user", "content": "How do I reset my password?"},
+        {"role": "assistant", "content": "To reset your password, go to the login page..."}
+    ]
+)
 
-- [x] **4. Update Core Architecture**
-  - [x] Create `evalrun.py` module for run data model and storage
-  - [x] Update module exports for the renamed tool
-  - [x] Modify runner.py to return evaluation IDs that remain consistent
+# Get the run ID for future reference
+eval_run_id = eval_result["id"]
 
-- [x] **5. Update CLI Integration**
-  - [x] Rename eval command to runs
-  - [x] Add list-runs and get-run subcommands
-  - [x] Implement pagination in CLI for list-runs
+# Later, retrieve the evaluation by ID
+past_eval = await manage_eval_runs_tool(
+    action="get",
+    eval_run_id=eval_run_id
+)
 
-- [x] **6. Update Examples**
-  - [x] Add example showing how to retrieve past evaluation results
-
-- [x] **7. Update Documentation**
-  - [x] Update README.md with modified tool architecture
-  - [x] Update diagrams and flowcharts to reflect new design
-  - [ ] Update API_REFERENCE.md with new tool documentation
-
-- [x] **8. Remove `get_cache_stats_tool` MCP Tool**
-  - [x] Move cache functionality to remain accessible via CLI
-  - [x] Keep internal functions but remove MCP tool registration
-
-- [x] **9. Add Tests**
-  - [x] Add tests for new evalrun.py module in test_evalrun.py
-  - [x] Add tests for renamed tool and backward compatibility in test_server.py
-  - [x] Add tests for pagination functionality
-  - [x] Ensure test coverage remains above 85%
-
-- [x] **10. Final Polish**
-  - [x] Update API_REFERENCE.md with new tool documentation
-  - [x] Ensure consistent naming throughout other examples
-  - [x] Add migration notes for users of the previous API
-  - [x] Update CHANGELOG.md with new feature details
-
-### Key Implementation Details
-
-- The `manage_eval_runs_tool` has been transformed into `manage_eval_runs_tool`
-- Evaluation results are now stored persistently in `DATA_DIR/eval_runs/`
-- The new tool maintains all the original functionality while adding:
-  - `run` action: Run evaluations and store results
-  - `get` action: Retrieve past evaluation results by ID
-  - `list` action: List all evaluation runs with pagination
-- We've preserved backward compatibility with a command alias
-- Added the CLI `runs` command with `run`, `get`, and `list` subcommands
-- Updated documentation and diagrams to reflect the new architecture
+# List all evaluation runs
+all_runs = await manage_eval_runs_tool(
+    action="list",
+    page=1,
+    page_size=10
+)
+```
 
 ### Example Usage
 
@@ -393,48 +368,46 @@ pip install agentoptim
 
 ### 🚀 Using the AgentOptim CLI
 
-AgentOptim provides a powerful command-line interface for evaluation and optimization:
+AgentOptim provides an elegant command-line interface for evaluation and optimization:
 
 ```bash
 # Start the MCP server
 agentoptim server
 
-# List all evaluation sets
-agentoptim list
-
-# Get details about a specific evaluation set
-agentoptim get 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e
-
-# Create a new evaluation set
-agentoptim create --name "Response Quality" \
+# EvalSet Management
+agentoptim evalset list                     # List all evaluation sets
+agentoptim evalset get <id>                 # Get details about a specific evaluation set
+agentoptim evalset create                   # Create a new evaluation set interactively
+agentoptim evalset create --name "Response Quality" \
   --questions questions.txt \
   --short-desc "Evaluate response quality" \
-  --long-desc "This evaluation set measures the overall quality of assistant responses..."
+  --long-desc "This evaluation set measures the overall quality..."
 
-# Evaluate a conversation against an evaluation set
-agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e conversation.json
+# Run Management
+agentoptim run list                         # List all evaluation runs
+agentoptim run get <id>                     # Get a specific evaluation result
+agentoptim run create <evalset-id> conversation.json   # Evaluate a conversation
+agentoptim run create <evalset-id> --text response.txt # Evaluate a text response
 
-# Evaluate a text file (treated as a single user message)
-agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e --text response.txt --model "gpt-4o"
+# Model Selection
+agentoptim run create <evalset-id> conversation.json --model "gpt-4o"   # Specify model
+agentoptim run create <evalset-id> conversation.json --provider openai   # Use OpenAI
 
-# Get cache statistics
-agentoptim stats
+# Developer Tools
+agentoptim dev cache                        # View cache statistics (for developers)
 ```
 
 Run `agentoptim --help` for complete CLI documentation.
 
 ### 🚀 Starting the MCP Server
 
-You have two simple options to start the AgentOptim server:
+Start the AgentOptim server with:
 
 ```bash
-# Option 1: Using the CLI (recommended)
+# Simplest way to start the server
 agentoptim server
 
-# Option 2: Using the legacy command
-agentoptim
-
-# Option 3: Using the Python module
+# Alternative using Python module
 python -m agentoptim server
 ```
 
