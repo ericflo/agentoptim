@@ -6,9 +6,9 @@ import pytest
 import json
 import uuid
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, Mock
 
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 
 @pytest.mark.asyncio
@@ -77,8 +77,17 @@ async def test_full_workflow():
         "formatted_message": "# Evaluation Results\n\nAll questions passed."
     }
     
-    with patch('agentoptim.server.run_evalset', return_value=mock_eval_results):
-        run_result = await run_evalset_tool(
+    with patch('agentoptim.server.run_evalset', return_value=mock_eval_results), \
+         patch('agentoptim.server.EvalRun') as mock_evalrun, \
+         patch('agentoptim.server.save_eval_run', return_value=True) as mock_save:
+        
+        # Configure mock EvalRun instance
+        mock_evalrun_instance = Mock()
+        mock_evalrun_instance.id = "test-eval-run-id"
+        mock_evalrun.return_value = mock_evalrun_instance
+        
+        run_result = await manage_eval_runs_tool(
+            action="run",
             evalset_id=evalset_id,
             conversation=[
                 {"role": "user", "content": "How do I reset my password?"},
@@ -202,14 +211,23 @@ async def test_create_update_run_workflow():
         assert update_result["evalset"]["name"] == f"Updated EvalSet {test_id}"
         
         # 3. Run the evaluation with the updated EvalSet
-        run_result = await run_evalset_tool(
-            evalset_id=evalset_id,
-            conversation=[
-                {"role": "user", "content": "Test question"},
-                {"role": "assistant", "content": "Test response"}
-            ],
-            max_parallel=2
-        )
+        with patch('agentoptim.server.EvalRun') as mock_evalrun, \
+             patch('agentoptim.server.save_eval_run', return_value=True) as mock_save:
+            
+            # Configure mock EvalRun instance
+            mock_evalrun_instance = Mock()
+            mock_evalrun_instance.id = "test-eval-run-id"
+            mock_evalrun.return_value = mock_evalrun_instance
+            
+            run_result = await manage_eval_runs_tool(
+                action="run",
+                evalset_id=evalset_id,
+                conversation=[
+                    {"role": "user", "content": "Test question"},
+                    {"role": "assistant", "content": "Test response"}
+                ],
+                max_parallel=2
+            )
         
         # Verify run results
         assert run_result["status"] == "success"
