@@ -1,50 +1,83 @@
-# Changelog
+# AgentOptim Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to AgentOptim will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - 2025-03-07
+## [2.1.0] - 2025-Q2 (Upcoming)
+
+### Removed
+- Completely removed legacy compatibility layer (compat.py)
+- Removed all deprecated functions from v1.x
+- Removed support for template_id parameter
+- Removed deprecated_examples directory
 
 ### Added
-- New simplified EvalSet architecture with just 2 tools instead of 5
-- `manage_evalset_tool` for CRUD operations on EvalSets
-- `run_evalset_tool` for evaluating conversations against EvalSets
-- Comprehensive compatibility layer for transitioning from old to new architecture
-- Migration guide to help users upgrade from v1.x
-- Integration tests for the EvalSet architecture
-- Benchmark script to measure performance improvements
-- Test runner script with test categories for improved CI/CD
+- Comprehensive documentation including API_REFERENCE.md and ARCHITECTURE.md
+- Added 8 new example files demonstrating advanced usage patterns:
+  - conversation_comparison.py - Comparing different conversation styles
+  - prompt_testing.py - Testing different system prompts
+  - multilingual_evaluation.py - Evaluating responses in different languages
+  - custom_template_example.py - Creating custom templates
+  - batch_evaluation.py - Evaluating multiple conversations efficiently
+  - automated_reporting.py - Generating evaluation reports
+  - conversation_benchmark.py - Benchmarking conversation quality
+  - model_comparison.py - Comparing different judge models
+  - response_improvement.py - Iterative response improvement
 
 ### Changed
-- Simplified the evaluation workflow with a unified conversation-based approach
-- Improved performance by approximately 40% with the new architecture
-- Reduced memory usage throughout the codebase
-- Enhanced documentation with migration instructions and examples
-- Updated server.py to expose both old and new tools
-
-### Deprecated
-- The original 5-tool architecture (`manage_evaluation`, `manage_dataset`, etc.) is now deprecated
-- Deprecated tools will continue to function through the compatibility layer
-- Plan to remove deprecated tools in v3.0.0
-
-## [1.0.0] - 2024-12-15
-
-### Added
-- Initial stable release with 5 MCP tools
-- `manage_evaluation_tool` for creating and managing evaluations
-- `manage_dataset_tool` for managing test datasets
-- `manage_experiment_tool` for experiment configuration
-- `run_job_tool` for executing evaluations
-- `analyze_results_tool` for analyzing experiment results
-- Comprehensive test suite with over 90% code coverage
-- Documentation and example usage
-
-### Changed
-- Improved error handling and validation
-- Enhanced compatibility with various LLM backends
-- Optimized performance for large datasets
+- Updated all documentation to reflect v2.1.0 architecture
+- Improved error handling for better debugging
+- Enhanced environment variable handling
 
 ### Fixed
-- Various bug fixes and stability improvements
+- Fixed OpenAI API authentication headers
+- Fixed error handling for omit_reasoning implementation
+
+## [2.0.0] - 2024-11-15
+
+### Added
+- Complete rewrite with simplified 2-tool architecture
+- Enhanced caching system for improved performance
+- Conversation-based evaluation for more accurate assessment
+- Comprehensive test suite with excellent coverage
+- Detailed documentation and migration guide
+
+### Changed
+- Replaced 5-tool architecture with 2 streamlined tools
+- Optimized evaluation runner for 40% faster performance
+- Improved structure with better separation of concerns
+
+### Deprecated
+- All v1.x functions and interfaces (with compatibility layer)
+
+## [1.5.0] - 2024-06-10
+
+### Added
+- Support for Claude models
+- Better error handling for API failures
+- Extended documentation
+
+### Changed
+- Improved evaluation templates
+- Updated scoring algorithms for better consistency
+
+### Fixed
+- Fixed memory leak in parallel evaluations
+- Fixed handling of long conversations
+
+## [1.0.0] - 2024-01-20
+
+### Added
+- Initial release with 5-tool architecture
+- Basic evaluation functionality
+- Template system for evaluations
+- Support for OpenAI models
+- Simple caching system
+- Basic documentation
+
+[2.1.0]: https://github.com/yourusername/agentoptim/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/yourusername/agentoptim/compare/v1.5.0...v2.0.0
+[1.5.0]: https://github.com/yourusername/agentoptim/compare/v1.0.0...v1.5.0
+[1.0.0]: https://github.com/yourusername/agentoptim/releases/tag/v1.0.0

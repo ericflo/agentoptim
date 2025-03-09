@@ -1,44 +1,98 @@
 # AgentOptim Examples
 
-This directory contains example code demonstrating how to use AgentOptim v2.0's 2-tool architecture.
+This directory contains comprehensive examples demonstrating AgentOptim's capabilities for evaluating, comparing, and improving AI conversations.
 
-## Current Architecture Examples
+## Basic Examples
 
-The following examples demonstrate the recommended way to use AgentOptim:
+- [usage_example.py](./usage_example.py) - Simple introduction to AgentOptim:
+  - Creating an EvalSet with basic criteria
+  - Evaluating a single conversation
+  - Interpreting evaluation results
 
-- [usage_example.py](./usage_example.py) - Basic usage of the new API:
-  - Creating an EvalSet
-  - Running an evaluation on a conversation
-  - Comparing two different responses
+- [evalset_example.py](./evalset_example.py) - Comprehensive API walkthrough:
+  - Creating, retrieving, updating, and listing EvalSets
+  - Managing evaluation criteria
+  - Working with different API options
 
-- [evalset_example.py](./evalset_example.py) - Comprehensive example with all API features:
-  - Creating, getting, updating, and listing EvalSets
-  - Running evaluations with different models
-  - Comparing multiple responses
-  - Advanced configuration options
+- [support_response_evaluation.py](./support_response_evaluation.py) - Customer support quality:
+  - Evaluating different support response styles
+  - Comparing detailed vs. brief responses
+  - Identifying best practices for support conversations
 
-- [support_response_evaluation.py](./support_response_evaluation.py) - Tutorial example:
-  - Follows the tutorial in docs/TUTORIAL.md
-  - Evaluates customer support response quality
-  - Compares different response styles
-  - Provides specific recommendations
+## Advanced Use Cases
 
-## Deprecated Examples
+- [conversation_comparison.py](./conversation_comparison.py) - Compare conversation approaches:
+  - Evaluate formal vs. casual vs. technical styles
+  - Generate visualizations of style effectiveness
+  - Identify optimal approaches for different contexts
 
-For examples of the old 5-tool architecture (deprecated and scheduled to be removed in v2.1.0), see the [deprecated_examples](./deprecated_examples) directory.
+- [prompt_testing.py](./prompt_testing.py) - Test system prompts:
+  - Compare different system prompt strategies
+  - Analyze strengths of different prompt designs
+  - Identify optimal prompt patterns
+
+- [multilingual_evaluation.py](./multilingual_evaluation.py) - Evaluate in multiple languages:
+  - Test responses across different languages
+  - Identify inconsistencies in multilingual support
+  - Ensure quality across language boundaries
+
+## Specialized Techniques
+
+- [custom_template_example.py](./custom_template_example.py) - Create specialized templates:
+  - Design custom evaluation formats (Likert scales, multi-criteria)
+  - Implement domain-specific evaluations (code review, etc.)
+  - Compare template effectiveness
+
+- [batch_evaluation.py](./batch_evaluation.py) - Process multiple conversations:
+  - Efficiently evaluate large sets of conversations
+  - Generate comprehensive evaluation reports
+  - Identify patterns across conversation datasets
+
+- [automated_reporting.py](./automated_reporting.py) - Generate detailed reports:
+  - Create visualization-rich evaluation reports
+  - Export results in multiple formats (HTML, Markdown)
+  - Design custom dashboards for quality monitoring
+
+## Advanced Evaluation Methods
+
+- [conversation_benchmark.py](./conversation_benchmark.py) - Standardized benchmarking:
+  - Create conversation quality benchmarks
+  - Evaluate across standardized test cases
+  - Track quality improvements over time
+
+- [model_comparison.py](./model_comparison.py) - Compare judge models:
+  - Evaluate using different LLM judge models
+  - Analyze model biases and patterns
+  - Select optimal judge models for different tasks
+
+- [response_improvement.py](./response_improvement.py) - Iterative improvement:
+  - Identify specific ways to improve responses
+  - Implement targeted enhancements
+  - Measure quality improvements
 
 ## Getting Started
 
 To run these examples:
 
-1. Make sure you have AgentOptim installed:
+1. Install AgentOptim:
    ```bash
    pip install agentoptim
    ```
 
-2. Run an example:
+2. Start the AgentOptim server:
    ```bash
-   python usage_example.py
+   agentoptim
    ```
 
-For more information, see the [AgentOptim documentation](../docs/TUTORIAL.md).
+3. Run any example:
+   ```bash
+   python examples/usage_example.py
+   ```
+
+Each example includes detailed comments and documentation to help you understand how to apply these techniques to your own projects.
+
+## Additional Resources
+
+- [Quickstart Guide](../docs/QUICKSTART.md) - Get started in under 5 minutes
+- [Full Tutorial](../docs/TUTORIAL.md) - Step-by-step guide to AgentOptim
+- [API Reference](../docs/API_REFERENCE.md) - Complete API documentation

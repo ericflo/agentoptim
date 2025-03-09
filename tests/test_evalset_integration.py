@@ -247,19 +247,7 @@ class TestEvalSetEvaluation:
                 assert "confidence" in result
 
 
-class TestCompatibilityLayer:
-    """Test the compatibility layer for transitioning from old to new architecture."""
-    
-    @pytest.mark.skip(reason="Compatibility layer is not needed in the v2.0 architecture")
-    @pytest.mark.asyncio
-    async def test_convert_evaluation(self, temp_data_dir):
-        """Test converting an old evaluation to a new EvalSet.
-        
-        Note: This test is skipped because we've fully migrated to the new architecture
-        and no longer need the compatibility layer.
-        """
-        # Skip this test - legacy compatibility test
-        pass
+# TestCompatibilityLayer class has been removed in v2.1.0
 
 
 class TestRealWorldScenarios:
@@ -294,8 +282,7 @@ class TestRealWorldScenarios:
                 "Does the response provide complete information?"
             ],
             short_description=f"Evaluation criteria for response quality - short",
-            long_description=f"This is a detailed explanation of the evaluation criteria for response quality. It provides comprehensive information about what metrics are used to assess response quality, how to interpret the results, and why these criteria are important for ensuring high-quality responses. This evaluation set focuses on helpfulness, relevance, clarity, and completeness of responses." + " " * 100,
-            description=f"Evaluation criteria for response quality"
+            long_description=f"This is a detailed explanation of the evaluation criteria for response quality. It provides comprehensive information about what metrics are used to assess response quality, how to interpret the results, and why these criteria are important for ensuring high-quality responses. This evaluation set focuses on helpfulness, relevance, clarity, and completeness of responses." + " " * 100
         )
         
         evalset_id = evalset_result["evalset"]["id"]

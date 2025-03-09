@@ -60,7 +60,6 @@ class EvalSet(BaseModel):
     questions: List[str] = Field(default_factory=list)
     short_description: Optional[str] = None  # Concise summary (6-128 chars)
     long_description: Optional[str] = None  # Detailed explanation (256-1024 chars)
-    description: Optional[str] = None  # Kept for backward compatibility
     
     @field_validator('questions')
     def validate_questions(cls, questions):
@@ -124,8 +123,7 @@ def create_evalset(
     name: str, 
     questions: List[str],
     short_description: str,
-    long_description: str,
-    description: Optional[str] = None
+    long_description: str
 ) -> EvalSet:
     """
     Create a new EvalSet.
@@ -139,7 +137,6 @@ def create_evalset(
         short_description: A concise summary (6-128 chars) of what this EvalSet measures
         long_description: A detailed explanation (256-1024 chars) of the evaluation criteria, 
                          how to interpret results, and when to use this EvalSet
-        description: Optional description (for backward compatibility)
         
     Returns:
         The created EvalSet object
@@ -148,8 +145,7 @@ def create_evalset(
         name=name, 
         questions=questions, 
         short_description=short_description,
-        long_description=long_description,
-        description=description
+        long_description=long_description
         # template will use the DEFAULT_TEMPLATE
     )
     
@@ -162,8 +158,7 @@ def update_evalset(
     name: Optional[str] = None,
     questions: Optional[List[str]] = None,
     short_description: Optional[str] = None,
-    long_description: Optional[str] = None,
-    description: Optional[str] = None,
+    long_description: Optional[str] = None
 ) -> Optional[EvalSet]:
     """
     Update an existing EvalSet.
@@ -174,7 +169,6 @@ def update_evalset(
         questions: Optional new list of questions
         short_description: Optional new concise summary (6-128 chars)
         long_description: Optional new detailed explanation (256-1024 chars)
-        description: Optional new description (for backward compatibility)
         
     Returns:
         The updated EvalSet object, or None if not found
@@ -191,8 +185,6 @@ def update_evalset(
         evalset.short_description = short_description
     if long_description is not None:
         evalset.long_description = long_description
-    if description is not None:
-        evalset.description = description
     
     save_json(evalset.to_dict(), get_evalset_path(evalset.id))
     return evalset
@@ -211,11 +203,9 @@ def manage_evalset(
     action: str,
     evalset_id: Optional[str] = None,
     name: Optional[str] = None,
-    template: Optional[str] = None,  # Kept for backward compatibility but ignored
     questions: Optional[List[str]] = None,
     short_description: Optional[str] = None,
-    long_description: Optional[str] = None,
-    description: Optional[str] = None,
+    long_description: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Manage EvalSet definitions for assessing conversation quality.
@@ -227,11 +217,9 @@ def manage_evalset(
         action: One of "create", "list", "get", "update", "delete"
         evalset_id: Required for get, update, delete
         name: Required for create
-        template: Deprecated - templates are now system-defined (ignored)
         questions: Required for create, a list of yes/no questions (max 100)
         short_description: A concise summary (6-128 chars) of what this EvalSet measures (required for create)
         long_description: A detailed explanation (256-1024 chars) of the evaluation criteria (required for create)
-        description: Optional description (for backward compatibility)
     
     Returns:
         A dictionary containing the result of the operation
@@ -271,7 +259,6 @@ def manage_evalset(
                     f"EvalSet: {eval_dict['name']} (ID: {eval_dict['id']})",
                     f"Short Description: {eval_dict.get('short_description', 'None')}",
                     f"Long Description: {eval_dict.get('long_description', 'None')}",
-                    f"Legacy Description: {eval_dict.get('description', 'None')}",
                     f"Template:\n{eval_dict['template']}",
                     f"\nQuestions ({len(eval_dict['questions'])}):",
                     *[f"{i}. {q}" for i, q in enumerate(eval_dict['questions'], 1)]
@@ -311,8 +298,7 @@ def manage_evalset(
                 name=name,
                 questions=questions,
                 short_description=short_description,
-                long_description=long_description,
-                description=description
+                long_description=long_description
             )
             
             return {
@@ -334,12 +320,6 @@ def manage_evalset(
                     return format_error("Maximum of 100 questions allowed per EvalSet")
             
             # Template is now system-defined, no need to validate
-            # Inform the user if they try to update the template
-            if template is not None:
-                # Log a warning but don't fail the request
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Attempt to update template for EvalSet {evalset_id} ignored - templates are now system-defined")
             
             # Validate short_description if provided
             if short_description is not None:
@@ -360,8 +340,7 @@ def manage_evalset(
                 name=name,
                 questions=questions,
                 short_description=short_description,
-                long_description=long_description,
-                description=description
+                long_description=long_description
             )
             
             if not evalset:

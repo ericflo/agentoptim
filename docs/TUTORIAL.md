@@ -1,6 +1,6 @@
-# AgentOptim v2.0 Tutorial
+# AgentOptim v2.1.0 Tutorial
 
-This tutorial walks you through using AgentOptim v2.0 to evaluate the quality of conversations with a language model.
+This tutorial walks you through using AgentOptim v2.1.0 to evaluate the quality of conversations with a language model.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ Before starting, ensure you have:
 
 ## Introduction to the 2-Tool Architecture
 
-AgentOptim v2.0 simplifies prompt optimization with just two tools:
+AgentOptim v2.1.0 simplifies prompt optimization with just two tools:
 
 1. `manage_evalset_tool` - Create and manage sets of evaluation criteria
 2. `run_evalset_tool` - Run evaluations on conversations using an EvalSet

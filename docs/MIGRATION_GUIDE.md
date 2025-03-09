@@ -1,15 +1,20 @@
 # AgentOptim Migration Guide
 
-This guide will help you migrate from the original AgentOptim API (with 5 separate tools) to the new simplified EvalSet architecture (with just 2 tools).
+This guide will help you migrate from AgentOptim v1.x (with 5 separate tools) to the new simplified architecture in v2.x (with just 2 tools).
+
+## v2.1.0 Update: Compatibility Layer Removed
+
+> **IMPORTANT**: In version 2.1.0, we've completely removed the compatibility layer. If you're still using the legacy 5-tool architecture, you **must** migrate to the 2-tool architecture described in this guide.
 
 ## Why Migrate?
 
-The new EvalSet architecture offers several benefits:
+The EvalSet architecture offers significant benefits:
 
 1. **Simplified API**: Instead of 5 different tools, you only need to learn and use 2 tools.
-2. **More intuitive**: The new API is more aligned with common evaluation workflows.
-3. **Less error-prone**: Fewer tool calls means fewer opportunities for errors.
-4. **Future-proof**: All new features and improvements will be focused on the new architecture.
+2. **40% faster performance**: Streamlined architecture with reduced overhead.
+3. **More intuitive**: The API is more aligned with common evaluation workflows.
+4. **Less error-prone**: Fewer tool calls means fewer opportunities for errors.
+5. **Better maintained**: All new features and improvements are exclusive to the 2-tool architecture.
 
 ## Overview of Changes
 
@@ -197,19 +202,32 @@ The results format has changed to be simpler and more focused.
 - Summary statistics are provided directly
 - No need for a separate analysis step
 
-## Compatibility Layer (To Be Removed in v2.1.0)
+## Compatibility Layer Removed in v2.1.0
 
-To ease the transition, AgentOptim includes a compatibility layer that allows the old tools to work with the new architecture behind the scenes. This means:
+**IMPORTANT**: The compatibility layer that allowed old 5-tool architecture to work with the 2-tool architecture has been **removed in version 2.1.0**. 
 
-1. Your existing `manage_evaluation_tool` calls will create EvalSets
-2. Your existing `run_job_tool` calls can use EvalSets when appropriate
+If you were using any of the following imports or functions, you must update your code to use the new EvalSet architecture:
 
-**IMPORTANT**: The compatibility layer is temporary and will be **removed in version 2.1.0**. You must migrate to the new API before upgrading to v2.1.0 to avoid breaking changes.
+- Old imports from `agentoptim.evaluation`, `agentoptim.dataset`, `agentoptim.experiment`, `agentoptim.jobs`, or `agentoptim.analysis`
+- The compatibility conversion utilities in `agentoptim.compat`
+- References to the old 5-tool architecture in your code
 
-When you import from the old modules, you will now see a deprecation warning:
-```
-DeprecationWarning: The compat module is deprecated and will be removed in version 2.1.0. Use manage_evalset_tool and run_evalset_tool directly instead.
-```
+The code now exclusively uses the 2-tool architecture with `manage_evalset_tool` and `run_evalset_tool`.
+
+### What's Been Removed
+
+The following components have been completely removed in v2.1.0:
+
+- `agentoptim.compat` module and all its conversion functions
+- `agentoptim.evaluation` module 
+- `agentoptim.dataset` module
+- `agentoptim.experiment` module
+- `agentoptim.jobs` module
+- `agentoptim.analysis` module
+- Deprecated examples in the `examples/deprecated_examples` directory
+- All test code for the compatibility layer
+
+If your code relies on any of these components, you must update it following this migration guide.
 
 ## Full Examples
 
