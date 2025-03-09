@@ -133,6 +133,8 @@ Examples:
     eval_parser.add_argument("conversation", nargs="?", help="Conversation file (JSON format)")
     eval_parser.add_argument("--text", help="Text file to evaluate (treated as a single user message)")
     eval_parser.add_argument("--model", help="Judge model to use for evaluation")
+    eval_parser.add_argument("--provider", choices=["local", "openai", "anthropic"], default="local", 
+                          help="API provider (default: local)")
     eval_parser.add_argument("--parallel", type=int, default=3, help="Maximum parallel evaluations (default: 3)")
     eval_parser.add_argument("--no-reasoning", action="store_true", help="Omit reasoning from results")
     eval_parser.add_argument("--format", choices=["text", "json", "yaml", "csv"], default="text", 
@@ -386,6 +388,24 @@ def run_cli():
         elif args.command == "eval":
             # Load the conversation
             conversation = load_conversation(args.conversation, args.text)
+            
+            # Configure provider settings
+            if args.provider:
+                if args.provider == "openai":
+                    os.environ["AGENTOPTIM_API_BASE"] = "https://api.openai.com/v1"
+                    # Only set default model if not explicitly specified
+                    if not args.model:
+                        args.model = "gpt-4o-mini"
+                elif args.provider == "anthropic":
+                    os.environ["AGENTOPTIM_API_BASE"] = "https://api.anthropic.com/v1"
+                    # Only set default model if not explicitly specified
+                    if not args.model:
+                        args.model = "claude-3-5-haiku-20241022"
+                elif args.provider == "local":
+                    os.environ["AGENTOPTIM_API_BASE"] = "http://localhost:1234/v1"
+                    # Only set default model if not explicitly specified
+                    if not args.model:
+                        args.model = "meta-llama-3.1-8b-instruct"
             
             # Set environment variables for judge model and omit_reasoning if specified
             if args.model:

@@ -197,11 +197,17 @@ async def call_llm_api(
         
         headers = {"Content-Type": "application/json"}
         
-        # Add OpenAI API key if we're using the OpenAI API
+        # Add API authentication headers based on provider
         openai_api_key = os.environ.get("OPENAI_API_KEY")
-        if openai_api_key and "openai.com" in API_BASE:
+        anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
+        
+        if "openai.com" in API_BASE and openai_api_key:
             logger.info("Using OpenAI API with authentication")
             headers["Authorization"] = f"Bearer {openai_api_key}"
+        elif "anthropic.com" in API_BASE and anthropic_api_key:
+            logger.info("Using Anthropic API with authentication")
+            headers["x-api-key"] = anthropic_api_key
+            headers["anthropic-version"] = "2023-06-01"  # Use appropriate version
         
         logger.info(f"Calling LLM API with model: {model}")
         if DEBUG_MODE:
@@ -265,6 +271,11 @@ async def call_llm_api(
                                     # Check if the key looks properly formatted
                                     if not openai_api_key.startswith("sk-"):
                                         logger.error("The API key doesn't start with 'sk-', which is unusual for OpenAI keys")
+                            elif "anthropic.com" in API_BASE:
+                                if not anthropic_api_key:
+                                    logger.error("Authentication failed: ANTHROPIC_API_KEY environment variable is not set")
+                                else:
+                                    logger.error("Authentication failed: The provided Anthropic API key was rejected")
                     except:
                         error_msg += f", {response.text}"
                     
@@ -406,7 +417,10 @@ async def call_llm_api(
                     "Try with a shorter prompt if hitting context length limits",
                     "Inspect the server logs for more information",
                     "Make sure your LLM API server is properly configured and responding",
-                    "Try with a different model that has better JSON compatibility"
+                    "Try with a different model that has better JSON compatibility",
+                    "With 'local' provider (default): Make sure your local model server is running at the correct port",
+                    "With 'openai' provider: Set OPENAI_API_KEY environment variable with a valid API key",
+                    "With 'anthropic' provider: Set ANTHROPIC_API_KEY environment variable with a valid API key"
                 ],
                 "request_info": {
                     "model": model,
