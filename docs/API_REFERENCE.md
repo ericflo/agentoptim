@@ -1,19 +1,40 @@
 # AgentOptim API Reference
 
-This document provides comprehensive reference documentation for the tools available in the AgentOptim project.
+This document provides comprehensive reference documentation for the tools and commands available in the AgentOptim project.
 
 ## Overview
 
-AgentOptim is a conversation evaluation framework that provides tools for creating, managing, and running evaluations on conversational AI responses. The framework is built around two main concepts:
+AgentOptim is a conversation evaluation framework that provides tools for creating, managing, and running evaluations on conversational AI responses. The framework offers two interfaces:
+
+1. **Python API**: For programmatic access and integration
+2. **Command-Line Interface (CLI)**: For direct usage without writing code
+
+Both interfaces provide the same core functionality around two main concepts:
 
 1. **EvalSets**: Collections of evaluation criteria for judging conversation quality
 2. **Evaluation Runners**: Tools for executing evaluations against conversations
 
-The API consists of three primary tools:
+## Python API
+
+The Python API consists of three primary tools:
 
 - `manage_evalset_tool`: For creating and managing evaluation criteria sets (EvalSets)
 - `run_evalset_tool`: For evaluating conversations against EvalSets
 - `get_cache_stats_tool`: For monitoring cache performance and diagnostics
+
+## Command-Line Interface (CLI)
+
+The CLI provides the same functionality through intuitive commands:
+
+- `agentoptim list`: List all available EvalSets
+- `agentoptim create`: Create a new EvalSet
+- `agentoptim get`: Get details about a specific EvalSet
+- `agentoptim update`: Update an existing EvalSet
+- `agentoptim delete`: Delete an EvalSet
+- `agentoptim eval`: Evaluate a conversation against an EvalSet
+- `agentoptim stats`: Get cache performance statistics
+
+For detailed CLI usage examples, see [CLI Usage Examples](../examples/cli_usage_examples.md).
 
 ## Tool: manage_evalset_tool
 

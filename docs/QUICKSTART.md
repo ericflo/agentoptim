@@ -13,14 +13,37 @@ pip install agentoptim
 Start the AgentOptim server with:
 
 ```bash
-agentoptim
+agentoptim server
 ```
 
 That's it! Your server is now running and ready to use.
 
+## Using the CLI
+
+AgentOptim includes a powerful command-line interface:
+
+```bash
+# List all available evaluation sets
+agentoptim list
+
+# Create a new evaluation set
+agentoptim create --name "Response Quality" \
+  --questions "Is the response helpful?,Is the response clear?,Is the response accurate?" \
+  --short-desc "Basic quality evaluation" \
+  --long-desc "Simple evaluation set for measuring basic response quality criteria"
+
+# Evaluate a conversation file against an evaluation set
+agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e conversation.json
+
+# Get cache statistics
+agentoptim stats
+```
+
+See all available commands with `agentoptim --help`.
+
 ## 5-Minute Example
 
-Here's a complete example to evaluate a conversation:
+Here's a complete example to evaluate a conversation using the Python API:
 
 ```python
 import asyncio
