@@ -147,7 +147,7 @@ def setup_parser():
     
     # run get
     run_get_parser = run_subparsers.add_parser("get", help="Get a specific evaluation run")
-    run_get_parser.add_argument("run_id", help="ID of the evaluation run to retrieve", dest="eval_run_id")
+    run_get_parser.add_argument("eval_run_id", help="ID of the evaluation run to retrieve")
     run_get_parser.add_argument("--format", choices=["text", "json", "yaml"], default="text",
                             help="Output format (default: text)")
     run_get_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
