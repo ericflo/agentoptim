@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
+from agentoptim.constants import MAX_QUESTIONS_PER_EVALSET, MAX_EVALSETS
 from agentoptim.utils import (
     DATA_DIR,
     generate_id,
@@ -342,8 +343,16 @@ def manage_evalset(
             if not isinstance(questions, list):
                 return format_error("Questions must be a list of strings")
             
-            if len(questions) > 100:
-                return format_error("Maximum of 100 questions allowed per EvalSet")
+            if len(questions) > MAX_QUESTIONS_PER_EVALSET:
+                return format_error(f"Maximum of {MAX_QUESTIONS_PER_EVALSET} questions allowed per EvalSet")
+                
+            # Check if we've reached the maximum number of EvalSets
+            existing_evalsets = list_json_files(EVALSETS_DIR)
+            if len(existing_evalsets) >= MAX_EVALSETS:
+                return format_error(
+                    f"Maximum of {MAX_EVALSETS} EvalSets reached. "
+                    "Please delete an existing EvalSet before creating a new one."
+                )
             
             # Validate short_description
             if short_description and len(short_description) < 6:

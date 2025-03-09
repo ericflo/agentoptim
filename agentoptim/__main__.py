@@ -233,25 +233,35 @@ def run_cli():
         if args.port:
             os.environ["AGENTOPTIM_PORT"] = str(args.port)
             
+        # Import constants here to avoid circular imports
+        from agentoptim.constants import (
+            DEFAULT_LOCAL_API_BASE,
+            DEFAULT_OPENAI_API_BASE,
+            DEFAULT_ANTHROPIC_API_BASE,
+            DEFAULT_LOCAL_MODEL,
+            DEFAULT_OPENAI_MODEL,
+            DEFAULT_ANTHROPIC_MODEL
+        )
+        
         # Configure provider settings
         if args.provider:
             # Only set API_BASE if not already set by user
             if "AGENTOPTIM_API_BASE" not in os.environ:
                 if args.provider == "openai":
-                    os.environ["AGENTOPTIM_API_BASE"] = "https://api.openai.com/v1"
+                    os.environ["AGENTOPTIM_API_BASE"] = DEFAULT_OPENAI_API_BASE
                     # Only set default model if not explicitly specified
                     if "AGENTOPTIM_JUDGE_MODEL" not in os.environ:
-                        os.environ["AGENTOPTIM_JUDGE_MODEL"] = "gpt-4o-mini"
+                        os.environ["AGENTOPTIM_JUDGE_MODEL"] = DEFAULT_OPENAI_MODEL
                 elif args.provider == "anthropic":
-                    os.environ["AGENTOPTIM_API_BASE"] = "https://api.anthropic.com/v1"
+                    os.environ["AGENTOPTIM_API_BASE"] = DEFAULT_ANTHROPIC_API_BASE
                     # Only set default model if not explicitly specified
                     if "AGENTOPTIM_JUDGE_MODEL" not in os.environ:
-                        os.environ["AGENTOPTIM_JUDGE_MODEL"] = "claude-3-5-haiku-20241022"
+                        os.environ["AGENTOPTIM_JUDGE_MODEL"] = DEFAULT_ANTHROPIC_MODEL
                 elif args.provider == "local":
-                    os.environ["AGENTOPTIM_API_BASE"] = "http://localhost:1234/v1"
+                    os.environ["AGENTOPTIM_API_BASE"] = DEFAULT_LOCAL_API_BASE
                     # Only set default model if not explicitly specified
                     if "AGENTOPTIM_JUDGE_MODEL" not in os.environ:
-                        os.environ["AGENTOPTIM_JUDGE_MODEL"] = "meta-llama-3.1-8b-instruct"
+                        os.environ["AGENTOPTIM_JUDGE_MODEL"] = DEFAULT_LOCAL_MODEL
         
         # Log configuration info
         logger.info("AgentOptim MCP Server starting")
@@ -610,25 +620,35 @@ def run_cli():
             # Load the conversation
             conversation = load_conversation(args.conversation, args.text)
             
+            # Import constants here to avoid circular imports
+            from agentoptim.constants import (
+                DEFAULT_LOCAL_API_BASE,
+                DEFAULT_OPENAI_API_BASE,
+                DEFAULT_ANTHROPIC_API_BASE,
+                DEFAULT_LOCAL_MODEL,
+                DEFAULT_OPENAI_MODEL,
+                DEFAULT_ANTHROPIC_MODEL
+            )
+            
             # Configure provider settings
             if args.provider:
                 # Only set API_BASE if not already set by user
                 if "AGENTOPTIM_API_BASE" not in os.environ:
                     if args.provider == "openai":
-                        os.environ["AGENTOPTIM_API_BASE"] = "https://api.openai.com/v1"
+                        os.environ["AGENTOPTIM_API_BASE"] = DEFAULT_OPENAI_API_BASE
                     elif args.provider == "anthropic":
-                        os.environ["AGENTOPTIM_API_BASE"] = "https://api.anthropic.com/v1"
+                        os.environ["AGENTOPTIM_API_BASE"] = DEFAULT_ANTHROPIC_API_BASE
                     elif args.provider == "local":
-                        os.environ["AGENTOPTIM_API_BASE"] = "http://localhost:1234/v1"
+                        os.environ["AGENTOPTIM_API_BASE"] = DEFAULT_LOCAL_API_BASE
                 
                 # Set default model based on provider if not explicitly specified
                 if not args.model:
                     if args.provider == "openai":
-                        args.model = "gpt-4o-mini"
+                        args.model = DEFAULT_OPENAI_MODEL
                     elif args.provider == "anthropic":
-                        args.model = "claude-3-5-haiku-20241022"
+                        args.model = DEFAULT_ANTHROPIC_MODEL
                     elif args.provider == "local":
-                        args.model = "meta-llama-3.1-8b-instruct"
+                        args.model = DEFAULT_LOCAL_MODEL
             
             # Set environment variables for judge model and omit_reasoning if specified
             if args.model:
