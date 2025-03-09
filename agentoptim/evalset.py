@@ -73,18 +73,18 @@ class EvalSet(BaseModel):
     def validate_short_description(cls, short_description):
         """Validate short_description length (6-128 characters)."""
         if short_description and len(short_description) < 6:
-            raise ValueError("short_description must be at least 6 characters long")
+            raise ValueError(f"short_description must be at least 6 characters long (currently {len(short_description)} characters)")
         if short_description and len(short_description) > 128:
-            raise ValueError("short_description must not exceed 128 characters")
+            raise ValueError(f"short_description must not exceed 128 characters (currently {len(short_description)} characters)")
         return short_description
     
     @field_validator('long_description')
     def validate_long_description(cls, long_description):
         """Validate long_description length (256-1024 characters)."""
         if long_description and len(long_description) < 256:
-            raise ValueError("long_description must be at least 256 characters long")
+            raise ValueError(f"long_description must be at least 256 characters long (currently {len(long_description)} characters)")
         if long_description and len(long_description) > 1024:
-            raise ValueError("long_description must not exceed 1024 characters")
+            raise ValueError(f"long_description must not exceed 1024 characters (currently {len(long_description)} characters)")
         return long_description
     
     def to_dict(self) -> Dict[str, Any]:
@@ -295,15 +295,15 @@ def manage_evalset(
             
             # Validate short_description
             if short_description and len(short_description) < 6:
-                return format_error("short_description must be at least 6 characters long")
+                return format_error(f"short_description must be at least 6 characters long (currently {len(short_description)} characters)")
             if short_description and len(short_description) > 128:
-                return format_error("short_description must not exceed 128 characters")
+                return format_error(f"short_description must not exceed 128 characters (currently {len(short_description)} characters)")
                 
             # Validate long_description
             if long_description and len(long_description) < 256:
-                return format_error("long_description must be at least 256 characters long")
+                return format_error(f"long_description must be at least 256 characters long (currently {len(long_description)} characters)")
             if long_description and len(long_description) > 1024:
-                return format_error("long_description must not exceed 1024 characters")
+                return format_error(f"long_description must not exceed 1024 characters (currently {len(long_description)} characters)")
             
             # Template is now system-defined, no need to validate
             
@@ -344,16 +344,16 @@ def manage_evalset(
             # Validate short_description if provided
             if short_description is not None:
                 if len(short_description) < 6:
-                    return format_error("short_description must be at least 6 characters long")
+                    return format_error(f"short_description must be at least 6 characters long (currently {len(short_description)} characters)")
                 if len(short_description) > 128:
-                    return format_error("short_description must not exceed 128 characters")
+                    return format_error(f"short_description must not exceed 128 characters (currently {len(short_description)} characters)")
                 
             # Validate long_description if provided
             if long_description is not None:
                 if len(long_description) < 256:
-                    return format_error("long_description must be at least 256 characters long")
+                    return format_error(f"long_description must be at least 256 characters long (currently {len(long_description)} characters)")
                 if len(long_description) > 1024:
-                    return format_error("long_description must not exceed 1024 characters")
+                    return format_error(f"long_description must not exceed 1024 characters (currently {len(long_description)} characters)")
             
             evalset = update_evalset(
                 evalset_id=evalset_id,
