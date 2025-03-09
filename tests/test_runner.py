@@ -601,41 +601,455 @@ async def test_run_evalset_max_parallel_limits():
 @pytest.mark.asyncio
 async def test_run_evalset_invalid_max_parallel():
     """Test run_evalset with invalid max_parallel values."""
-    # This test needs to be adapted to work with current implementation
-    pytest.skip("This test is currently failing and will be fixed in a later PR")
-    # TODO: Fix this test in a separate PR to improve runner.py coverage
+    import agentoptim.runner
+    from agentoptim.runner import get_evalset
+    
+    # Create a mock EvalSet
+    test_evalset = SimpleNamespace(
+        id="test-evalset-id",
+        name="Test EvalSet with Many Questions",
+        template="Given this conversation: {{ conversation }} Answer: {{ eval_question }}",
+        questions=[f"Question {i}" for i in range(3)]  # Create 3 questions
+    )
+    
+    # Mock the get_evalset function
+    original_get_evalset = agentoptim.runner.get_evalset
+    
+    def mock_get_evalset(evalset_id):
+        return test_evalset
+    
+    # Create a mock format_error function
+    original_format_error = agentoptim.runner.format_error
+    
+    def mock_format_error(message):
+        return {"status": "error", "message": message}
+    
+    # Create a mock evaluate_question function
+    original_evaluate_question = agentoptim.runner.evaluate_question
+    
+    async def mock_evaluate_question(conversation, question, template, judge_model, omit_reasoning=False):
+        return EvalResult(
+            question=question,
+            judgment=True,
+            confidence=0.9,
+            reasoning="Reasoning for " + question
+        )
+    
+    # Apply the patches
+    agentoptim.runner.get_evalset = mock_get_evalset
+    agentoptim.runner.format_error = mock_format_error
+    agentoptim.runner.evaluate_question = mock_evaluate_question
+    
+    try:
+        # Define a test conversation
+        conversation = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"}
+        ]
+        
+        # Test with max_parallel=0 (should return an error)
+        result_zero = await run_evalset(
+            evalset_id="test-evalset-id",
+            conversation=conversation,
+            judge_model="test-model",
+            max_parallel=0
+        )
+        
+        # Check that we get an error for max_parallel=0
+        assert result_zero["status"] == "error"
+        assert "max_parallel" in result_zero["message"].lower()
+        
+        # Test with max_parallel=-1 (should return an error)
+        result_negative = await run_evalset(
+            evalset_id="test-evalset-id",
+            conversation=conversation,
+            judge_model="test-model",
+            max_parallel=-1
+        )
+        
+        # Check that we get an error for max_parallel=-1
+        assert result_negative["status"] == "error"
+        assert "max_parallel" in result_negative["message"].lower()
+        
+        # Test with max_parallel=1 (should work)
+        result_valid = await run_evalset(
+            evalset_id="test-evalset-id",
+            conversation=conversation,
+            judge_model="test-model",
+            max_parallel=1
+        )
+        
+        # Check that normal max_parallel works
+        assert result_valid["status"] == "success"
+        assert len(result_valid["results"]) == 3
+        
+    finally:
+        # Restore original functions
+        agentoptim.runner.get_evalset = original_get_evalset
+        agentoptim.runner.format_error = original_format_error
+        agentoptim.runner.evaluate_question = original_evaluate_question
 
 
 @pytest.mark.asyncio
 async def test_run_evalset_empty_questions():
     """Test run_evalset with an EvalSet that has no questions."""
-    # This test needs to be adapted to work with current implementation
-    pytest.skip("This test is currently failing and will be fixed in a later PR")
-    # TODO: Fix this test in a separate PR to improve runner.py coverage
+    import agentoptim.runner
+    from agentoptim.runner import get_evalset
+    
+    # Create a mock EvalSet with no questions
+    test_evalset = SimpleNamespace(
+        id="empty-questions-evalset",
+        name="Empty Questions EvalSet",
+        template="Given this conversation: {{ conversation }} Answer: {{ eval_question }}",
+        questions=[]  # Empty questions list
+    )
+    
+    # Mock the get_evalset function
+    original_get_evalset = agentoptim.runner.get_evalset
+    
+    def mock_get_evalset(evalset_id):
+        return test_evalset
+    
+    # Mock the format_error function
+    original_format_error = agentoptim.runner.format_error
+    
+    def mock_format_error(message):
+        return {"status": "error", "message": message}
+    
+    # Apply the patches
+    agentoptim.runner.get_evalset = mock_get_evalset
+    agentoptim.runner.format_error = mock_format_error
+    
+    try:
+        # Define a test conversation
+        conversation = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"}
+        ]
+        
+        # Run the evalset with empty questions
+        result = await run_evalset(
+            evalset_id="empty-questions-evalset",
+            conversation=conversation,
+            judge_model="test-model"
+        )
+        
+        # Check that the result has the expected structure
+        assert result["status"] == "success"
+        assert result["evalset_id"] == "empty-questions-evalset"
+        assert result["evalset_name"] == "Empty Questions EvalSet"
+        assert result["results"] == []  # Should have empty results
+        
+        # Check that the summary has zeros
+        assert result["summary"]["total_questions"] == 0
+        assert result["summary"]["yes_count"] == 0
+        assert result["summary"]["no_count"] == 0
+        
+        # Check that the formatted message acknowledges empty questions
+        assert "Total questions: 0" in result["formatted_message"]
+    
+    finally:
+        # Restore original functions
+        agentoptim.runner.get_evalset = original_get_evalset
+        agentoptim.runner.format_error = original_format_error
 
 
 @pytest.mark.asyncio
 async def test_run_evalset_with_partial_failures():
     """Test run_evalset when some questions have evaluation errors."""
-    # This test needs to be adapted to work with current implementation
-    pytest.skip("This test is currently failing and will be fixed in a later PR")
-    # TODO: Fix this test in a separate PR to improve runner.py coverage
+    import agentoptim.runner
+    from agentoptim.runner import get_evalset
+    
+    # Create a mock EvalSet
+    test_evalset = SimpleNamespace(
+        id="partial-failures-evalset",
+        name="Partial Failures EvalSet",
+        template="Given this conversation: {{ conversation }} Answer: {{ eval_question }}",
+        questions=[
+            "Question that will succeed 1", 
+            "Question that will fail", 
+            "Question that will succeed 2"
+        ]
+    )
+    
+    # Mock the get_evalset function
+    original_get_evalset = agentoptim.runner.get_evalset
+    
+    def mock_get_evalset(evalset_id):
+        return test_evalset
+    
+    # Create a mock evaluate_question function that fails for specific questions
+    original_evaluate_question = agentoptim.runner.evaluate_question
+    
+    async def mock_evaluate_question(conversation, question, template, judge_model, omit_reasoning=False):
+        if "fail" in question:
+            return EvalResult(
+                question=question,
+                error="Simulated API error for testing"
+            )
+        else:
+            return EvalResult(
+                question=question,
+                judgment=True,
+                confidence=0.9,
+                reasoning="Reasoning for " + question
+            )
+    
+    # Apply the patches
+    agentoptim.runner.get_evalset = mock_get_evalset
+    agentoptim.runner.evaluate_question = mock_evaluate_question
+    
+    try:
+        # Define a test conversation
+        conversation = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"}
+        ]
+        
+        # Run the evalset with partial failures
+        result = await run_evalset(
+            evalset_id="partial-failures-evalset",
+            conversation=conversation,
+            judge_model="test-model"
+        )
+        
+        # Check that the result has the expected structure
+        assert result["status"] == "success"
+        assert result["evalset_id"] == "partial-failures-evalset"
+        assert result["evalset_name"] == "Partial Failures EvalSet"
+        
+        # Check that we have the right number of results
+        assert len(result["results"]) == 3
+        
+        # Check that the successful and failed results are marked correctly
+        success1 = next(r for r in result["results"] if r["question"] == "Question that will succeed 1")
+        failed = next(r for r in result["results"] if r["question"] == "Question that will fail")
+        success2 = next(r for r in result["results"] if r["question"] == "Question that will succeed 2")
+        
+        assert success1["judgment"] is True
+        assert success1["error"] is None
+        
+        assert failed["judgment"] is None
+        assert "Simulated API error" in failed["error"]
+        
+        assert success2["judgment"] is True
+        assert success2["error"] is None
+        
+        # Check that the summary has correct counts
+        assert result["summary"]["total_questions"] == 3
+        assert result["summary"]["successful_evaluations"] == 2
+        assert result["summary"]["yes_count"] == 2
+        assert result["summary"]["no_count"] == 0
+        assert result["summary"]["error_count"] == 1
+        
+        # Check that the formatted message mentions the error
+        assert "Errors: 1" in result["formatted_message"]
+    
+    finally:
+        # Restore original functions
+        agentoptim.runner.get_evalset = original_get_evalset
+        agentoptim.runner.evaluate_question = original_evaluate_question
 
 
 @pytest.mark.asyncio
 async def test_run_evalset_with_invalid_json_response():
     """Test run_evalset when the LLM returns invalid JSON."""
-    # This test needs to be adapted to work with current implementation
-    pytest.skip("This test is currently failing and will be fixed in a later PR")
-    # TODO: Fix this test in a separate PR to improve runner.py coverage
+    import agentoptim.runner
+    from agentoptim.runner import get_evalset, call_llm_api
+    
+    # Create a mock EvalSet
+    test_evalset = SimpleNamespace(
+        id="invalid-json-evalset",
+        name="Invalid JSON EvalSet",
+        template="Given this conversation: {{ conversation }} Answer: {{ eval_question }}",
+        questions=["Is the response helpful?"]
+    )
+    
+    # Mock the get_evalset function
+    original_get_evalset = agentoptim.runner.get_evalset
+    
+    def mock_get_evalset(evalset_id):
+        return test_evalset
+    
+    # Create a mock call_llm_api function that returns invalid JSON
+    original_call_llm_api = agentoptim.runner.call_llm_api
+    
+    async def mock_call_llm_api(prompt=None, model=None, temperature=None, max_tokens=None, 
+                               logit_bias=None, messages=None, omit_reasoning=False):
+        # Return a response with invalid JSON
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": """The assistant's response is helpful.
+                        
+                        {
+                          "reasoning": "The assistant provides a clear answer to the user's question with specific steps to take.",
+                          "judgment": true,
+                          "confidence": 0.85
+                        """  # Missing closing brace
+                    }
+                }
+            ]
+        }
+    
+    # Apply the patches
+    agentoptim.runner.get_evalset = mock_get_evalset
+    agentoptim.runner.call_llm_api = mock_call_llm_api
+    
+    try:
+        # Define a test conversation
+        conversation = [
+            {"role": "user", "content": "How do I reset my password?"},
+            {"role": "assistant", "content": "Go to login page and click 'Forgot Password'."}
+        ]
+        
+        # Run the evalset with invalid JSON response
+        result = await run_evalset(
+            evalset_id="invalid-json-evalset",
+            conversation=conversation,
+            judge_model="test-model"
+        )
+        
+        # Check that the overall result still has success status
+        assert result["status"] == "success"
+        assert result["evalset_id"] == "invalid-json-evalset"
+        
+        # Check that we have the right number of results
+        assert len(result["results"]) == 1
+        
+        # The regex fallback is finding a judgment in the invalid JSON
+        eval_result = result["results"][0]
+        assert eval_result["question"] == "Is the response helpful?"
+        
+        # Our runner.py actually has a smart fallback that uses regex to extract judgments
+        # from invalid JSON. In this case it finds "judgment": true in the invalid JSON
+        # and correctly identifies it as a True judgment.
+        assert eval_result["judgment"] is True
+        
+        # The runner may set the reasoning to None when using regex fallback with omit_reasoning=False
+        assert eval_result["reasoning"] is None
+        
+        # Check that the summary has the right question count
+        assert result["summary"]["total_questions"] == 1
+        
+        # The regex fallback actually works in this case, so there's no error_count
+        assert result["summary"]["error_count"] == 0
+        
+        # We should have a successful evaluation since the regex fallback worked
+        assert result["summary"]["successful_evaluations"] == 1
+        
+        # The regex fallback works so well there's no error in the formatted message!
+        # Let's just verify the formatted_message exists and has the expected structure
+        assert "Evaluation Results for" in result["formatted_message"]
+        assert "Yes responses: 1" in result["formatted_message"]
+    
+    finally:
+        # Restore original functions
+        agentoptim.runner.get_evalset = original_get_evalset
+        agentoptim.runner.call_llm_api = original_call_llm_api
 
 
 @pytest.mark.asyncio
 async def test_run_evalset_with_rate_limit_errors():
     """Test run_evalset with rate limit errors from the LLM API."""
-    # This test needs to be adapted to work with current implementation
-    pytest.skip("This test is currently failing and will be fixed in a later PR")
-    # TODO: Fix this test in a separate PR to improve runner.py coverage
+    import agentoptim.runner
+    from agentoptim.runner import get_evalset, call_llm_api
+    
+    # Create a mock EvalSet with multiple questions
+    test_evalset = SimpleNamespace(
+        id="rate-limit-evalset",
+        name="Rate Limit EvalSet",
+        template="Given this conversation: {{ conversation }} Answer: {{ eval_question }}",
+        questions=[f"Question {i}" for i in range(5)]  # 5 questions
+    )
+    
+    # Mock the get_evalset function
+    original_get_evalset = agentoptim.runner.get_evalset
+    
+    def mock_get_evalset(evalset_id):
+        return test_evalset
+    
+    # Create a mock call_llm_api function that simulates rate limit errors
+    # for specific questions
+    original_call_llm_api = agentoptim.runner.call_llm_api
+    
+    # Counter to track which question is being processed
+    call_counter = {"count": 0}
+    
+    async def mock_call_llm_api(prompt=None, model=None, temperature=None, max_tokens=None, 
+                               logit_bias=None, messages=None, omit_reasoning=False):
+        # Increment the counter for each call
+        call_counter["count"] += 1
+        
+        # Simulate rate limit error for every other call
+        if call_counter["count"] % 2 == 0:
+            return {
+                "error": "Rate limit exceeded. Please try again later.",
+                "details": "You are sending requests too quickly. Please slow down."
+            }
+        else:
+            # Return a successful response for odd-numbered calls
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"reasoning": "The response is clear and helpful.", "judgment": true, "confidence": 0.85}'
+                        }
+                    }
+                ]
+            }
+    
+    # Apply the patches
+    agentoptim.runner.get_evalset = mock_get_evalset
+    agentoptim.runner.call_llm_api = mock_call_llm_api
+    
+    try:
+        # Define a test conversation
+        conversation = [
+            {"role": "user", "content": "How do I reset my password?"},
+            {"role": "assistant", "content": "Go to login page and click 'Forgot Password'."}
+        ]
+        
+        # Run the evalset with rate limit errors
+        result = await run_evalset(
+            evalset_id="rate-limit-evalset",
+            conversation=conversation,
+            judge_model="test-model",
+            max_parallel=2  # Allow parallel processing
+        )
+        
+        # Check that the overall result still has success status
+        assert result["status"] == "success"
+        assert result["evalset_id"] == "rate-limit-evalset"
+        
+        # We should have all 5 results
+        assert len(result["results"]) == 5
+        
+        # Check that we have a mix of successful and failed evaluations
+        successful_evals = [r for r in result["results"] if r["error"] is None]
+        failed_evals = [r for r in result["results"] if r["error"] is not None]
+        
+        # We should have some successful and some failed evaluations
+        assert len(successful_evals) > 0
+        assert len(failed_evals) > 0
+        
+        # Check that the failures are due to rate limiting
+        for failed in failed_evals:
+            assert "Rate limit" in failed["error"]
+        
+        # Check that the summary counts are correct
+        assert result["summary"]["total_questions"] == 5
+        assert result["summary"]["successful_evaluations"] == len(successful_evals)
+        assert result["summary"]["error_count"] == len(failed_evals)
+        
+        # Verify the formatted message mentions errors
+        assert f"Errors: {len(failed_evals)}" in result["formatted_message"]
+        
+    finally:
+        # Restore original functions
+        agentoptim.runner.get_evalset = original_get_evalset
+        agentoptim.runner.call_llm_api = original_call_llm_api
 
 
 if __name__ == "__main__":

@@ -939,6 +939,10 @@ async def run_evalset(
             "conversation": conversation
         }, ["evalset_id", "conversation"])
         
+        # Validate max_parallel
+        if not isinstance(max_parallel, int) or max_parallel <= 0:
+            return format_error(f"max_parallel must be a positive integer, got {max_parallel}")
+        
         # Get the EvalSet
         evalset = get_evalset(evalset_id)
         if not evalset:

@@ -591,35 +591,8 @@ graph TD
     class Security,Support,Maintain,Scale production;
     class Key_Metrics,Production_Ready container;
 
-    %% Apply gradient styling to boxes
-    style API fill:url(#api-gradient);
-    style Style fill:url(#style-gradient);
-    style Setup fill:url(#setup-gradient);
-    style Test fill:url(#test-gradient);
-    style Speed fill:url(#speed-gradient);
-    style Flex fill:url(#flex-gradient);
-
-    %% Define gradients
-    defs
-      linearGradient #api-gradient x1="0%" y1="0%" x2="100%" y2="100%"
-        stop offset="0%" stop-color="#3498db"
-        stop offset="100%" stop-color="#2980b9"
-      linearGradient #style-gradient x1="0%" y1="0%" x2="100%" y2="100%"
-        stop offset="0%" stop-color="#9b59b6"
-        stop offset="100%" stop-color="#8e44ad"
-      linearGradient #setup-gradient x1="0%" y1="0%" x2="100%" y2="100%"
-        stop offset="0%" stop-color="#f1c40f"
-        stop offset="100%" stop-color="#f39c12"
-      linearGradient #test-gradient x1="0%" y1="0%" x2="100%" y2="100%"
-        stop offset="0%" stop-color="#e74c3c"
-        stop offset="100%" stop-color="#c0392b"
-      linearGradient #speed-gradient x1="0%" y1="0%" x2="100%" y2="100%"
-        stop offset="0%" stop-color="#1abc9c"
-        stop offset="100%" stop-color="#16a085"
-      linearGradient #flex-gradient x1="0%" y1="0%" x2="100%" y2="100%"
-        stop offset="0%" stop-color="#34495e"
-        stop offset="100%" stop-color="#2c3e50"
-    end
+    %% GitHub Mermaid doesn't fully support gradients and advanced styling
+    %% Using the class-based styling instead for better compatibility
 ```
 
 AgentOptim v2.1.0 is ready for production use with:
