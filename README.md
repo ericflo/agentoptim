@@ -411,21 +411,46 @@ After adding the configuration, launch Claude Code with:
 claude --mcp-server=optim
 ```
 
-### 🧩 Judge Model Selection
+### 🧩 Model Selection and API Providers
 
-AgentOptim uses a simple priority system to determine which judge model evaluates your conversations:
+AgentOptim supports multiple AI providers and models for your evaluations:
+
+#### CLI Provider Selection
+
+Use the `--provider` flag to easily select different AI providers:
+
+```bash
+# Use OpenAI models (sets API base URL and default model)
+agentoptim eval <evalset-id> conversation.json --provider openai
+
+# Use Anthropic models
+agentoptim eval <evalset-id> conversation.json --provider anthropic
+
+# Use local models (default)
+agentoptim eval <evalset-id> conversation.json --provider local
+```
+
+Each provider sets appropriate defaults:
+- `openai`: Uses OpenAI API with gpt-4o-mini as default model
+- `anthropic`: Uses Anthropic API with claude-3-5-haiku as default model
+- `local`: Uses localhost:1234/v1 with meta-llama-3.1-8b-instruct as default model
+
+#### Model Selection Priority
+
+AgentOptim determines which model to use for evaluations through this order:
 
 | Priority | Method | Example |
 |----------|--------|---------|
-| 1️⃣ Highest | Environment variable | `AGENTOPTIM_JUDGE_MODEL=claude-3-haiku-20240307 agentoptim` |
-| 2️⃣ Second | Client configuration | In Claude Code's config.json under env settings |
-| 3️⃣ Default | Built-in default | Falls back to `meta-llama-3.1-8b-instruct` |
+| 1️⃣ Highest | CLI model flag | `agentoptim eval <id> conv.json --model gpt-4o-mini` |
+| 2️⃣ Second | Environment variable | `AGENTOPTIM_JUDGE_MODEL=claude-3-haiku-20240307 agentoptim` |
+| 3️⃣ Third | Provider default | Based on selected `--provider` |
+| 4️⃣ Default | Built-in fallback | `meta-llama-3.1-8b-instruct` |
 
 **💡 Pro Tips:**
-- For teams, set the environment variable in your Claude Code config to ensure consistent model usage
-- For benchmarking different models, modify the AGENTOPTIM_JUDGE_MODEL environment variable between runs
-- When publishing results, always document which judge model you used
-- For local development, LM Studio models are free and provide excellent results
+- Use `--provider` for quick switching between OpenAI, Anthropic, and local models
+- For fine-grained control, use the `--model` flag to specify exact models
+- Set API keys via `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` environment variables
+- For consistent team usage, configure model and provider in Claude Code settings
 
 ## 🏆 Key Use Cases
 
