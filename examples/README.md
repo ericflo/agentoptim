@@ -14,6 +14,12 @@ This directory contains comprehensive examples demonstrating AgentOptim's capabi
   - Managing evaluation criteria
   - Working with different API options
 
+- [cli_usage_examples.md](./cli_usage_examples.md) - Command-line interface examples:
+  - Managing evaluation sets through the CLI
+  - Running evaluations from the command line
+  - Using different output formats
+  - Integrating with other tools
+
 - [support_response_evaluation.py](./support_response_evaluation.py) - Customer support quality:
   - Evaluating different support response styles
   - Comparing detailed vs. brief responses

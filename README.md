@@ -270,16 +270,51 @@ For more comprehensive examples, check out our [examples directory](examples/) w
 pip install agentoptim
 ```
 
+### 🚀 Using the AgentOptim CLI
+
+AgentOptim provides a powerful command-line interface for evaluation and optimization:
+
+```bash
+# Start the MCP server
+agentoptim server
+
+# List all evaluation sets
+agentoptim list
+
+# Get details about a specific evaluation set
+agentoptim get 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e
+
+# Create a new evaluation set
+agentoptim create --name "Response Quality" \
+  --questions questions.txt \
+  --short-desc "Evaluate response quality" \
+  --long-desc "This evaluation set measures the overall quality of assistant responses..."
+
+# Evaluate a conversation against an evaluation set
+agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e conversation.json
+
+# Evaluate a text file (treated as a single user message)
+agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e --text response.txt --model "gpt-4o"
+
+# Get cache statistics
+agentoptim stats
+```
+
+Run `agentoptim --help` for complete CLI documentation.
+
 ### 🚀 Starting the MCP Server
 
 You have two simple options to start the AgentOptim server:
 
 ```bash
-# Option 1: Using the command line executable (recommended)
+# Option 1: Using the CLI (recommended)
+agentoptim server
+
+# Option 2: Using the legacy command
 agentoptim
 
-# Option 2: Using the Python module
-python -m agentoptim
+# Option 3: Using the Python module
+python -m agentoptim server
 ```
 
 When started with no options, the server:
@@ -303,7 +338,7 @@ Control AgentOptim's behavior with these environment variables:
 **Example with custom settings:**
 ```bash
 # Run with GPT-4o-mini as judge, omit reasoning details
-AGENTOPTIM_JUDGE_MODEL=gpt-4o-mini AGENTOPTIM_OMIT_REASONING=1 agentoptim
+AGENTOPTIM_JUDGE_MODEL=gpt-4o-mini AGENTOPTIM_OMIT_REASONING=1 agentoptim server
 ```
 
 ### 🔌 Configuring Claude Code
