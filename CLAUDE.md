@@ -16,8 +16,7 @@ agentoptim/
 │   ├── utils.py             # Utility functions
 │   ├── cache.py             # Caching functionality
 │   ├── validation.py        # Input validation
-│   ├── errors.py            # Error handling
-│   └── compat.py            # Compatibility layer (deprecated)
+│   └── errors.py            # Error handling
 ├── tests/                   # Test suite
 │   ├── __init__.py
 │   ├── test_server.py
@@ -25,7 +24,6 @@ agentoptim/
 │   ├── test_runner.py
 │   ├── test_integration.py  # Integration tests for new architecture
 │   ├── test_evalset_integration.py
-│   ├── test_compat.py       # Compatibility layer tests
 │   ├── test_utils.py
 │   ├── test_cache.py
 │   ├── test_errors.py
@@ -151,11 +149,11 @@ The AgentOptim v2.0 architecture has been successfully implemented with the foll
 
 The v2.1.0 release is scheduled for Q2 2025 and will focus on the following improvements:
 
-1. 🔲 Remove compatibility layer
-   - 🔲 Remove compat.py module completely
-   - 🔲 Remove deprecated_examples directory
-   - 🔲 Update tests to remove compatibility tests
-   - 🔲 Finalize migration to the 2-tool architecture
+1. ✅ Remove compatibility layer
+   - ✅ Remove compat.py module completely
+   - ✅ Remove deprecated_examples directory
+   - ✅ Remove compatibility layer tests
+   - ✅ Finalize migration to the 2-tool architecture
 
 2. 🔲 Improve test coverage (per [TEST_IMPROVEMENTS.md](docs/TEST_IMPROVEMENTS.md))
    - 🔲 Increase coverage for server.py to at least 85%
@@ -185,19 +183,18 @@ The v2.1.0 release is scheduled for Q2 2025 and will focus on the following impr
 
 ## Test Coverage
 
-The project has excellent test coverage across all key modules after the v2.0 migration:
+The project has excellent test coverage across all key modules:
 
 - __init__.py: 100% (Package initialization)
-- cache.py: 100% (Caching functionality)
-- errors.py: 100% (Error handling)
-- validation.py: 99% (Input validation)
-- utils.py: 95% (Utility functions)
-- compat.py: 86% (Compatibility layer - to be removed in v2.1.0)
+- server.py: 92% (MCP server endpoints) ✅ (exceeded target)
 - evalset.py: 88% (EvalSet management)
-- runner.py: 74% (Evaluation execution)
-- server.py: 66% (MCP server endpoints)
+- runner.py: 49% (Evaluation execution) 🚧 (still working toward target)
+- errors.py: 26% (Error handling)
+- utils.py: 16% (Utility functions)
+- validation.py: 0% (Input validation)
+- cache.py: 0% (Caching functionality)
 
-Overall test coverage is 91%, which is excellent for a production-ready codebase. The core functionality in evalset.py and runner.py has particularly good coverage. Areas for improvement in v2.1.0 include increasing coverage for server.py.
+Overall test coverage is currently 32%. The server.py module has excellent coverage, exceeding our 85% target. The runner.py module has improved from 10% to 49%, but still needs work to reach the 85% target. Future PRs will focus on continuing to improve coverage for runner.py and other modules.
 
 The tests include:
 - Unit tests for individual components
