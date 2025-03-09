@@ -105,7 +105,7 @@ Whether you're fine-tuning production agents, comparing prompt strategies, or be
 
 ## 🚀 What's New in v2.1.1!
 
-Version 2.1.1 adds delightful CLI enhancements that make AgentOptim even more user-friendly:
+Version 2.1.1 adds delightful CLI enhancements that make AgentOptim even more user-friendly and productive:
 
 - ✨ **Interactive Conversation Creator** - Create conversations to evaluate with an interactive TUI
 - 📊 **Rich Progress Visualization** - Watch evaluation progress with beautiful progress bars
@@ -113,6 +113,11 @@ Version 2.1.1 adds delightful CLI enhancements that make AgentOptim even more us
 - 🔠 **Command Auto-Completion** - Tab completion for all commands and options
 - 🔍 **Command Suggestion System** - Get helpful suggestions when commands are mistyped
 - 📱 **Concise Error Messages** - Clear help when something goes wrong
+- 📋 **Export Results to Multiple Formats** - Export evaluations as HTML, Markdown, CSV, JSON, or PDF
+- 📈 **Powerful Comparison Tool** - Compare two evaluation runs side by side with visual indicators
+- ⏱️ **Command Execution Timer** - See how long commands take to run
+- ⚙️ **Scriptability Improvements** - Quiet mode and machine-readable outputs for automation
+- 🔄 **Latest Run References** - Use 'latest' and 'latest-N' to easily reference recent runs
 
 Version 2.1.0 completed our architectural simplification by removing the legacy compatibility layer and delivering a clean, modern API:
 
@@ -386,7 +391,7 @@ pip install agentoptim
 
 ### 🚀 Using the AgentOptim CLI
 
-AgentOptim provides an elegant command-line interface for evaluation and optimization:
+AgentOptim provides a powerful and delightful command-line interface for evaluation and optimization:
 
 ```bash
 # Start the MCP server
@@ -403,6 +408,19 @@ agentoptim run get latest                   # Get the most recent evaluation res
 agentoptim run list                         # List all your evaluation runs
 agentoptim run get <id>                     # Get a specific evaluation by ID
 
+# Interactive Mode
+agentoptim run create <evalset-id> --interactive       # Create and evaluate a conversation interactively
+
+# Results Export
+agentoptim run export latest --format html --output report.html  # Export as HTML report
+agentoptim run export latest --format markdown --charts          # Export as Markdown with charts
+agentoptim run export latest --format csv --output results.csv   # Export as CSV data
+
+# Comparison
+agentoptim run compare latest latest-1      # Compare latest two evaluation runs
+agentoptim run compare latest-1 latest-2 --detailed   # Compare with detailed reasoning
+agentoptim run compare latest latest-1 --format html --output diff.html  # HTML comparison
+
 # Input Options
 agentoptim run create <evalset-id> --text response.txt # Evaluate a text file
 
@@ -410,13 +428,31 @@ agentoptim run create <evalset-id> --text response.txt # Evaluate a text file
 agentoptim run create <evalset-id> conversation.json --model "gpt-4o"   # Specify model
 agentoptim run create <evalset-id> conversation.json --provider openai   # Use OpenAI
 
-# Developer Tools
-agentoptim dev cache                        # View cache statistics (for developers)
+# Developer & Automation
+agentoptim dev cache                        # View cache statistics
+agentoptim run list --format json -q        # Machine-readable output for scripts
+agentoptim run get latest --format json -q  # Quiet mode for scripting
+
+# Command Completion
+agentoptim --install-completion             # Install shell tab completion
 ```
 
-All commands use auto-generated IDs - you don't have to create or remember them!
+All commands use auto-generated IDs - you don't need to remember them, and you can always use `latest` to refer to the most recent run!
 
 Run `agentoptim --help` for complete CLI documentation.
+
+### 🧠 CLI Power User Features
+
+AgentOptim includes several features designed for power users and automation:
+
+- **Command Timer**: Set `AGENTOPTIM_SHOW_TIMER=1` to see execution time for commands
+- **Command Suggestions**: Get helpful corrections when mistyping commands
+- **Shell Completion**: Install tab completion with `--install-completion`
+- **Latest Run References**: Use `latest`, `latest-1`, `latest-2`, etc., to refer to recent runs
+- **Progress Visualization**: Watch real-time progress during evaluations
+- **Export Formats**: Generate professional reports in HTML, Markdown, CSV, and more
+- **Quiet Mode**: Use `-q` or `--quiet` to suppress output for scripting/automation
+- **Auto-Open Reports**: Exported files automatically open in your browser
 
 ### 🔄 CLI Migration Guide
 
