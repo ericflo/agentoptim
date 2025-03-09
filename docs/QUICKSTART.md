@@ -35,10 +35,12 @@ agentoptim evalset create --name "Response Quality" \
 # Create a new evaluation set interactively (easier!)
 agentoptim evalset create --wizard
 
-# Evaluate a conversation file against an evaluation set (use an ID from evalset list)
+# Evaluate a conversation file against an evaluation set
+# Note: Replace <evalset-id> with an ID from the list command output
 agentoptim run create <evalset-id> conversation.json
 
-# Get the most recent evaluation result
+# The system will generate an evaluation ID automatically
+# To view the most recent evaluation result without needing the ID:
 agentoptim run get latest
 
 # View developer tools like cache statistics

@@ -213,14 +213,15 @@ Repeat this for `average_conversation.json` and `poor_conversation.json` with th
 Then evaluate each with the CLI:
 
 ```bash
-# First, list all evalsets to get a real ID:
-agentoptim evalset list
+# First, create or list your evaluation sets:
+agentoptim evalset create --wizard         # Create a new set interactively
+agentoptim evalset list                    # List all sets to find their IDs
 
-# Then use the ID from the output above (substituting your actual ID)
-# Example: If your EvalSet ID is 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e
+# The system automatically generates unique IDs for each evalset:
+# Example ID: 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e
 
-# Evaluate good response
-agentoptim run create <your-evalset-id> good_conversation.json \
+# Run evaluations using an evalset ID from the list command:
+agentoptim run create <evalset-id> good_conversation.json \
   --model "meta-llama-3.1-8b-instruct" \
   --concurrency 3 \
   --output good_results.json \

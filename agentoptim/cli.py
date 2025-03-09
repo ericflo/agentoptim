@@ -56,19 +56,19 @@ def setup_parser():
           # Start the server
           agentoptim server
           
-          # Create an evaluation set
-          agentoptim evalset create --name "Support Quality" --questions questions.txt
+          # Create an evaluation set (generates a unique ID)
+          agentoptim evalset create --wizard
           
           # List all evaluation sets to get their IDs
           agentoptim evalset list
           
-          # Run an evaluation (use an ID from evalset list output)
+          # Run an evaluation (system stores results with auto-generated ID)
           agentoptim run create <evalset-id> conversation.json
           
-          # Get the most recent evaluation results
+          # Get the most recent evaluation result (no need to remember IDs)
           agentoptim run get latest
           
-          # List all evaluation runs
+          # View all your evaluation runs
           agentoptim run list
         """)
     )
@@ -147,14 +147,14 @@ def setup_parser():
     
     # run get
     run_get_parser = run_subparsers.add_parser("get", help="Get a specific evaluation run")
-    run_get_parser.add_argument("eval_run_id", help="ID of the evaluation run to retrieve, or 'latest' for most recent run")
+    run_get_parser.add_argument("eval_run_id", help="ID of a specific run to retrieve, or simply use 'latest' to get most recent result")
     run_get_parser.add_argument("--format", choices=["text", "json", "yaml"], default="text",
                             help="Output format (default: text)")
     run_get_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
     
     # run create
-    run_create_parser = run_subparsers.add_parser("create", help="Run a new evaluation")
-    run_create_parser.add_argument("evalset_id", help="ID of the evaluation set to use")
+    run_create_parser = run_subparsers.add_parser("create", help="Run a new evaluation (result ID will be auto-generated)")
+    run_create_parser.add_argument("evalset_id", nargs="?", help="ID of the evaluation set to use (get IDs with 'evalset list')")
     run_create_parser.add_argument("conversation", nargs="?", help="Conversation file (JSON format)")
     run_create_parser.add_argument("--interactive", action="store_true", help="Create conversation interactively")
     run_create_parser.add_argument("--text", help="Text file to evaluate (treated as a single user message)")
@@ -527,6 +527,26 @@ def run_cli():
                 print(f"{Fore.YELLOW}Interactive conversation input mode not implemented yet.{Style.RESET_ALL}")
                 print("Please provide a conversation file or --text file.")
                 sys.exit(1)
+            
+            # Auto-select evalset if not provided
+            from agentoptim.evalset import manage_evalset
+            
+            if not args.evalset_id or args.evalset_id.lower() == 'latest':
+                # List existing evalsets
+                evalsets_response = manage_evalset(action="list")
+                evalsets = evalsets_response.get("evalsets", {})
+                
+                if not evalsets:
+                    print(f"{Fore.RED}Error: No evaluation sets found. Create one first with 'agentoptim evalset create --wizard'{Style.RESET_ALL}")
+                    sys.exit(1)
+                
+                # Sort by creation time (if available) or use first
+                # This is a simplified approach - we're just getting the first evalset for now
+                evalset_id = list(evalsets.keys())[0]
+                evalset_name = evalsets[evalset_id].get("name", "Unknown EvalSet")
+                
+                print(f"{Fore.CYAN}Auto-selected EvalSet: {evalset_name} (ID: {evalset_id}){Style.RESET_ALL}")
+                args.evalset_id = evalset_id
             
             # Load the conversation
             conversation = load_conversation(args.conversation, args.text)
