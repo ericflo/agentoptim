@@ -2,7 +2,7 @@
 
 import os
 import json
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -139,28 +139,77 @@ def get_evalset(evalset_id: str) -> Optional[EvalSet]:
     return None
 
 
-def create_evalset(
+def find_identical_evalset(
     name: str, 
     questions: List[str],
     short_description: str,
     long_description: str
-) -> EvalSet:
+) -> Optional[EvalSet]:
     """
-    Create a new EvalSet.
+    Find an existing EvalSet with identical properties.
     
-    Before creating a new EvalSet, consider using list_evalsets() to see if a similar one
-    already exists. This helps prevent duplication and promotes reuse of well-crafted EvalSets.
+    Args:
+        name: The name of the EvalSet
+        questions: List of yes/no evaluation questions
+        short_description: A concise summary of what this EvalSet measures
+        long_description: A detailed explanation of the evaluation criteria
+        
+    Returns:
+        Existing EvalSet object if found, None otherwise
+    """
+    # Get all existing EvalSets
+    existing_evalsets = list_evalsets()
+    
+    # Sort questions to ensure consistent comparison regardless of order
+    sorted_questions = sorted(questions)
+    
+    for evalset in existing_evalsets:
+        # Check if all properties match
+        if (evalset.name == name and 
+            sorted(evalset.questions) == sorted_questions and
+            evalset.short_description == short_description and
+            evalset.long_description == long_description):
+            return evalset
+    
+    return None
+
+
+def create_evalset(
+    name: str, 
+    questions: List[str],
+    short_description: str,
+    long_description: str,
+    check_duplicates: bool = True
+) -> Tuple[EvalSet, bool]:
+    """
+    Create a new EvalSet or return an existing identical one.
+    
+    Before creating a new EvalSet, searches for an identical existing EvalSet
+    to prevent duplication and promote reuse of well-crafted EvalSets.
     
     Args:
         name: The name of the EvalSet
         questions: List of yes/no evaluation questions
         short_description: A concise summary (6-128 chars) of what this EvalSet measures
-        long_description: A detailed explanation (256-1024 chars) of the evaluation criteria, 
-                         how to interpret results, and when to use this EvalSet
+        long_description: A detailed explanation (256-1024 chars) of the evaluation criteria
+        check_duplicates: Whether to check for identical existing EvalSets
         
     Returns:
-        The created EvalSet object
+        A tuple containing (EvalSet object, is_new_evalset)
     """
+    # Check for identical existing EvalSet
+    if check_duplicates:
+        existing_evalset = find_identical_evalset(
+            name=name,
+            questions=questions,
+            short_description=short_description,
+            long_description=long_description
+        )
+        
+        if existing_evalset:
+            return existing_evalset, False
+    
+    # Create new EvalSet if no identical one exists
     evalset = EvalSet(
         name=name, 
         questions=questions, 
@@ -175,7 +224,7 @@ def create_evalset(
     # Cache the new EvalSet
     cache_evalset(evalset.id, evalset)
     
-    return evalset
+    return evalset, True
 
 
 def update_evalset(
@@ -368,18 +417,26 @@ def manage_evalset(
             
             # Template is now system-defined, no need to validate
             
-            evalset = create_evalset(
+            # Create a new EvalSet or find existing identical one
+            evalset, is_new = create_evalset(
                 name=name,
                 questions=questions,
                 short_description=short_description,
-                long_description=long_description
+                long_description=long_description,
+                check_duplicates=True
             )
+            
+            if is_new:
+                message = f"EvalSet '{name}' created with ID: {evalset.id}"
+            else:
+                message = f"Found existing identical EvalSet '{name}' with ID: {evalset.id}"
             
             return {
                 "status": "success",
                 "evalset": evalset.to_dict(),
-                "message": f"EvalSet '{name}' created with ID: {evalset.id}",
-                "formatted_message": f"EvalSet '{name}' created with ID: {evalset.id}"
+                "is_new": is_new,
+                "message": message,
+                "formatted_message": message
             }
         
         elif action == "update":

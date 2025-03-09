@@ -5,14 +5,14 @@ This directory contains comprehensive examples demonstrating AgentOptim's capabi
 ## Basic Examples
 
 - [usage_example.py](./usage_example.py) - Simple introduction to AgentOptim:
-  - Creating an EvalSet with basic criteria
-  - Evaluating a single conversation
-  - Interpreting evaluation results
+  - Using the `manage_evalset_tool` to list EvalSets
+  - Shows basic AgentOptim functionality
+  - Simplified for quick execution
 
 - [evalset_example.py](./evalset_example.py) - Comprehensive API walkthrough:
   - Creating, retrieving, updating, and listing EvalSets
   - Managing evaluation criteria
-  - Working with different API options
+  - Working with the v2.0+ API structure
 
 - [cli_usage_examples.md](./cli_usage_examples.md) - Command-line interface examples:
   - Managing evaluation sets through the CLI
@@ -102,8 +102,22 @@ To run these examples:
 
 Each example includes detailed comments and documentation to help you understand how to apply these techniques to your own projects.
 
+## Updates for v2.1.0
+
+The examples in this directory have been updated for AgentOptim v2.1.0, with the following changes:
+
+1. Removed dependencies on the compat layer, which has been removed in v2.1.0
+2. Updated API calls to use the current parameter structure:
+   - Added required `short_description` and `long_description` parameters
+   - Removed `template` parameter as templates are now system-defined
+   - Improved error handling and response parsing
+3. Simplified some examples to run more quickly
+4. Added robust error handling for all API interactions
+
+For the full evaluation experience, consider running the examples with a local LLM server that supports the OpenAI API format.
+
 ## Additional Resources
 
-- [Quickstart Guide](../docs/QUICKSTART.md) - Get started in under 5 minutes
 - [Full Tutorial](../docs/TUTORIAL.md) - Step-by-step guide to AgentOptim
 - [API Reference](../docs/API_REFERENCE.md) - Complete API documentation
+- [Migration Guide](../docs/MIGRATION_GUIDE.md) - Guide for migrating from v1.x to v2.x
