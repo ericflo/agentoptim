@@ -356,43 +356,83 @@ def run_cli():
                     
                 elif args.format == "text":
                     # Create a more visually appealing text format with box drawing
-                    title = f"{Fore.CYAN}╭──────────────────────────────────────────╮{Style.RESET_ALL}"
-                    title += f"\n{Fore.CYAN}│  Available Evaluation Sets ({evalset_count})       │{Style.RESET_ALL}"
-                    title += f"\n{Fore.CYAN}╰──────────────────────────────────────────╯{Style.RESET_ALL}\n"
+                    width = 50  # Same fixed width as cards
+                    
+                    title_text = f"Available Evaluation Sets ({evalset_count})"
+                    title_padding = width - 2 - len(title_text)  # -2 for the borders
+                    left_title_pad = title_padding // 2
+                    right_title_pad = title_padding - left_title_pad
+                    
+                    title = f"{Fore.CYAN}╭{'─' * (width-2)}╮{Style.RESET_ALL}"
+                    title += f"\n{Fore.CYAN}│{' ' * left_title_pad}{title_text}{' ' * right_title_pad}│{Style.RESET_ALL}"
+                    title += f"\n{Fore.CYAN}╰{'─' * (width-2)}╯{Style.RESET_ALL}\n"
                     
                     # Format each evalset as a card
                     cards = []
                     for i, item in enumerate(formatted_result):
                         card = []
                         
+                        width = 50  # Set a fixed card width
+                        
                         # Card header with name
                         name = item['name']
-                        name_padding = 36 - len(name)
+                        if len(name) > width - 8:  # Leave some buffer space
+                            name = name[:width-11] + "..."
+                            
+                        name_padding = width - 2 - len(name)  # -2 for the borders
                         left_pad = name_padding // 2
                         right_pad = name_padding - left_pad
                         
-                        card.append(f"{Fore.GREEN}┌{'─' * 38}┐{Style.RESET_ALL}")
+                        card.append(f"{Fore.GREEN}┌{'─' * (width-2)}┐{Style.RESET_ALL}")
                         card.append(f"{Fore.GREEN}│{' ' * left_pad}{Fore.WHITE}{name}{Style.RESET_ALL}{Fore.GREEN}{' ' * right_pad}│{Style.RESET_ALL}")
-                        card.append(f"{Fore.GREEN}├{'─' * 38}┤{Style.RESET_ALL}")
+                        card.append(f"{Fore.GREEN}├{'─' * (width-2)}┤{Style.RESET_ALL}")
+                        
+                        # Calculate how much space to leave for content after the label
+                        content_width = width - 4  # -4 for "│ " at start and " │" at end
                         
                         # Card content
-                        card.append(f"{Fore.GREEN}│ {Fore.YELLOW}ID:{Style.RESET_ALL} {item['id'].ljust(33-3)}{Fore.GREEN} │{Style.RESET_ALL}")
+                        id_label = f"{Fore.YELLOW}ID:{Style.RESET_ALL} "
+                        id_content_space = content_width - len("ID: ")
+                        # Truncate ID if necessary
+                        id_value = item['id']
+                        if len(id_value) > id_content_space:
+                            id_value = id_value[:id_content_space-3] + "..."
                         
-                        # Description
+                        card.append(f"{Fore.GREEN}│ {id_label}{id_value.ljust(id_content_space)}{Fore.GREEN} │{Style.RESET_ALL}")
+                        
+                        # Description (with word wrap for longer descriptions)
                         if item['description']:
-                            # If description is too long, truncate it
+                            desc_label = f"{Fore.YELLOW}Description:{Style.RESET_ALL} "
+                            desc_content_space = content_width - len("Description: ")
                             desc = item['description']
-                            if len(desc) > 30:
-                                desc = desc[:27] + "..."
-                            card.append(f"{Fore.GREEN}│ {Fore.YELLOW}Description:{Style.RESET_ALL} {desc.ljust(33-12)}{Fore.GREEN} │{Style.RESET_ALL}")
+                            
+                            # If description is too long, split into two lines
+                            if len(desc) > desc_content_space:
+                                # First line with label
+                                first_line = desc[:desc_content_space]
+                                card.append(f"{Fore.GREEN}│ {desc_label}{first_line.ljust(desc_content_space)}{Fore.GREEN} │{Style.RESET_ALL}")
+                                
+                                # Second line (indented to align with first line content)
+                                indent = len("Description: ")
+                                remaining = desc[desc_content_space:]
+                                if len(remaining) > desc_content_space:
+                                    remaining = remaining[:desc_content_space-3] + "..."
+                                card.append(f"{Fore.GREEN}│ {' ' * indent}{remaining.ljust(desc_content_space)}{Fore.GREEN} │{Style.RESET_ALL}")
+                            else:
+                                # Single line for short descriptions
+                                card.append(f"{Fore.GREEN}│ {desc_label}{desc.ljust(desc_content_space)}{Fore.GREEN} │{Style.RESET_ALL}")
                         
                         # Question count
-                        card.append(f"{Fore.GREEN}│ {Fore.YELLOW}Questions:{Style.RESET_ALL} {str(item['questions']).ljust(33-10)}{Fore.GREEN} │{Style.RESET_ALL}")
+                        questions_label = f"{Fore.YELLOW}Questions:{Style.RESET_ALL} "
+                        questions_content_space = content_width - len("Questions: ")
+                        card.append(f"{Fore.GREEN}│ {questions_label}{str(item['questions']).ljust(questions_content_space)}{Fore.GREEN} │{Style.RESET_ALL}")
                         
                         # Card footer with actions
-                        card.append(f"{Fore.GREEN}├{'─' * 38}┤{Style.RESET_ALL}")
-                        card.append(f"{Fore.GREEN}│ {Fore.BLUE}Actions:{Style.RESET_ALL} get, eval{' ' * 20}{Fore.GREEN} │{Style.RESET_ALL}")
-                        card.append(f"{Fore.GREEN}└{'─' * 38}┘{Style.RESET_ALL}")
+                        card.append(f"{Fore.GREEN}├{'─' * (width-2)}┤{Style.RESET_ALL}")
+                        actions_label = f"{Fore.BLUE}Actions:{Style.RESET_ALL} "
+                        actions_content_space = content_width - len("Actions: ")
+                        card.append(f"{Fore.GREEN}│ {actions_label}{'get, eval'.ljust(actions_content_space)}{Fore.GREEN} │{Style.RESET_ALL}")
+                        card.append(f"{Fore.GREEN}└{'─' * (width-2)}┘{Style.RESET_ALL}")
                         
                         cards.append("\n".join(card))
                     
@@ -412,40 +452,77 @@ def run_cli():
                     
                     # If output file is specified, write without ANSI colors
                     if args.output:
-                        plain_title = f"Available Evaluation Sets ({evalset_count})\n"
+                        # Create plain title with matching width
+                        width = 50  # Same fixed width as cards
+                        title_text = f"Available Evaluation Sets ({evalset_count})"
+                        title_padding = width - 2 - len(title_text)  # -2 for the borders
+                        left_title_pad = title_padding // 2
+                        right_title_pad = title_padding - left_title_pad
+                        
+                        plain_title = f"╭{'─' * (width-2)}╮\n"
+                        plain_title += f"│{' ' * left_title_pad}{title_text}{' ' * right_title_pad}│\n"
+                        plain_title += f"╰{'─' * (width-2)}╯\n"
                         
                         # Create plain version of cards
                         plain_cards = []
                         for item in formatted_result:
                             plain_card = []
                             
+                            width = 50  # Same fixed card width as colored version
+                            
                             # Card header with name
                             name = item['name']
-                            name_padding = 36 - len(name)
+                            if len(name) > width - 8:  # Leave some buffer space
+                                name = name[:width-11] + "..."
+                                
+                            name_padding = width - 2 - len(name)  # -2 for the borders
                             left_pad = name_padding // 2
                             right_pad = name_padding - left_pad
                             
-                            plain_card.append(f"┌{'─' * 38}┐")
+                            plain_card.append(f"┌{'─' * (width-2)}┐")
                             plain_card.append(f"│{' ' * left_pad}{name}{' ' * right_pad}│")
-                            plain_card.append(f"├{'─' * 38}┤")
+                            plain_card.append(f"├{'─' * (width-2)}┤")
                             
-                            # Card content
-                            plain_card.append(f"│ ID: {item['id'].ljust(33-3)} │")
+                            # Calculate how much space to leave for content after the label
+                            content_width = width - 4  # -4 for "│ " at start and " │" at end
                             
-                            # Description
+                            # Card content - ID
+                            id_content_space = content_width - len("ID: ")
+                            id_value = item['id']
+                            if len(id_value) > id_content_space:
+                                id_value = id_value[:id_content_space-3] + "..."
+                            plain_card.append(f"│ ID: {id_value.ljust(id_content_space)} │")
+                            
+                            # Description with word wrap
                             if item['description']:
+                                desc_content_space = content_width - len("Description: ")
                                 desc = item['description']
-                                if len(desc) > 30:
-                                    desc = desc[:27] + "..."
-                                plain_card.append(f"│ Description: {desc.ljust(33-12)} │")
+                                
+                                # If description is too long, split into two lines
+                                if len(desc) > desc_content_space:
+                                    # First line with label
+                                    first_line = desc[:desc_content_space]
+                                    plain_card.append(f"│ Description: {first_line.ljust(desc_content_space)} │")
+                                    
+                                    # Second line (indented to align with first line content)
+                                    indent = len("Description: ")
+                                    remaining = desc[desc_content_space:]
+                                    if len(remaining) > desc_content_space:
+                                        remaining = remaining[:desc_content_space-3] + "..."
+                                    plain_card.append(f"│ {' ' * indent}{remaining.ljust(desc_content_space)} │")
+                                else:
+                                    # Single line for short descriptions
+                                    plain_card.append(f"│ Description: {desc.ljust(desc_content_space)} │")
                             
                             # Question count
-                            plain_card.append(f"│ Questions: {str(item['questions']).ljust(33-10)} │")
+                            questions_content_space = content_width - len("Questions: ")
+                            plain_card.append(f"│ Questions: {str(item['questions']).ljust(questions_content_space)} │")
                             
                             # Card footer with actions
-                            plain_card.append(f"├{'─' * 38}┤")
-                            plain_card.append(f"│ Actions: get, eval{' ' * 20} │")
-                            plain_card.append(f"└{'─' * 38}┘")
+                            plain_card.append(f"├{'─' * (width-2)}┤")
+                            actions_content_space = content_width - len("Actions: ")
+                            plain_card.append(f"│ Actions: {'get, eval'.ljust(actions_content_space)} │")
+                            plain_card.append(f"└{'─' * (width-2)}┘")
                             
                             plain_cards.append("\n".join(plain_card))
                         
