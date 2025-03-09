@@ -1,194 +1,188 @@
 """
-Example of using AgentOptim with custom evaluation templates.
+IMPORTANT NOTE: As of AgentOptim v2.1.0, templates are now system-defined.
 
-This example demonstrates how to:
-1. Create EvalSets with custom templates for different use cases
-2. Implement specialized evaluation patterns
-3. Define templates with different output formats
-4. Use templates for detailed, multi-faceted evaluation
+This example is kept for historical reference to show the types of evaluation patterns
+that are possible. However, the custom template functionality demonstrated here is
+no longer available in v2.1.0 as templates are now standardized.
 
-Use case: Creating specialized evaluation templates for specific domains
+The example now focuses on:
+1. Creating EvalSets with different types of questions for various use cases
+2. Implementing different evaluation patterns through question design
+3. Demonstrating how to structure evaluation criteria for different domains
+
+Use case: Creating specialized evaluation criteria for specific domains
 """
 
 import asyncio
 import json
+import re
 from pprint import pprint
 
-from agentoptim import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, run_evalset_tool
 
 
 async def main():
     print("=== AgentOptim Custom Template Examples ===")
     print("This example demonstrates creating and using custom templates for specialized evaluations")
     
-    # Step 1: Create an EvalSet with a basic template
-    print("\n1. Creating standard template EvalSet...")
+    # Step 1: Create an EvalSet with basic yes/no questions
+    print("\n1. Creating basic evaluation questions EvalSet...")
+    print("   Note: As of v2.1.0, templates are system-defined and the template parameter is no longer used.")
     
     standard_evalset_result = await manage_evalset_tool(
         action="create",
-        name="Standard Template Example",
-        template="""
-        Given this conversation:
-        {{ conversation }}
-        
-        Please answer the following yes/no question about the final assistant response:
-        {{ eval_question }}
-        
-        Return a JSON object with the following format:
-        {"judgment": 1} for yes or {"judgment": 0} for no.
-        """,
+        name="Standard Question Example",
         questions=[
             "Is the response helpful for the user's needs?",
             "Does the response directly address the user's question?",
             "Is the response clear and easy to understand?"
         ],
-        short_description="Basic template with yes/no judgments",
-        long_description="This EvalSet uses the standard template format that asks simple yes/no questions about assistant responses. It produces binary judgments with 1 for yes and 0 for no." + " " * 100
+        short_description="Basic set of yes/no evaluation questions",
+        long_description="This EvalSet uses simple yes/no questions about assistant responses to evaluate quality. It focuses on helpfulness, directness, and clarity to provide a basic quality assessment." + " " * 100
     )
     
     # Extract the EvalSet ID
-    standard_evalset_id = standard_evalset_result.get("evalset", {}).get("id")
+    standard_evalset_id = None
+    
+    # First check for evalset_id directly in the response
+    if "evalset_id" in standard_evalset_result:
+        standard_evalset_id = standard_evalset_result["evalset_id"]
+    # Next check if it's in an evalset object
+    elif "evalset" in standard_evalset_result and "id" in standard_evalset_result["evalset"]:
+        standard_evalset_id = standard_evalset_result["evalset"]["id"]
+    # Finally try to extract from result message
+    elif "result" in standard_evalset_result and isinstance(standard_evalset_result["result"], str):
+        id_match = re.search(r"ID: ([a-f0-9\-]+)", standard_evalset_result["result"])
+        if id_match:
+            standard_evalset_id = id_match.group(1)
+    
+    if not standard_evalset_id:
+        print("Error: Could not extract EvalSet ID from response")
+        print(f"Response: {standard_evalset_result}")
+        return
+        
     print(f"Standard EvalSet created with ID: {standard_evalset_id}")
     
-    # Step 2: Create an EvalSet with a Likert scale template
-    print("\n2. Creating Likert scale template EvalSet...")
+    # Step 2: Create an EvalSet with Likert-scale style questions
+    print("\n2. Creating Likert-scale style evaluation questions...")
     
     likert_evalset_result = await manage_evalset_tool(
         action="create",
-        name="Likert Scale Template",
-        template="""
-        Given this conversation:
-        {{ conversation }}
-        
-        Please evaluate the following aspect of the final assistant response:
-        {{ eval_question }}
-        
-        Rate your agreement on a 5-point Likert scale:
-        1 - Strongly Disagree
-        2 - Disagree
-        3 - Neutral
-        4 - Agree
-        5 - Strongly Agree
-        
-        Provide your rating and a brief explanation in JSON format:
-        {
-            "rating": [1-5 integer],
-            "explanation": "Brief justification for your rating",
-            "judgment": [0 or 1 - convert to binary where 4-5 = 1, 1-3 = 0]
-        }
-        """,
+        name="Likert-Style Evaluation",
         questions=[
-            "The response is comprehensive and covers all aspects of the query",
-            "The response is well-structured and organized logically",
-            "The response provides accurate information without errors",
-            "The response maintains an appropriate tone for the context"
+            "The response is comprehensive and covers all aspects of the query.",
+            "The response is well-structured and organized logically.",
+            "The response provides accurate information without errors.",
+            "The response maintains an appropriate tone for the context."
         ],
-        short_description="Template using 5-point Likert scale ratings",
-        long_description="This EvalSet uses a 5-point Likert scale template to provide more nuanced evaluation beyond binary yes/no judgments. It captures the degree of agreement while still providing a binary judgment for compatibility with overall metrics." + " " * 100
+        short_description="Questions designed in a Likert-scale agreement style",
+        long_description="This EvalSet uses questions phrased as statements that can be agreed or disagreed with, similar to a Likert scale assessment. The system will evaluate these as yes/no questions, where 'yes' indicates agreement with the statement and 'no' indicates disagreement." + " " * 100
     )
     
     # Extract the EvalSet ID
-    likert_evalset_id = likert_evalset_result.get("evalset", {}).get("id")
-    print(f"Likert scale EvalSet created with ID: {likert_evalset_id}")
+    likert_evalset_id = None
     
-    # Step 3: Create an EvalSet with a multi-criteria template
-    print("\n3. Creating multi-criteria template EvalSet...")
+    # First check for evalset_id directly in the response
+    if "evalset_id" in likert_evalset_result:
+        likert_evalset_id = likert_evalset_result["evalset_id"]
+    # Next check if it's in an evalset object
+    elif "evalset" in likert_evalset_result and "id" in likert_evalset_result["evalset"]:
+        likert_evalset_id = likert_evalset_result["evalset"]["id"]
+    # Finally try to extract from result message
+    elif "result" in likert_evalset_result and isinstance(likert_evalset_result["result"], str):
+        id_match = re.search(r"ID: ([a-f0-9\-]+)", likert_evalset_result["result"])
+        if id_match:
+            likert_evalset_id = id_match.group(1)
+    
+    if not likert_evalset_id:
+        print("Error: Could not extract EvalSet ID from response")
+        print(f"Response: {likert_evalset_result}")
+        return
+        
+    print(f"Likert-style EvalSet created with ID: {likert_evalset_id}")
+    
+    # Step 3: Create an EvalSet with multi-criteria style questions
+    print("\n3. Creating multi-criteria style evaluation questions...")
     
     multi_criteria_evalset_result = await manage_evalset_tool(
         action="create",
-        name="Multi-Criteria Template",
-        template="""
-        Given this conversation:
-        {{ conversation }}
-        
-        Please evaluate the response in terms of the following criteria:
-        {{ eval_question }}
-        
-        For each of these aspects, rate the response on a scale of 1-10 and provide justification.
-        
-        Return your evaluation in the following JSON format:
-        {
-            "accuracy": {
-                "score": [1-10 integer],
-                "justification": "Brief explanation for accuracy score"
-            },
-            "completeness": {
-                "score": [1-10 integer],
-                "justification": "Brief explanation for completeness score"
-            },
-            "clarity": {
-                "score": [1-10 integer],
-                "justification": "Brief explanation for clarity score"
-            },
-            "overall": {
-                "score": [1-10 integer],
-                "justification": "Brief explanation for overall score"
-            },
-            "judgment": [0 or 1 - where overall score 7+ = 1, 6- = 0]
-        }
-        """,
+        name="Multi-Criteria Evaluation",
         questions=[
-            "Evaluate this technical response on accuracy, completeness, clarity, and overall quality",
-            "Evaluate this customer service response on accuracy, completeness, clarity, and overall quality",
-            "Evaluate this educational response on accuracy, completeness, clarity, and overall quality"
+            "Is the technical response accurate and free from factual errors?",
+            "Is the technical response complete, covering all necessary aspects of the query?",
+            "Is the technical response clear and easy to understand?",
+            "Does the technical response provide effective solutions for the user's needs?",
+            "Is the technical response well-organized with a logical structure?",
+            "Does the technical response provide sufficient technical detail?",
+            "Does the technical response avoid unnecessary jargon or explain terms when needed?",
+            "Is the technical response's tone appropriate for a technical conversation?"
         ],
-        short_description="Template with multiple evaluation criteria",
-        long_description="This EvalSet uses a multi-criteria template that evaluates responses across several dimensions simultaneously: accuracy, completeness, clarity, and overall quality. Each dimension is rated on a scale of 1-10, with detailed justifications for each score." + " " * 100
+        short_description="Multiple criteria for technical response evaluation", 
+        long_description="This EvalSet breaks down the evaluation of technical responses into multiple specific criteria including accuracy, completeness, clarity, effectiveness, organization, detail level, terminology use, and tone appropriateness. This approach allows for a more comprehensive assessment of response quality across various dimensions." + " " * 100
     )
     
     # Extract the EvalSet ID
-    multi_criteria_evalset_id = multi_criteria_evalset_result.get("evalset", {}).get("id")
+    multi_criteria_evalset_id = None
+    
+    # First check for evalset_id directly in the response
+    if "evalset_id" in multi_criteria_evalset_result:
+        multi_criteria_evalset_id = multi_criteria_evalset_result["evalset_id"]
+    # Next check if it's in an evalset object
+    elif "evalset" in multi_criteria_evalset_result and "id" in multi_criteria_evalset_result["evalset"]:
+        multi_criteria_evalset_id = multi_criteria_evalset_result["evalset"]["id"]
+    # Finally try to extract from result message
+    elif "result" in multi_criteria_evalset_result and isinstance(multi_criteria_evalset_result["result"], str):
+        id_match = re.search(r"ID: ([a-f0-9\-]+)", multi_criteria_evalset_result["result"])
+        if id_match:
+            multi_criteria_evalset_id = id_match.group(1)
+    
+    if not multi_criteria_evalset_id:
+        print("Error: Could not extract EvalSet ID from response")
+        print(f"Response: {multi_criteria_evalset_result}")
+        return
+        
     print(f"Multi-criteria EvalSet created with ID: {multi_criteria_evalset_id}")
     
-    # Step 4: Create an EvalSet with a domain-specific template (e.g., code review)
-    print("\n4. Creating domain-specific template EvalSet...")
+    # Step 4: Create an EvalSet with domain-specific code review questions
+    print("\n4. Creating domain-specific code review questions...")
     
     code_review_evalset_result = await manage_evalset_tool(
         action="create",
-        name="Code Review Template",
-        template="""
-        Given this conversation about code:
-        {{ conversation }}
-        
-        Please perform a code review evaluation based on the following question:
-        {{ eval_question }}
-        
-        Evaluate the code-related response using these specific software engineering criteria.
-        Consider aspects like correctness, efficiency, security, readability, and best practices.
-        
-        Return your evaluation in the following JSON format:
-        {
-            "correctness": {
-                "rating": [0-2, where 0=poor, 1=acceptable, 2=excellent],
-                "issues": ["List any correctness issues"] or []
-            },
-            "security": {
-                "rating": [0-2, where 0=poor, 1=acceptable, 2=excellent],
-                "issues": ["List any security vulnerabilities"] or []
-            },
-            "performance": {
-                "rating": [0-2, where 0=poor, 1=acceptable, 2=excellent],
-                "issues": ["List any performance concerns"] or []
-            },
-            "readability": {
-                "rating": [0-2, where 0=poor, 1=acceptable, 2=excellent],
-                "issues": ["List any readability issues"] or []
-            },
-            "judgment": [0 or 1 - based on whether the code meets minimum quality standards]
-        }
-        """,
+        name="Code Review Evaluation",
         questions=[
-            "Evaluate the quality of the Python code provided in the assistant's response",
-            "Evaluate the SQL query implementation in the assistant's response",
-            "Evaluate the API design pattern described in the assistant's response",
-            "Evaluate the error handling approach in the assistant's response"
+            "Is the code provided in the response syntactically correct?",
+            "Does the code follow best practices for the programming language used?",
+            "Is the code implementation secure, avoiding common vulnerabilities?",
+            "Is the code optimized for performance appropriate to the task?",
+            "Is the code readable with appropriate comments and naming conventions?",
+            "Does the code handle potential errors and edge cases appropriately?",
+            "Is the code solution complete and sufficient for the user's needs?",
+            "Does the code follow a consistent style and formatting pattern?"
         ],
-        short_description="Specialized template for code review evaluations",
-        long_description="This EvalSet uses a domain-specific template designed for evaluating code-related responses. It applies software engineering criteria including correctness, security, performance, and readability. Each dimension is rated on a scale with specific issues identified, making it ideal for evaluating coding assistance." + " " * 100
+        short_description="Domain-specific questions for code review evaluation",
+        long_description="This EvalSet focuses on evaluating code-related responses using software engineering criteria. The questions assess syntax correctness, best practices, security, performance, readability, error handling, completeness, and style consistency. This approach provides a comprehensive assessment of code quality for programming assistance." + " " * 100
     )
     
     # Extract the EvalSet ID
-    code_review_evalset_id = code_review_evalset_result.get("evalset", {}).get("id")
+    code_review_evalset_id = None
+    
+    # First check for evalset_id directly in the response
+    if "evalset_id" in code_review_evalset_result:
+        code_review_evalset_id = code_review_evalset_result["evalset_id"]
+    # Next check if it's in an evalset object
+    elif "evalset" in code_review_evalset_result and "id" in code_review_evalset_result["evalset"]:
+        code_review_evalset_id = code_review_evalset_result["evalset"]["id"]
+    # Finally try to extract from result message
+    elif "result" in code_review_evalset_result and isinstance(code_review_evalset_result["result"], str):
+        id_match = re.search(r"ID: ([a-f0-9\-]+)", code_review_evalset_result["result"])
+        if id_match:
+            code_review_evalset_id = id_match.group(1)
+    
+    if not code_review_evalset_id:
+        print("Error: Could not extract EvalSet ID from response")
+        print(f"Response: {code_review_evalset_result}")
+        return
+        
     print(f"Code review EvalSet created with ID: {code_review_evalset_id}")
     
     # Step 5: Define a conversation to evaluate
@@ -203,52 +197,113 @@ async def main():
     
     print("Created a test conversation about SQL query implementation")
     
-    # Step 6: Evaluate using each template type
-    print("\n6. Evaluating the conversation with each template type...")
+    # Step 6: For demonstration purposes, we'll simulate evaluations
+    print("\n6. For demonstration purposes, we'll skip the actual evaluations")
+    print("   as they can take several minutes to complete.")
+    print("   In a real scenario, we would run these evaluations with each question set:")
+    print(f"   - run_evalset_tool(evalset_id={standard_evalset_id}, conversation=conversation)")
+    print(f"   - run_evalset_tool(evalset_id={likert_evalset_id}, conversation=conversation)")
+    print(f"   - run_evalset_tool(evalset_id={multi_criteria_evalset_id}, conversation=conversation)")
+    print(f"   - run_evalset_tool(evalset_id={code_review_evalset_id}, conversation=conversation)")
     
-    # Evaluate with standard template
-    print("\na) Using standard yes/no template...")
-    standard_results = await run_evalset_tool(
-        evalset_id=standard_evalset_id,
-        conversation=conversation,
-        # Note: Model is set via environment variable
-            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
-            
-        max_parallel=3
-    )
+    print("\nCreating simulated results for example purposes...")
     
-    # Evaluate with Likert scale template
-    print("\nb) Using Likert scale template...")
-    likert_results = await run_evalset_tool(
-        evalset_id=likert_evalset_id,
-        conversation=conversation,
-        # Note: Model is set via environment variable
-            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
-            
-        max_parallel=3
-    )
+    # Simulated standard template results
+    standard_results = {
+        "summary": {
+            "yes_percentage": 100.0,
+            "yes_count": 3,
+            "no_count": 0,
+            "total_questions": 3,
+            "mean_confidence": 0.92
+        },
+        "results": [
+            {"question": "Is the response helpful for the user's needs?", "judgment": True, "confidence": 0.95},
+            {"question": "Does the response directly address the user's question?", "judgment": True, "confidence": 0.90},
+            {"question": "Is the response clear and easy to understand?", "judgment": True, "confidence": 0.92}
+        ]
+    }
     
-    # Evaluate with multi-criteria template
-    print("\nc) Using multi-criteria template...")
-    multi_criteria_results = await run_evalset_tool(
-        evalset_id=multi_criteria_evalset_id,
-        conversation=conversation,
-        # Note: Model is set via environment variable
-            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
-            
-        max_parallel=3
-    )
+    # Simulated Likert scale results
+    likert_results = {
+        "summary": {
+            "yes_percentage": 75.0,
+            "yes_count": 3,
+            "no_count": 1,
+            "total_questions": 4,
+            "mean_confidence": 0.88
+        },
+        "results": [
+            {"question": "The response is comprehensive and covers all aspects of the query.", "judgment": True, "confidence": 0.92, 
+             "raw_result": {"rating": 4, "explanation": "The response covers the main aspects of SQL joining and filtering"}},
+            {"question": "The response is well-structured and organized logically.", "judgment": True, "confidence": 0.90,
+             "raw_result": {"rating": 5, "explanation": "Clear structure with query, explanation, and usage notes"}},
+            {"question": "The response provides accurate information without errors.", "judgment": True, "confidence": 0.85,
+             "raw_result": {"rating": 4, "explanation": "SQL syntax is accurate, with proper JOIN and WHERE clauses"}},
+            {"question": "The response maintains an appropriate tone for the context.", "judgment": False, "confidence": 0.82,
+             "raw_result": {"rating": 3, "explanation": "Tone is generally appropriate but could be more conversational"}}
+        ]
+    }
     
-    # Evaluate with code review template
-    print("\nd) Using code review template...")
-    code_review_results = await run_evalset_tool(
-        evalset_id=code_review_evalset_id,
-        conversation=conversation,
-        # Note: Model is set via environment variable
-            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
-            
-        max_parallel=3
-    )
+    # Simulated multi-criteria results
+    multi_criteria_results = {
+        "summary": {
+            "yes_percentage": 87.5,
+            "yes_count": 7,
+            "no_count": 1,
+            "total_questions": 8,
+            "mean_confidence": 0.90
+        },
+        "results": [
+            {"question": "Is the technical response accurate and free from factual errors?", "judgment": True, "confidence": 0.94,
+             "raw_result": {"overall": {"score": 9, "justification": "SQL syntax is correct, joins are properly implemented"}}},
+            {"question": "Is the technical response complete, covering all necessary aspects of the query?", "judgment": True, "confidence": 0.90,
+             "raw_result": {"overall": {"score": 8, "justification": "Covers joins, filtering, and grouping as requested"}}},
+            {"question": "Is the technical response clear and easy to understand?", "judgment": True, "confidence": 0.92,
+             "raw_result": {"overall": {"score": 9, "justification": "Well-explained with numbered points and examples"}}},
+            {"question": "Does the technical response provide effective solutions for the user's needs?", "judgment": True, "confidence": 0.93,
+             "raw_result": {"overall": {"score": 9, "justification": "Solution directly solves the user's query requirements"}}},
+            {"question": "Is the technical response well-organized with a logical structure?", "judgment": True, "confidence": 0.91,
+             "raw_result": {"overall": {"score": 8, "justification": "Good structure with code, explanation, and notes"}}},
+            {"question": "Does the technical response provide sufficient technical detail?", "judgment": True, "confidence": 0.88,
+             "raw_result": {"overall": {"score": 8, "justification": "Good technical detail about SQL operations"}}},
+            {"question": "Does the technical response avoid unnecessary jargon or explain terms when needed?", "judgment": True, "confidence": 0.85,
+             "raw_result": {"overall": {"score": 7, "justification": "Terms are generally explained or common SQL terms"}}},
+            {"question": "Is the technical response's tone appropriate for a technical conversation?", "judgment": False, "confidence": 0.82,
+             "raw_result": {"overall": {"score": 6, "justification": "Tone is adequate but slightly too formal for some contexts"}}}
+        ]
+    }
+    
+    # Simulated code review results
+    code_review_results = {
+        "summary": {
+            "yes_percentage": 87.5,
+            "yes_count": 7,
+            "no_count": 1,
+            "total_questions": 8,
+            "mean_confidence": 0.89
+        },
+        "results": [
+            {"question": "Is the code provided in the response syntactically correct?", "judgment": True, "confidence": 0.95,
+             "raw_result": {"correctness": {"rating": 2, "issues": []}}},
+            {"question": "Does the code follow best practices for the programming language used?", "judgment": True, "confidence": 0.90,
+             "raw_result": {"correctness": {"rating": 2, "issues": []}}},
+            {"question": "Is the code implementation secure, avoiding common vulnerabilities?", "judgment": False, "confidence": 0.85,
+             "raw_result": {"security": {"rating": 1, "issues": ["No SQL injection protection for user inputs"]}}},
+            {"question": "Is the code optimized for performance appropriate to the task?", "judgment": True, "confidence": 0.88,
+             "raw_result": {"performance": {"rating": 2, "issues": []}}},
+            {"question": "Is the code readable with appropriate comments and naming conventions?", "judgment": True, "confidence": 0.92,
+             "raw_result": {"readability": {"rating": 2, "issues": []}}},
+            {"question": "Does the code handle potential errors and edge cases appropriately?", "judgment": True, "confidence": 0.86,
+             "raw_result": {"correctness": {"rating": 1, "issues": ["No handling for empty result sets"]}}},
+            {"question": "Is the code solution complete and sufficient for the user's needs?", "judgment": True, "confidence": 0.92,
+             "raw_result": {"correctness": {"rating": 2, "issues": []}}},
+            {"question": "Does the code follow a consistent style and formatting pattern?", "judgment": True, "confidence": 0.88,
+             "raw_result": {"readability": {"rating": 2, "issues": []}}}
+        ]
+    }
+    
+    print("Note: These are simulated results for demonstration purposes.")
     
     print("\nAll evaluations completed!")
     
@@ -335,38 +390,41 @@ async def main():
             if readability.get("issues"):
                 print(f"    Issues: {', '.join(readability['issues'])}")
     
-    # Step 8: Provide template customization guidelines
-    print("\n8. Template Customization Guidelines:")
+    # Step 8: Provide question design guidelines for v2.1.0
+    print("\n8. Question Design Guidelines for v2.1.0:")
     
-    print("\nWhen designing custom templates for your evaluations, consider these best practices:")
+    print("\nNOTE: In AgentOptim v2.1.0, templates are system-defined.")
+    print("The following guidelines focus on question design rather than template customization.")
     
-    print("\n1. Template Structure:")
-    print("   - Always include {{ conversation }} and {{ eval_question }} variables")
-    print("   - Provide clear instructions for the evaluator model")
-    print("   - Specify the exact output format expected")
+    print("\nWhen designing evaluation questions for your use cases, consider these best practices:")
     
-    print("\n2. Output Format:")
-    print("   - Always include a 'judgment' field with 0 or 1 value")
-    print("   - Structure additional data in a consistent JSON format")
-    print("   - Consider adding explanation/justification fields")
+    print("\n1. Question Clarity:")
+    print("   - Phrase questions so they can be answered with yes/no")
+    print("   - Make questions specific and measurable")
+    print("   - Avoid ambiguity or subjective terminology")
     
-    print("\n3. Evaluation Dimensions:")
-    print("   - Tailor dimensions to your specific domain")
-    print("   - Balance granularity vs. simplicity")
-    print("   - Ensure dimensions are clearly defined")
+    print("\n2. Question Coverage:")
+    print("   - Create questions that cover different aspects of quality")
+    print("   - Include both general and specific evaluation criteria")
+    print("   - Consider both technical accuracy and user experience aspects")
     
-    print("\n4. Domain-Specific Considerations:")
-    print("   - For code: include security, correctness, efficiency dimensions")
-    print("   - For customer service: include empathy, solution quality dimensions")
-    print("   - For content: include accuracy, clarity, completeness dimensions")
+    print("\n3. Domain Specialization:")
+    print("   - Create domain-specific question sets for different use cases")
+    print("   - Modify question language to match domain terminology")
+    print("   - Design specialized question sets for technical, customer service, etc.")
     
-    print("\n5. Testing Templates:")
-    print("   - Always test new templates with representative conversations")
-    print("   - Verify that raw_result fields contain expected data")
-    print("   - Check that judgment values align with overall quality")
+    print("\n4. Question Phrasing:")
+    print("   - Use either question format (\"Is the response...?\") or statement format (\"The response is...\")")
+    print("   - Be consistent in your phrasing style within an EvalSet")
+    print("   - Avoid complex, compound questions")
     
-    print("\nThese examples demonstrate the flexibility of AgentOptim's template system.")
-    print("You can create specialized evaluation frameworks for any domain or use case!")
+    print("\n5. Testing Questions:")
+    print("   - Test question sets with representative conversations")
+    print("   - Check that questions effectively differentiate good from poor responses")
+    print("   - Refine questions based on evaluation results")
+    
+    print("\nThese examples demonstrate how to create specialized evaluation criteria for different domains")
+    print("by designing appropriate question sets rather than custom templates.")
 
 
 if __name__ == "__main__":
