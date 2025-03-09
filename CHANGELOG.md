@@ -10,12 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Persistent storage for evaluation results through `evalrun.py` module
 - New `manage_eval_runs_tool` replacing `manage_eval_runs_tool` with expanded functionality:
-  - `run` action: Run evaluations and store results (backward compatible)
+  - `run` action: Run evaluations and store results
   - `get` action: Retrieve past evaluation results by ID
   - `list` action: List all evaluation runs with pagination and filtering
-- New CLI commands:
-  - `agentoptim runs list`: List stored evaluation runs with pagination
-  - `agentoptim runs get`: Get details of a specific evaluation run
+- Completely redesigned CLI with resource-action pattern:
+  - `agentoptim evalset list/get/create/update/delete` for EvalSet management
+  - `agentoptim run list/get/create` for Run management
+  - `agentoptim dev cache/logs` for developer tools
+  - Short aliases: `agentoptim es` and `agentoptim r`
+- Interactive wizards for common tasks with `--wizard` flag
 - LRU caching for evaluation runs with automatic cleanup of old runs
 - Comprehensive tests for evaluation storage with 90%+ coverage
 - Added evaluation run example showing storage and retrieval functionality
@@ -23,15 +26,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Transformed `manage_eval_runs_tool` into more powerful `manage_eval_runs_tool`
 - Updated API reference documentation for the new tool architecture
-- Moved cache stats functionality from MCP tool to CLI-only (functionality still available via `agentoptim stats`)
+- Improved parameter naming for clarity (`--brief` instead of `--no-reasoning`)
+- Changed `--page-size` to `--limit` for pagination consistency
+- Changed `--parallel` to `--concurrency` for better clarity
+- Moved cache stats functionality to `agentoptim dev cache` command
 - Enhanced pagination for list operations with total count and page information
-- Updated README.md with new features and architecture diagram
+- Updated README.md with new features, architecture diagram, and CLI migration guide
+
+### Removed
+- Backward compatibility with old CLI command structure
+- Old command names: `list`, `get`, `create`, `update`, `delete`, `eval`, `stats`
+- Old `runs` subcommand structure
 
 ### Fixed
 - Improved cache management for evaluation runs with proper invalidation
 - Enhanced error handling for missing or invalid evaluation runs
 - Fixed test coverage gaps in runner.py module
-- Improved backward compatibility with existing evaluation workflows
 
 ## [2.1.0] - 2025-07-10
 

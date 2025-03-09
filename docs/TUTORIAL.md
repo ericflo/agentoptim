@@ -19,9 +19,9 @@ AgentOptim simplifies conversation evaluation and optimization with two interfac
    - `manage_eval_runs_tool` - Run evaluations on conversations using an EvalSet
 
 2. **Command-Line Interface (CLI)** - For quick access and direct usage
-   - `agentoptim create` - Create evaluation sets
-   - `agentoptim eval` - Evaluate conversations
-   - Plus many more convenient commands
+   - `agentoptim evalset` commands - Manage evaluation sets
+   - `agentoptim run` commands - Manage evaluation runs
+   - Plus developer tools via `agentoptim dev`
 
 This tutorial covers both approaches, so you can choose the one that best fits your workflow.
 
@@ -104,7 +104,7 @@ Does the response avoid unnecessary information?
 Then create the EvalSet with the CLI:
 
 ```bash
-agentoptim create \
+agentoptim evalset create \
   --name "Support Response Quality" \
   --questions support_questions.txt \
   --short-desc "Support quality evaluation" \
@@ -116,7 +116,7 @@ The command will display the generated ID and other details about your new EvalS
 You can verify it was created successfully by listing all EvalSets:
 
 ```bash
-agentoptim list
+agentoptim evalset list
 ```
 
 ## Step 3: Define Conversations to Evaluate
@@ -166,6 +166,7 @@ print("\n3. Running evaluations...")
 # Evaluate the good response
 print("\nEvaluating good response...")
 good_results = await manage_eval_runs_tool(
+    action="run",
     evalset_id=evalset_id,
     conversation=good_conversation,
     model="meta-llama-3.1-8b-instruct",
@@ -175,6 +176,7 @@ good_results = await manage_eval_runs_tool(
 # Evaluate the average response
 print("\nEvaluating average response...")
 average_results = await manage_eval_runs_tool(
+    action="run",
     evalset_id=evalset_id,
     conversation=average_conversation,
     model="meta-llama-3.1-8b-instruct",
@@ -184,6 +186,7 @@ average_results = await manage_eval_runs_tool(
 # Evaluate the poor response
 print("\nEvaluating poor response...")
 poor_results = await manage_eval_runs_tool(
+    action="run",
     evalset_id=evalset_id,
     conversation=poor_conversation,
     model="meta-llama-3.1-8b-instruct",
@@ -213,23 +216,23 @@ Then evaluate each with the CLI:
 # Assuming your EvalSet ID is 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e
 
 # Evaluate good response
-agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e good_conversation.json \
+agentoptim run create 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e good_conversation.json \
   --model "meta-llama-3.1-8b-instruct" \
-  --parallel 3 \
+  --concurrency 3 \
   --output good_results.json \
   --format json
 
 # Evaluate average response
-agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e average_conversation.json \
+agentoptim run create 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e average_conversation.json \
   --model "meta-llama-3.1-8b-instruct" \
-  --parallel 3 \
+  --concurrency 3 \
   --output average_results.json \
   --format json
 
 # Evaluate poor response
-agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e poor_conversation.json \
+agentoptim run create 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e poor_conversation.json \
   --model "meta-llama-3.1-8b-instruct" \
-  --parallel 3 \
+  --concurrency 3 \
   --output poor_results.json \
   --format json
 ```

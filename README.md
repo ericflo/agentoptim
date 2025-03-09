@@ -399,6 +399,31 @@ agentoptim dev cache                        # View cache statistics (for develop
 
 Run `agentoptim --help` for complete CLI documentation.
 
+### 🔄 CLI Migration Guide
+
+> **Note:** In version 2.1.1, we've introduced a new, more intuitive CLI command structure. 
+> If you're updating from a previous version, you'll need to update your scripts and commands.
+
+| Old Command | New Command |
+|-------------|-------------|
+| `agentoptim list` | `agentoptim evalset list` |
+| `agentoptim get <id>` | `agentoptim evalset get <id>` |
+| `agentoptim create ...` | `agentoptim evalset create ...` |
+| `agentoptim update <id> ...` | `agentoptim evalset update <id> ...` |
+| `agentoptim delete <id>` | `agentoptim evalset delete <id>` |
+| `agentoptim eval <id> <file>` | `agentoptim run create <id> <file>` |
+| `agentoptim runs run <id> <file>` | `agentoptim run create <id> <file>` |
+| `agentoptim runs get <id>` | `agentoptim run get <id>` |
+| `agentoptim runs list` | `agentoptim run list` |
+| `agentoptim runs list --page-size 20` | `agentoptim run list --limit 20` |
+| `agentoptim eval <id> --no-reasoning` | `agentoptim run create <id> --brief` |
+| `agentoptim eval <id> --parallel 5` | `agentoptim run create <id> --concurrency 5` |
+| `agentoptim stats` | `agentoptim dev cache` |
+
+You can also use the shorthand aliases for frequently used commands:
+- `agentoptim es` instead of `agentoptim evalset`
+- `agentoptim r` instead of `agentoptim run`
+
 ### 🚀 Starting the MCP Server
 
 Start the AgentOptim server with:

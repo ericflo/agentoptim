@@ -24,19 +24,22 @@ AgentOptim includes a powerful command-line interface:
 
 ```bash
 # List all available evaluation sets
-agentoptim list
+agentoptim evalset list
 
 # Create a new evaluation set
-agentoptim create --name "Response Quality" \
+agentoptim evalset create --name "Response Quality" \
   --questions "Is the response helpful?,Is the response clear?,Is the response accurate?" \
   --short-desc "Basic quality evaluation" \
   --long-desc "Simple evaluation set for measuring basic response quality criteria"
 
-# Evaluate a conversation file against an evaluation set
-agentoptim eval 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e conversation.json
+# Create a new evaluation set interactively (easier!)
+agentoptim evalset create --wizard
 
-# Get cache statistics
-agentoptim stats
+# Evaluate a conversation file against an evaluation set
+agentoptim run create 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e conversation.json
+
+# View developer tools like cache statistics
+agentoptim dev cache
 ```
 
 See all available commands with `agentoptim --help`.
@@ -73,6 +76,7 @@ async def main():
     
     # 3. Run the evaluation
     results = await manage_eval_runs_tool(
+        action="run",
         evalset_id=evalset_id,
         conversation=conversation
     )
@@ -125,6 +129,7 @@ evalsets = result["evalsets"]
 
 ```python
 results = await manage_eval_runs_tool(
+    action="run",
     evalset_id="your_evalset_id",
     conversation=[
         {"role": "system", "content": "You are a helpful assistant."},

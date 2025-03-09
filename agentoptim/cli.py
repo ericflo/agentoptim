@@ -184,91 +184,7 @@ def setup_parser():
     dev_logs_parser.add_argument("--lines", type=int, default=50, help="Number of lines to show (default: 50)")
     dev_logs_parser.add_argument("--follow", "-f", action="store_true", help="Follow log output")
     
-    # === LEGACY COMMANDS (Hidden from normal help) ===
-    # These provide backward compatibility with the old CLI structure
-    
-    # Legacy: list
-    legacy_list_parser = subparsers.add_parser("list", help=argparse.SUPPRESS)
-    legacy_list_parser.add_argument("--format", choices=["table", "json", "yaml", "text"], default="table")
-    legacy_list_parser.add_argument("--output", type=str)
-    
-    # Legacy: get
-    legacy_get_parser = subparsers.add_parser("get", help=argparse.SUPPRESS)
-    legacy_get_parser.add_argument("evalset_id", help="ID of the evaluation set")
-    legacy_get_parser.add_argument("--format", choices=["text", "json", "yaml"], default="text")
-    legacy_get_parser.add_argument("--output", type=str)
-    
-    # Legacy: create
-    legacy_create_parser = subparsers.add_parser("create", help=argparse.SUPPRESS)
-    legacy_create_parser.add_argument("--name", required=True)
-    legacy_create_parser.add_argument("--questions", required=True)
-    legacy_create_parser.add_argument("--short-desc", required=True)
-    legacy_create_parser.add_argument("--long-desc", required=True)
-    legacy_create_parser.add_argument("--format", choices=["text", "json", "yaml"], default="text")
-    legacy_create_parser.add_argument("--output", type=str)
-    
-    # Legacy: update
-    legacy_update_parser = subparsers.add_parser("update", help=argparse.SUPPRESS)
-    legacy_update_parser.add_argument("evalset_id")
-    legacy_update_parser.add_argument("--name")
-    legacy_update_parser.add_argument("--questions")
-    legacy_update_parser.add_argument("--short-desc")
-    legacy_update_parser.add_argument("--long-desc")
-    legacy_update_parser.add_argument("--format", choices=["text", "json", "yaml"], default="text")
-    legacy_update_parser.add_argument("--output", type=str)
-    
-    # Legacy: delete
-    legacy_delete_parser = subparsers.add_parser("delete", help=argparse.SUPPRESS)
-    legacy_delete_parser.add_argument("evalset_id")
-    legacy_delete_parser.add_argument("--format", choices=["text", "json", "yaml"], default="text")
-    legacy_delete_parser.add_argument("--output", type=str)
-    
-    # Legacy: eval
-    legacy_eval_parser = subparsers.add_parser("eval", help=argparse.SUPPRESS)
-    legacy_eval_parser.add_argument("evalset_id")
-    legacy_eval_parser.add_argument("conversation", nargs="?")
-    legacy_eval_parser.add_argument("--text")
-    legacy_eval_parser.add_argument("--model")
-    legacy_eval_parser.add_argument("--provider", choices=["local", "openai", "anthropic"], default="local")
-    legacy_eval_parser.add_argument("--parallel", type=int, default=3)
-    legacy_eval_parser.add_argument("--no-reasoning", action="store_true")
-    legacy_eval_parser.add_argument("--format", choices=["text", "json", "yaml", "csv"], default="text")
-    legacy_eval_parser.add_argument("--output", type=str)
-    
-    # Legacy: stats
-    legacy_stats_parser = subparsers.add_parser("stats", help=argparse.SUPPRESS)
-    legacy_stats_parser.add_argument("--format", choices=["text", "json", "yaml"], default="text")
-    legacy_stats_parser.add_argument("--output", type=str)
-    
-    # Legacy: runs (old structure)
-    legacy_runs_parser = subparsers.add_parser("runs", help=argparse.SUPPRESS)
-    legacy_runs_subparsers = legacy_runs_parser.add_subparsers(dest="runs_command")
-    
-    # Legacy: runs run
-    legacy_run_parser = legacy_runs_subparsers.add_parser("run", help=argparse.SUPPRESS)
-    legacy_run_parser.add_argument("evalset_id")
-    legacy_run_parser.add_argument("conversation", nargs="?")
-    legacy_run_parser.add_argument("--text")
-    legacy_run_parser.add_argument("--model")
-    legacy_run_parser.add_argument("--provider", choices=["local", "openai", "anthropic"], default="local")
-    legacy_run_parser.add_argument("--parallel", type=int, default=3)
-    legacy_run_parser.add_argument("--no-reasoning", action="store_true")
-    legacy_run_parser.add_argument("--format", choices=["text", "json", "yaml", "csv"], default="text")
-    legacy_run_parser.add_argument("--output", type=str)
-    
-    # Legacy: runs get
-    legacy_run_get_parser = legacy_runs_subparsers.add_parser("get", help=argparse.SUPPRESS)
-    legacy_run_get_parser.add_argument("eval_run_id")
-    legacy_run_get_parser.add_argument("--format", choices=["text", "json", "yaml"], default="text")
-    legacy_run_get_parser.add_argument("--output", type=str)
-    
-    # Legacy: runs list
-    legacy_run_list_parser = legacy_runs_subparsers.add_parser("list", help=argparse.SUPPRESS)
-    legacy_run_list_parser.add_argument("--evalset-id")
-    legacy_run_list_parser.add_argument("--page", type=int, default=1)
-    legacy_run_list_parser.add_argument("--page-size", type=int, default=10)
-    legacy_run_list_parser.add_argument("--format", choices=["text", "json", "yaml", "table"], default="table")
-    legacy_run_list_parser.add_argument("--output", type=str)
+    # No legacy commands - we've removed backward compatibility
     
     return parser
 
@@ -382,96 +298,7 @@ def run_interactive_wizard(args):
     }
 
 
-def handle_deprecated_command(args):
-    """Show deprecation warning for old command structure and map to new structure."""
-    command_name = getattr(args, 'command', None) or args.resource
-    
-    # Show deprecation warning with mapping to new command
-    new_command = "unknown"
-    if command_name == "list":
-        new_command = "agentoptim evalset list"
-    elif command_name == "get":
-        new_command = f"agentoptim evalset get {args.evalset_id}"
-    elif command_name == "create":
-        new_command = "agentoptim evalset create"
-    elif command_name == "update":
-        new_command = f"agentoptim evalset update {args.evalset_id}"
-    elif command_name == "delete":
-        new_command = f"agentoptim evalset delete {args.evalset_id}"
-    elif command_name == "eval":
-        conv_arg = f" {args.conversation}" if args.conversation else ""
-        new_command = f"agentoptim run create {args.evalset_id}{conv_arg}"
-    elif command_name == "stats":
-        new_command = "agentoptim dev cache"
-    elif command_name == "runs":
-        runs_cmd = getattr(args, 'runs_command', None)
-        if runs_cmd == "run":
-            conv_arg = f" {args.conversation}" if args.conversation else ""
-            new_command = f"agentoptim run create {args.evalset_id}{conv_arg}"
-        elif runs_cmd == "list":
-            new_command = "agentoptim run list"
-        elif runs_cmd == "get":
-            new_command = f"agentoptim run get {args.eval_run_id}"
-    
-    print(f"{Fore.YELLOW}Warning: The command '{command_name}' uses a deprecated syntax.{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}Please use the new command structure: {new_command}{Style.RESET_ALL}\n")
-
-
-def translate_deprecated_to_new_args(args):
-    """Translate deprecated command arguments to the new structure."""
-    resource = None
-    action = None
-    
-    # Map specific commands
-    command = getattr(args, 'command', None)
-    if command:
-        # This is a legacy command
-        if command == "list":
-            resource = "evalset"
-            action = "list"
-        elif command == "get":
-            resource = "evalset"
-            action = "get"
-        elif command == "create":
-            resource = "evalset"
-            action = "create"
-        elif command == "update":
-            resource = "evalset"
-            action = "update"
-        elif command == "delete":
-            resource = "evalset"
-            action = "delete"
-        elif command == "eval":
-            resource = "run"
-            action = "create"
-            # Map --no-reasoning to omit_reasoning
-            if hasattr(args, 'no_reasoning') and args.no_reasoning:
-                args.omit_reasoning = True
-            # Map --parallel to max_parallel
-            if hasattr(args, 'parallel'):
-                args.max_parallel = args.parallel
-        elif command == "stats":
-            resource = "dev"
-            action = "cache"
-        elif command == "runs":
-            resource = "run"
-            runs_cmd = getattr(args, 'runs_command', None)
-            if runs_cmd:
-                action = runs_cmd
-                # Map --no-reasoning to omit_reasoning if present
-                if action == "run" and hasattr(args, 'no_reasoning') and args.no_reasoning:
-                    args.omit_reasoning = True
-                # Map --parallel to max_parallel if present
-                if action == "run" and hasattr(args, 'parallel'):
-                    args.max_parallel = args.parallel
-    
-    # Update args with new resource/action
-    if resource:
-        args.resource = resource
-    if action:
-        args.action = action
-    
-    return args
+# Legacy command handling code removed - no backward compatibility
 
 
 def run_cli():
@@ -483,11 +310,6 @@ def run_cli():
     if len(sys.argv) == 1:
         parser.print_help()
         return
-    
-    # Check if using deprecated command structure and translate
-    if hasattr(args, 'command') and args.command:
-        handle_deprecated_command(args)
-        args = translate_deprecated_to_new_args(args)
     
     # Handle commands based on resource/action pattern
     if args.resource == "server":

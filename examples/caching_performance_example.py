@@ -19,7 +19,7 @@ import hashlib
 import os
 
 # Import tools directly from agentoptim server
-from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool, get_cache_stats_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 # Simulation mode enables faster execution without making actual API calls
 # - True: Fast execution with simulated timing (great for demonstrations)
@@ -654,7 +654,9 @@ async def main():
         }
         time.sleep(0.2)  # Small delay for UI responsiveness
     else:
-        initial_stats = await get_cache_stats_tool()
+        # Get cache stats from the server.py function directly since tool was removed
+        from agentoptim.server import get_cache_stats
+        initial_stats = get_cache_stats()
     
     print(f"Initial EvalSet cache hit rate: {initial_stats['evalset_cache']['hit_rate_pct']}%")
     print(f"Initial API cache hit rate: {initial_stats['api_cache']['hit_rate_pct']}%")
@@ -743,7 +745,8 @@ async def main():
         print(f"Result: {response['summary']['yes_percentage']}% yes responses")
         
         # Get final cache stats
-        final_stats = await get_cache_stats_tool()
+        from agentoptim.server import get_cache_stats
+        final_stats = get_cache_stats()
     
     # Print performance comparison
     print("\n=== Performance Comparison ===")
