@@ -18,11 +18,8 @@ class TestRunnerTimeout:
         """Set up test environment before each test."""
         # Save original environment variables to restore later
         self.original_env = {}
-        for key in ['AGENTOPTIM_LMSTUDIO_COMPAT', 'AGENTOPTIM_API_BASE', 'OPENAI_API_KEY']:
+        for key in ['AGENTOPTIM_API_BASE', 'OPENAI_API_KEY']:
             self.original_env[key] = os.environ.get(key)
-        
-        # Default test values
-        os.environ['AGENTOPTIM_LMSTUDIO_COMPAT'] = '1'  # Enable LM Studio compat by default
         
         # Test conversation
         self.test_conversation = [

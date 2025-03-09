@@ -19,13 +19,8 @@ from agentoptim.utils import DATA_DIR, ensure_data_directories
 # Ensure data directories exist
 ensure_data_directories()
 
-# Check for debug and LM Studio compatibility modes
+# Check for debug mode
 DEBUG_MODE = os.environ.get("AGENTOPTIM_DEBUG", "0") == "1"
-# Our testing showed LM Studio requires special handling:
-# 1. No response_format parameter (causes 400 error)
-# 2. No logprobs support (always returns null)
-# 3. System prompts work well and help control the output format
-LMSTUDIO_COMPAT = os.environ.get("AGENTOPTIM_LMSTUDIO_COMPAT", "1") == "1"  # Enable by default
 # Environment variable overrides for judge model and omit reasoning
 DEFAULT_JUDGE_MODEL = os.environ.get("AGENTOPTIM_JUDGE_MODEL", None)
 DEFAULT_OMIT_REASONING = os.environ.get("AGENTOPTIM_OMIT_REASONING", "0").lower() in ('true', 't', '1', 'yes', 'y', 'on', 'enabled')
@@ -45,7 +40,6 @@ logging.basicConfig(
 logger = logging.getLogger("agentoptim")
 logger.info(f"Logging to {log_file_path}")
 logger.info(f"Debug mode: {DEBUG_MODE}")
-logger.info(f"LM Studio compatibility mode: {LMSTUDIO_COMPAT}")
 
 # Initialize FastMCP server
 mcp = FastMCP("agentoptim")
@@ -647,7 +641,7 @@ async def run_evalset_tool(
                 "Check that the model name is spelled correctly",
                 "Ensure your LLM server or provider supports this model",
                 "Verify that the model can understand and follow instructions",
-                "Models will be auto-detected from your LM Studio API",
+                "Models will be auto-detected from your LLM API",
                 "For cloud APIs, make sure your API key has access to the requested model"
             ]
         else:

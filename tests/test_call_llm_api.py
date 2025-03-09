@@ -22,11 +22,8 @@ class TestCallLlmApi:
         """Set up test environment before each test."""
         # Save original environment variables to restore later
         self.original_env = {}
-        for key in ['AGENTOPTIM_LMSTUDIO_COMPAT', 'AGENTOPTIM_API_BASE', 'OPENAI_API_KEY']:
+        for key in ['AGENTOPTIM_API_BASE', 'OPENAI_API_KEY']:
             self.original_env[key] = os.environ.get(key)
-        
-        # Default test values
-        os.environ['AGENTOPTIM_LMSTUDIO_COMPAT'] = '1'  # Enable LM Studio compat by default
         
         # Sample successful response
         self.success_response = {
@@ -130,8 +127,7 @@ class TestCallLlmApi:
     @mock.patch('agentoptim.runner.httpx.AsyncClient.post')
     async def test_authentication_error(self, mock_post):
         """Test handling of authentication error (401)."""
-        # Disable LM Studio mode to test OpenAI auth
-        os.environ['AGENTOPTIM_LMSTUDIO_COMPAT'] = '0'
+        # Set API base to OpenAI
         os.environ['AGENTOPTIM_API_BASE'] = 'https://api.openai.com/v1'
         # No API key set
         if 'OPENAI_API_KEY' in os.environ:
@@ -274,8 +270,8 @@ class TestCallLlmApi:
     
     @pytest.mark.asyncio
     @mock.patch('agentoptim.runner.httpx.AsyncClient.post')
-    async def test_lmstudio_text_format(self, mock_post):
-        """Test handling of LM Studio text format (instead of message)."""
+    async def test_text_field_format(self, mock_post):
+        """Test handling of text field format (instead of message field)."""
         # Set up mock response with text instead of message
         mock_response = mock.MagicMock()
         mock_response.status_code = 200
@@ -314,16 +310,21 @@ class TestCallLlmApi:
         call_args = mock_post.call_args[1]
         payload = call_args["json"]
         
-        # Verify response_format doesn't include reasoning in required fields
-        assert payload["response_format"]["json_schema"]["schema"]["required"] == ["judgment", "confidence"]
-        assert "reasoning" not in payload["response_format"]["json_schema"]["schema"]["properties"]
+        # Verify that response_format is using json_schema type
+        assert payload["response_format"]["type"] == "json_schema"
+        assert "json_schema" in payload["response_format"]
+        assert "schema" in payload["response_format"]["json_schema"]
+        
+        # Verify required fields match expectations when omit_reasoning=True
+        assert "judgment" in payload["response_format"]["json_schema"]["schema"]["required"]
+        assert "confidence" in payload["response_format"]["json_schema"]["schema"]["required"]
+        assert "reasoning" not in payload["response_format"]["json_schema"]["schema"]["required"]
     
     @pytest.mark.asyncio
     @mock.patch('agentoptim.runner.httpx.AsyncClient.post')
     async def test_openai_api_key_handling(self, mock_post):
         """Test OpenAI API key handling."""
         # Setup for OpenAI
-        os.environ['AGENTOPTIM_LMSTUDIO_COMPAT'] = '0'
         os.environ['AGENTOPTIM_API_BASE'] = 'https://api.openai.com/v1'
         os.environ['OPENAI_API_KEY'] = 'sk-test123456789'
         

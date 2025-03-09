@@ -34,22 +34,15 @@ if not any(isinstance(h, logging.FileHandler) for h in logger.handlers):
     logger.addHandler(file_handler)
     logger.info(f"Added file handler for debugging to {log_path}")
 
-# Check for LM Studio compatibility mode
-# Our testing showed LM Studio requires special handling
-# 1. Special response_format schema structure
-# 2. System prompts work well and help control the output format
-# 3. Be explicit about expected JSON formatting
-LMSTUDIO_COMPAT = os.environ.get("AGENTOPTIM_LMSTUDIO_COMPAT", "1") == "1"  # Enable by default
+# Enable debug mode for advanced logging
 DEBUG_MODE = os.environ.get("AGENTOPTIM_DEBUG", "0") == "1"
 
-# Log compatibility mode
-if LMSTUDIO_COMPAT:
-    logger.info("LM Studio compatibility mode is ENABLED")
-    logger.info("* Using special response_format structure for json_schema")
-    logger.info("* Using system prompts for better control")
-    logger.info("* Using verbalized confidence scores")
-else:
-    logger.info("LM Studio compatibility mode is DISABLED")
+# Log configuration
+logger.info("AgentOptim runner initialized")
+logger.info("* Using structured JSON output with OpenAI-compatible schema")
+logger.info("* Using system prompts for better control")
+logger.info("* Using explicit JSON formatting instructions")
+logger.info("* Using verbalized confidence scores")
 
 # Default timeout for API calls
 DEFAULT_TIMEOUT = 120  # seconds - increased for slower models
@@ -160,53 +153,53 @@ async def call_llm_api(
         # No longer using logprobs - we use verbalized confidence scores instead
         # This provides better compatibility across different providers
         
-        # LM Studio requires a specific response_format with schema field
-        if LMSTUDIO_COMPAT:
-            logger.info("Using LM Studio-compatible JSON schema format")
-            # Use the CORRECT JSON schema format for LM Studio
-            # Following their API requirements exactly
-            payload["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "judgment_response",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "judgment": {
-                                "type": "boolean", 
-                                "description": "Your yes/no judgment as a boolean value: true if the answer to the evaluation question is 'yes', false if the answer is 'no'. Must be a proper JSON boolean literal (true or false, not True/False)."
-                            },
-                            "confidence": {
-                                "type": "number",
-                                "minimum": 0,
-                                "maximum": 1,
-                                "description": "A number between 0.0 and 1.0 indicating how confident you are in your judgment. Use 0.9-1.0 for very high confidence, 0.7-0.8 for moderate confidence, 0.5-0.6 for medium confidence, and below 0.5 for low confidence. Be well-calibrated - don't simply use 1.0 for everything."
-                            },
-                            **({"reasoning": {
-                                "type": "string",
-                                "description": "Provide a clear, detailed explanation justifying your judgment. Include relevant evidence from the conversation and specific reasoning that led to your conclusion. This field should help others understand exactly why you determined the response was helpful or not helpful."
-                            }} if not omit_reasoning else {})
-                        },
-                        "required": ["judgment", "confidence"] + (["reasoning"] if not omit_reasoning else []),
-                        "additionalProperties": False
-                    }
+        # Use standard OpenAI-compatible JSON schema format
+        logger.info("Using JSON schema format")
+        
+        # Define the schema based on whether reasoning is included
+        schema = {
+            "type": "object",
+            "properties": {
+                "judgment": {
+                    "type": "boolean", 
+                    "description": "Your yes/no judgment as a boolean value: true if the answer to the evaluation question is 'yes', false if the answer is 'no'."
+                },
+                "confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "A number between 0.0 and 1.0 indicating how confident you are in your judgment."
                 }
+            },
+            "required": ["judgment", "confidence"],
+            "additionalProperties": False
+        }
+        
+        # Add reasoning field if not omitted
+        if not omit_reasoning:
+            schema["properties"]["reasoning"] = {
+                "type": "string",
+                "description": "Provide a clear explanation justifying your judgment with evidence from the conversation."
             }
-        else:
-            # For other providers, use standard OpenAI format
-            logger.info("Using standard OpenAI JSON response format")
-            payload["response_format"] = {
-                "type": "json_object"
+            schema["required"].append("reasoning")
+        
+        # Create payload with json_schema format
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "judgment_response",
+                "schema": schema
             }
+        }
         
         if logit_bias:
             payload["logit_bias"] = logit_bias
         
         headers = {"Content-Type": "application/json"}
         
-        # Add OpenAI API key if LMSTUDIO_COMPAT is disabled and OPENAI_API_KEY is set
+        # Add OpenAI API key if we're using the OpenAI API
         openai_api_key = os.environ.get("OPENAI_API_KEY")
-        if not LMSTUDIO_COMPAT and openai_api_key and "openai.com" in API_BASE:
+        if openai_api_key and "openai.com" in API_BASE:
             logger.info("Using OpenAI API with authentication")
             headers["Authorization"] = f"Bearer {openai_api_key}"
         
@@ -222,39 +215,27 @@ async def call_llm_api(
         retry_count = 0
         last_error = None
         
-        # Apply model-specific optimizations upfront
+        # Log which model we're using
         model_name = str(model).lower() if model else ""
+        logger.info(f"Processing request for model: {model}")
         
-        # Remove response_format for models known to have issues with it
-        if "qwen" in model_name or "deepseek" in model_name or LMSTUDIO_COMPAT:
-            if "response_format" in payload:
-                del payload["response_format"]
-                logger.info(f"Removed response_format for {model} compatibility")
-        
-        # Adjust max_tokens for slower models to produce JSON responses
-        if "qwen" in model_name:
-            # Qwen models sometimes need more tokens to complete JSON
-            payload["max_tokens"] = max(max_tokens, 1536)  
-            logger.info(f"Adjusted max_tokens to {payload['max_tokens']} for Qwen model")
+        # Use consistent default max_tokens value
+        # This ensures models have enough space to generate complete JSON responses
+        if payload["max_tokens"] < 1536:
+            payload["max_tokens"] = 1536
+            logger.info(f"Using default max_tokens of {payload['max_tokens']} for complete responses")
         
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             while retry_count < max_retries:
                 try:
                     logger.info(f"API call attempt {retry_count+1}/{max_retries}")
                     if retry_count > 0:
-                        # On retry, simplify the payload and increase tokens
-                        # Increase max tokens on retries in case we're hitting length limits
+                        # On retry, increase max_tokens in case we're hitting length limits
                         payload["max_tokens"] = max(payload.get("max_tokens", max_tokens) * (retry_count + 1), 2048)
-                        logger.info(f"Retry: Increased max_tokens to {payload['max_tokens']}")
+                        logger.info(f"Retry {retry_count}: Increased max_tokens to {payload['max_tokens']}")
                         
-                        # Always remove response_format on retries as it commonly causes issues
-                        if "response_format" in payload:
-                            del payload["response_format"]
-                            logger.info("Retry: Removed response_format parameter")
-                            
-                        # On second retry, try to make the prompt simpler and more direct
-                        if retry_count >= 2:
-                            logger.info("Final retry: Using more lenient JSON parsing settings")
+                        # Add debugging context for retries
+                        logger.info(f"Retry {retry_count}: Attempting again with model {model}")
                     
                     if DEBUG_MODE:
                         logger.debug(f"Retry {retry_count} payload: {json.dumps(payload, indent=2)}")
@@ -310,12 +291,11 @@ async def call_llm_api(
             if DEBUG_MODE:
                 logger.debug(f"API response: {json.dumps(response_json, indent=2)}")
             
-            # Handle LM Studio compatibility mode
+            # Handle API response format variations
             if "choices" in response_json and response_json["choices"]:
                 choice = response_json["choices"][0]
                 
-                # No longer using or expecting logprobs
-                # We use verbalized confidence scores for all models including LM Studio
+                # Use verbalized confidence scores for all models
                 # For debugging only - analyze content to see what the model likely determined
                 content = ""
                 if "message" in choice and "content" in choice["message"]:
@@ -323,9 +303,9 @@ async def call_llm_api(
                 elif "text" in choice:
                     content = choice["text"].lower()
                     
-                # If LM Studio is using text field instead of message, convert it
+                # Some API implementations use 'text' field instead of 'message'
                 if "text" in choice and "message" not in choice:
-                    logger.info("Converting LM Studio 'text' field to 'message' format")
+                    logger.info("Converting 'text' field to standard 'message' format")
                     choice["message"] = {
                         "role": "assistant", 
                         "content": choice["text"]
@@ -421,11 +401,11 @@ async def call_llm_api(
                     "Ensure your API_BASE environment variable points to the correct endpoint",
                     "Verify your API key is correct and has access to the selected model",
                     "For OpenAI, set OPENAI_API_KEY environment variable with a valid API key",
-                    "For OpenAI, set AGENTOPTIM_LMSTUDIO_COMPAT=0 to disable LM Studio mode",
+                    "Make sure your inference server supports OpenAI-compatible API endpoints",
                     "Check for API rate limits or quota issues",
                     "Try with a shorter prompt if hitting context length limits",
                     "Inspect the server logs for more information",
-                    "If using LM Studio, make sure it's properly configured and responding",
+                    "Make sure your LLM API server is properly configured and responding",
                     "Try with a different model that has better JSON compatibility"
                 ],
                 "request_info": {
@@ -495,16 +475,11 @@ async def evaluate_question(
             eval_id=eval_id  # Add the evaluation ID to the context
         )
         
-        # Add specific formatting guidance for LM Studio
-        if LMSTUDIO_COMPAT:
-            # Now that we've confirmed LM Studio supports JSON schema format
-            # We'll use it to strictly enforce the response format
-            
-            # We can keep the JSON instructions in the prompt
-            # Add a clear note about the expected format with confidence estimation
-            # Based on the verbalized-uq research, this format is shown to be more effective
-            if omit_reasoning:
-                rendered_prompt += """
+        # Add specific formatting guidance to ensure proper JSON responses
+        # This helps all models understand exactly what format we want
+        # Based on research showing that explicit instructions improve structured outputs
+        if omit_reasoning:
+            rendered_prompt += """
 
 IMPORTANT INSTRUCTIONS FOR EVALUATION:
 
@@ -537,8 +512,8 @@ EXAMPLE RESPONSE FORMAT:
 ```
 
 IMPORTANT: Output ONLY this JSON object. Your entire response should be valid JSON only. DO NOT include a "reasoning" field."""
-            else:
-                rendered_prompt += """
+        else:
+            rendered_prompt += """
 
 IMPORTANT INSTRUCTIONS FOR EVALUATION:
 
@@ -580,13 +555,13 @@ EXAMPLE RESPONSE FORMAT:
 
 IMPORTANT: Output ONLY this JSON object. Do not include any explanations, comments, or text before or after the JSON. Your entire response should be valid JSON."""
             
-            # LM Studio needs simpler prompts sometimes
-            if len(rendered_prompt) > 2000:
-                # Shorten if necessary
-                logger.info("Prompt is very long, shortening for LM Studio compatibility")
-                
-                # Base prompt structure that's common for both with/without reasoning
-                shortened_base = f"""Please evaluate the following question about the SPECIFIC conversation provided below:
+        # Use shorter prompts for long conversations
+        if len(rendered_prompt) > 2000:
+            # Shorten if necessary
+            logger.info("Prompt is very long, shortening for better compatibility")
+            
+            # Base prompt structure that's common for both with/without reasoning
+            shortened_base = f"""Please evaluate the following question about the SPECIFIC conversation provided below:
 
 ### BEGIN CONVERSATION ###
 {formatted_conversation}
@@ -597,92 +572,91 @@ QUESTION: {question}
 IMPORTANT: Analyze ONLY the conversation provided between the ### BEGIN CONVERSATION ### and ### END CONVERSATION ### markers. Do not reference any other conversations or prior knowledge.
 
 You MUST provide your evaluation in JSON format with """
-                
-                if omit_reasoning:
-                    rendered_prompt = shortened_base + """these TWO REQUIRED fields:
+            
+            if omit_reasoning:
+                rendered_prompt = shortened_base + """EXACTLY TWO REQUIRED FIELDS - NO MORE, NO LESS:
 
-1. "judgment": true for Yes, false for No (must be JSON boolean: true/false)
+1. "judgment": true for Yes, false for No (must be JSON boolean literal: true/false)
 2. "confidence": Number from 0.0 to 1.0 showing your confidence level
 
-Example of CORRECT format:
-```json
-{{
+Your response must be EXACTLY in this format with NOTHING before or after:
+
+{
   "judgment": true,
   "confidence": 0.88
-}}
-```
+}
 
-CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or strings) for the judgment field to avoid errors. DO NOT include a reasoning field in your response."""
-                else:
-                    rendered_prompt = shortened_base + """these THREE REQUIRED fields:
+CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON OBJECT. Your entire response must be ONLY the JSON object with NO additional text."""
+            else:
+                rendered_prompt = shortened_base + """EXACTLY THREE REQUIRED FIELDS - NO MORE, NO LESS:
 
 1. "reasoning": A detailed explanation of your reasoning (3-5 sentences), quoting specific parts of the conversation
-2. "judgment": true for Yes, false for No (must be JSON boolean: true/false)
+2. "judgment": true for Yes, false for No (must be JSON boolean literal: true/false)
 3. "confidence": Number from 0.0 to 1.0 showing your confidence level
 
-Example of CORRECT format:
-```json
-{{
+Your response must be EXACTLY in this format with NOTHING before or after:
+
+{
   "reasoning": "The assistant's response directly addresses the user's question by providing specific instructions. The assistant says 'To reset your password, go to settings and click on the Reset button.' This information is clear, accurate, and would enable the user to successfully complete their task without further assistance.",
   "judgment": true,
   "confidence": 0.88
-}}
-```
+}
 
-CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or strings) for the judgment field to avoid errors. Include detailed reasoning with specific evidence from THIS conversation."""
-                
-            # Create system prompt without f-string issues
-            system_content = "You are an expert evaluation assistant that provides detailed, thoughtful judgments in valid JSON format. "
-            system_content += f"Your evaluation ID is {eval_id}. "
-            system_content += "You analyze ONLY the specific conversation provided to you in each request, not referring to any other conversations or knowledge.\n\n"
-            system_content += "You MUST ONLY evaluate the exact conversation provided between the ### BEGIN CONVERSATION ### and ### END CONVERSATION ### markers. "
-            system_content += "Do not reference details from outside this specific conversation or make assumptions based on other knowledge.\n\n"
+CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON OBJECT. Your entire response must be ONLY the JSON object with NO additional text."""
             
-            # Adjust the required fields based on omit_reasoning
-            if omit_reasoning:
-                system_content += "Your responses MUST include both of these required fields:\n\n"
-                system_content += "1) 'judgment': A boolean true/false value (using proper JSON literals: true or false, NOT True/False or strings). "
-                system_content += "Use true for 'yes' answers and false for 'no' answers to the evaluation question.\n\n"
-                system_content += "2) 'confidence': A well-calibrated number between 0.0 and 1.0 indicating your confidence level. "
-                system_content += "Use 0.9+ for near certainty, 0.7-0.8 for strong confidence, 0.5-0.6 for moderate confidence, and below 0.5 for low confidence. Avoid overconfidence.\n\n"
-            else:
-                system_content += "Your responses MUST include all THREE of these required fields:\n\n"
-                system_content += "1) 'reasoning': A thorough explanation (3-5 sentences) that clearly justifies your judgment with specific evidence from the provided conversation. "
-                system_content += "Quote relevant parts of the conversation to support your judgment. Explain your thought process and the criteria you used.\n\n"
-                system_content += "2) 'judgment': A boolean true/false value (using proper JSON literals: true or false, NOT True/False or strings). "
-                system_content += "Use true for 'yes' answers and false for 'no' answers to the evaluation question.\n\n"
-                system_content += "3) 'confidence': A well-calibrated number between 0.0 and 1.0 indicating your confidence level. "
-                system_content += "Use 0.9+ for near certainty, 0.7-0.8 for strong confidence, 0.5-0.6 for moderate confidence, and below 0.5 for low confidence. Avoid overconfidence.\n\n"
-            
-            system_content += "CRITICAL: Always use valid JSON syntax with proper JSON boolean literals (true/false). "
-            system_content += "Do not use Python style True/False or quoted strings like 'true'/'false'. The response MUST be parseable as JSON. "
-            
-            if omit_reasoning:
-                system_content += "NEVER return a response that is missing any of the two required fields.\n\n"
-                system_content += "FORMAT EXAMPLE:\n```json\n"
-                system_content += '{\n'
-                system_content += '  "judgment": true,\n'
-                system_content += '  "confidence": 0.85\n}\n```'
-            else:
-                system_content += "NEVER return a response that is missing any of the three required fields.\n\n"
-                system_content += "FORMAT EXAMPLE:\n```json\n"
-                system_content += '{\n  "reasoning": "The response clearly addresses the user\'s concern by providing step-by-step instructions to solve their problem. The assistant says to resolve the issue by taking specific steps. This demonstrates clear guidance. The tone is professional yet friendly, and the information is accurate and concise.",\n'
-                system_content += '  "judgment": true,\n'
-                system_content += '  "confidence": 0.85\n}\n```'
-            
-            messages = [
-                {"role": "system", "content": system_content},
-                {"role": "user", "content": rendered_prompt}
-            ]
+        # Create system prompt without f-string issues
+        system_content = "You are an expert evaluation assistant that provides detailed, thoughtful judgments in VALID JSON FORMAT ONLY. "
+        system_content += f"Your evaluation ID is {eval_id}. "
+        system_content += "You analyze ONLY the specific conversation provided to you in each request, not referring to any other conversations or knowledge.\n\n"
+        system_content += "You MUST ONLY evaluate the exact conversation provided between the ### BEGIN CONVERSATION ### and ### END CONVERSATION ### markers. "
+        system_content += "Do not reference details from outside this specific conversation or make assumptions based on other knowledge.\n\n"
+        
+        # Adjust the required fields based on omit_reasoning
+        if omit_reasoning:
+            system_content += "Your responses MUST include both of these required fields:\n\n"
+            system_content += "1) 'judgment': A boolean true/false value (using proper JSON literals: true or false, NOT True/False or strings). "
+            system_content += "Use true for 'yes' answers and false for 'no' answers to the evaluation question.\n\n"
+            system_content += "2) 'confidence': A well-calibrated number between 0.0 and 1.0 indicating your confidence level. "
+            system_content += "Use 0.9+ for near certainty, 0.7-0.8 for strong confidence, 0.5-0.6 for moderate confidence, and below 0.5 for low confidence. Avoid overconfidence.\n\n"
         else:
-            # Normal mode - just use the rendered prompt as user message
-            messages = [{"role": "user", "content": rendered_prompt}]
+            system_content += "Your responses MUST include all THREE of these required fields:\n\n"
+            system_content += "1) 'reasoning': A thorough explanation (3-5 sentences) that clearly justifies your judgment with specific evidence from the provided conversation. "
+            system_content += "Quote relevant parts of the conversation to support your judgment. Explain your thought process and the criteria you used.\n\n"
+            system_content += "2) 'judgment': A boolean true/false value (using proper JSON literals: true or false, NOT True/False or strings). "
+            system_content += "Use true for 'yes' answers and false for 'no' answers to the evaluation question.\n\n"
+            system_content += "3) 'confidence': A well-calibrated number between 0.0 and 1.0 indicating your confidence level. "
+            system_content += "Use 0.9+ for near certainty, 0.7-0.8 for strong confidence, 0.5-0.6 for moderate confidence, and below 0.5 for low confidence. Avoid overconfidence.\n\n"
+        
+        system_content += "CRITICAL: Always use valid JSON syntax with proper JSON boolean literals (true/false). "
+        system_content += "Do not use Python style True/False or quoted strings like 'true'/'false'. The response MUST be parseable as JSON with no extra text before or after. "
+        system_content += "DO NOT include any markdown code blocks, any text, or any additional explanations - your entire response must be valid JSON and nothing else. "
+        
+        if omit_reasoning:
+            system_content += "NEVER return a response that is missing any of the two required fields.\n\n"
+            system_content += "YOUR RESPONSE MUST BE EXACTLY IN THIS FORMAT, WITH NO TEXT BEFORE OR AFTER THE JSON:\n"
+            system_content += '{\n'
+            system_content += '  "judgment": true,\n'
+            system_content += '  "confidence": 0.85\n}'
+            system_content += "\n\nDO NOT add code block markers, explanations, or any other text - JUST RETURN THE RAW JSON OBJECT ALONE."
+        else:
+            system_content += "NEVER return a response that is missing any of the three required fields.\n\n"
+            system_content += "YOUR RESPONSE MUST BE EXACTLY IN THIS FORMAT, WITH NO TEXT BEFORE OR AFTER THE JSON:\n"
+            system_content += '{\n  "reasoning": "The response clearly addresses the user\'s concern by providing step-by-step instructions to solve their problem. The assistant says to resolve the issue by taking specific steps. This demonstrates clear guidance. The tone is professional yet friendly, and the information is accurate and concise.",\n'
+            system_content += '  "judgment": true,\n'
+            system_content += '  "confidence": 0.85\n}'
+            system_content += "\n\nDO NOT add code block markers, explanations, or any other text - JUST RETURN THE RAW JSON OBJECT ALONE."
+        
+        # Use system messages for better model guidance
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": rendered_prompt}
+        ]
         
         logger.info(f"Evaluating question: {question}")
         
         # Call the LLM API with proper message format
         response = await call_llm_api(
-            messages=messages,  # Now passing prepared messages with system prompt for LM Studio
+            messages=messages,  # Using system prompt for better control
             model=judge_model,
             omit_reasoning=omit_reasoning
         )
@@ -742,7 +716,7 @@ CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or st
                 re.compile(r"probability.*?[=:]\s*(?P<confidence>\d*\.?\d+)", re.IGNORECASE)
             ]
             
-            # Try to parse JSON response - with improved parsing for LM Studio
+            # Try to parse JSON response - with robust error handling for all models
             try:
                 # First try to parse as JSON
                 try:

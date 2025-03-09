@@ -373,7 +373,6 @@ The following environment variables can be used to configure AgentOptim:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `AGENTOPTIM_DEBUG` | Enable debug logging | "0" |
-| `AGENTOPTIM_LMSTUDIO_COMPAT` | Enable LM Studio compatibility mode | "1" |
 | `AGENTOPTIM_JUDGE_MODEL` | Default judge model to use | None (uses "meta-llama-3.1-8b-instruct") |
 | `AGENTOPTIM_OMIT_REASONING` | Omit reasoning in evaluation results | "0" |
 | `AGENTOPTIM_API_BASE` | Base URL for the LLM API | "http://localhost:1234/v1" |
@@ -386,7 +385,7 @@ The following environment variables can be used to configure AgentOptim:
 3. **Confidence Scoring**: Confidence scores range from 0.0 to 1.0, with higher values indicating greater confidence.
 4. **Parallel Processing**: The tool uses asyncio for parallel processing of evaluation questions.
 5. **Error Handling**: Comprehensive error handling with detailed diagnostic information is provided.
-6. **API Compatibility**: Special handling for different LLM providers, including LM Studio compatibility mode.
+6. **API Compatibility**: Works with any OpenAI-compatible API endpoint, including local LLM servers and cloud providers.
 
 ## API Changes in v2.1.0
 

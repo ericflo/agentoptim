@@ -321,7 +321,6 @@ When started with no options, the server:
 - Runs on the default port (40000)
 - Uses the default judge model (meta-llama-3.1-8b-instruct)
 - Includes reasoning details in evaluation results
-- Enables LM Studio compatibility mode
 
 ### ⚙️ Configuration Options
 
@@ -329,7 +328,6 @@ Control AgentOptim's behavior with these environment variables:
 
 | Environment Variable | Purpose | Default |
 |----------------------|---------|---------|
-| `AGENTOPTIM_LMSTUDIO_COMPAT=1` | Enable LM Studio compatibility | Enabled (1) |
 | `AGENTOPTIM_DEBUG=1` | Enable detailed debug logging | Disabled (0) |
 | `AGENTOPTIM_JUDGE_MODEL=model-name` | Set default judge model | meta-llama-3.1-8b-instruct |
 | `AGENTOPTIM_OMIT_REASONING=1` | Omit reasoning in results | Disabled (0) |
@@ -356,8 +354,7 @@ To use AgentOptim with Claude Code, add it to your `config.json` file as an MCP 
       "args": [],
       "options": {
         "env": {
-          "AGENTOPTIM_LMSTUDIO_COMPAT": "1",
-          "AGENTOPTIM_JUDGE_MODEL": "lmstudio-community/meta-llama-3.1-8b-instruct"
+          "AGENTOPTIM_JUDGE_MODEL": "meta-llama-3.1-8b-instruct"
         }
       }
     }

@@ -233,7 +233,6 @@ def run_cli():
         logger.info("AgentOptim MCP Server starting")
         logger.info(f"Logging to {log_file_path}")
         logger.info(f"Debug mode: {os.environ.get('AGENTOPTIM_DEBUG', '0') == '1'}")
-        logger.info(f"LM Studio compatibility: {os.environ.get('AGENTOPTIM_LMSTUDIO_COMPAT', '1') == '1'}")
         
         # Start the server
         try:
