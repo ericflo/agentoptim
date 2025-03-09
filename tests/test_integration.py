@@ -66,7 +66,9 @@ class TestFullWorkflow:
                 "Does the response directly address the question?",
                 "Is the response accurate?"
             ],
-            description="Test EvalSet for integration testing"
+            description="Test EvalSet for integration testing",
+            short_description="Concise test for integration testing",
+            long_description="This is a detailed explanation of the test EvalSet for integration testing. It provides comprehensive information about what this EvalSet measures and how to interpret the results. This EvalSet is designed for integration testing purposes only." + " " * 200
         )
         
         # Verify EvalSet was created
@@ -210,7 +212,9 @@ class TestParallelProcessing:
             {"judgment": 1} for yes or {"judgment": 0} for no.
             """,
             questions=[f"Test question {i}?" for i in range(10)],  # 10 questions
-            description="EvalSet for testing parallel processing"
+            description="EvalSet for testing parallel processing",
+            short_description="Parallel processing evaluation test",
+            long_description="This is a detailed explanation of the EvalSet used for testing parallel processing capabilities. It contains multiple questions to test the system's ability to run evaluations concurrently and efficiently process multiple judgment requests." + " " * 200
         )
         
         evalset_id = evalset_result.get("evalset", {}).get("id")

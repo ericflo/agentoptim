@@ -42,7 +42,9 @@ class TestEvalSet(unittest.TestCase):
         {"judgment": 1} for yes or {"judgment": 0} for no.
         """
         self.test_questions = ["Question 1", "Question 2"]
-        self.test_description = "Test description"
+        self.test_short_description = "Concise summary of test EvalSet for unit testing"
+        self.test_long_description = "This is a detailed explanation of the test EvalSet that is used for unit testing purposes. It provides a comprehensive description of how the EvalSet works, what criteria it evaluates, and how results should be interpreted. This long description is meant to provide all the necessary context for anyone who wants to use this EvalSet effectively." + " " * 50  # Padding to exceed 256 chars
+        self.test_description = "Test description"  # For backward compatibility
     
     def tearDown(self):
         """Clean up after tests."""
@@ -55,12 +57,18 @@ class TestEvalSet(unittest.TestCase):
     def test_create_evalset(self):
         """Test creating an EvalSet."""
         evalset = create_evalset(
-            self.test_name, self.test_questions, self.test_description
+            self.test_name, 
+            self.test_questions, 
+            self.test_short_description,
+            self.test_long_description,
+            self.test_description
         )
         
         self.assertEqual(evalset.name, self.test_name)
         # Templates are now system-defined, so we don't test for that
         self.assertEqual(evalset.questions, self.test_questions)
+        self.assertEqual(evalset.short_description, self.test_short_description)
+        self.assertEqual(evalset.long_description, self.test_long_description)
         self.assertEqual(evalset.description, self.test_description)
         
         # Check that the file was created
@@ -69,7 +77,11 @@ class TestEvalSet(unittest.TestCase):
     def test_get_evalset(self):
         """Test retrieving an EvalSet."""
         created = create_evalset(
-            self.test_name, self.test_questions, self.test_description
+            self.test_name, 
+            self.test_questions, 
+            self.test_short_description,
+            self.test_long_description,
+            self.test_description
         )
         
         retrieved = get_evalset(created.id)
@@ -78,6 +90,8 @@ class TestEvalSet(unittest.TestCase):
         self.assertEqual(retrieved.name, self.test_name)
         # Templates are now system-defined, so we don't test for exact template
         self.assertEqual(retrieved.questions, self.test_questions)
+        self.assertEqual(retrieved.short_description, self.test_short_description)
+        self.assertEqual(retrieved.long_description, self.test_long_description)
         self.assertEqual(retrieved.description, self.test_description)
         
         # Test non-existent EvalSet
@@ -86,21 +100,33 @@ class TestEvalSet(unittest.TestCase):
     def test_update_evalset(self):
         """Test updating an EvalSet."""
         evalset = create_evalset(
-            self.test_name, self.test_questions, self.test_description
+            self.test_name, 
+            self.test_questions,
+            self.test_short_description,
+            self.test_long_description,
+            self.test_description
         )
         
         # Update some fields
         new_name = "Updated Name"
         new_questions = ["New Question 1", "New Question 2", "New Question 3"]
+        new_short_description = "Updated short description"
+        new_long_description = "This is an updated detailed explanation of the test EvalSet. It provides even more comprehensive information about how the EvalSet works, what criteria it evaluates, and how results should be interpreted. The long description should give users all the context they need." + " " * 50  # Padding to exceed 256 chars
         
         updated = update_evalset(
-            evalset.id, name=new_name, questions=new_questions
+            evalset.id, 
+            name=new_name, 
+            questions=new_questions,
+            short_description=new_short_description,
+            long_description=new_long_description
         )
         
         self.assertEqual(updated.id, evalset.id)
         self.assertEqual(updated.name, new_name)
         # Templates are now system-defined, so we don't test for template
         self.assertEqual(updated.questions, new_questions)
+        self.assertEqual(updated.short_description, new_short_description)
+        self.assertEqual(updated.long_description, new_long_description)
         self.assertEqual(updated.description, self.test_description)  # Unchanged
         
         # Test non-existent EvalSet
@@ -109,7 +135,11 @@ class TestEvalSet(unittest.TestCase):
     def test_delete_evalset(self):
         """Test deleting an EvalSet."""
         evalset = create_evalset(
-            self.test_name, self.test_questions, self.test_description
+            self.test_name, 
+            self.test_questions,
+            self.test_short_description,
+            self.test_long_description,
+            self.test_description
         )
         
         # Check that the file exists
@@ -127,8 +157,18 @@ class TestEvalSet(unittest.TestCase):
     def test_list_evalsets(self):
         """Test listing EvalSets."""
         # Create a few EvalSets
-        eval1 = create_evalset("Eval 1", ["Q1", "Q2"])
-        eval2 = create_evalset("Eval 2", ["Q3", "Q4"])
+        eval1 = create_evalset(
+            "Eval 1", 
+            ["Q1", "Q2"], 
+            "Short description 1",
+            "Long description for EvalSet 1. This is a comprehensive explanation of what this EvalSet measures and how to interpret the results. It provides detailed context for users." + " " * 100
+        )
+        eval2 = create_evalset(
+            "Eval 2", 
+            ["Q3", "Q4"],
+            "Short description 2",
+            "Long description for EvalSet 2. This is a comprehensive explanation of what this EvalSet measures and how to interpret the results. It provides detailed context for users." + " " * 100
+        )
         
         evalsets = list_evalsets()
         
@@ -141,8 +181,10 @@ class TestEvalSet(unittest.TestCase):
         result = manage_evalset(
             action="create",
             name=self.test_name,
-            template=self.test_template,
+            template=self.test_template,  # Will be ignored
             questions=self.test_questions,
+            short_description=self.test_short_description,
+            long_description=self.test_long_description,
             description=self.test_description,
         )
         
@@ -156,8 +198,18 @@ class TestEvalSet(unittest.TestCase):
     def test_manage_evalset_list(self):
         """Test the manage_evalset function for listing EvalSets."""
         # Create a few EvalSets
-        create_evalset("Eval 1", ["Q1", "Q2"])
-        create_evalset("Eval 2", ["Q3", "Q4"])
+        create_evalset(
+            "Eval 1", 
+            ["Q1", "Q2"], 
+            "Short description 1",
+            "Long description for EvalSet 1. This is a comprehensive explanation of what this EvalSet measures and how to interpret the results. It provides detailed context for users." + " " * 100
+        )
+        create_evalset(
+            "Eval 2", 
+            ["Q3", "Q4"],
+            "Short description 2",
+            "Long description for EvalSet 2. This is a comprehensive explanation of what this EvalSet measures and how to interpret the results. It provides detailed context for users." + " " * 100
+        )
         
         result = manage_evalset(action="list")
         
@@ -172,7 +224,11 @@ class TestEvalSet(unittest.TestCase):
     def test_manage_evalset_get(self):
         """Test the manage_evalset function for getting an EvalSet."""
         evalset = create_evalset(
-            self.test_name, self.test_questions, self.test_description
+            self.test_name, 
+            self.test_questions,
+            self.test_short_description,
+            self.test_long_description,
+            self.test_description
         )
         
         result = manage_evalset(action="get", evalset_id=evalset.id)
@@ -193,7 +249,11 @@ class TestEvalSet(unittest.TestCase):
     def test_manage_evalset_update(self):
         """Test the manage_evalset function for updating EvalSets."""
         evalset = create_evalset(
-            self.test_name, self.test_questions, self.test_description
+            self.test_name, 
+            self.test_questions,
+            self.test_short_description,
+            self.test_long_description,
+            self.test_description
         )
         
         new_name = "Updated Name"
@@ -217,7 +277,11 @@ class TestEvalSet(unittest.TestCase):
     def test_manage_evalset_delete(self):
         """Test the manage_evalset function for deleting EvalSets."""
         evalset = create_evalset(
-            self.test_name, self.test_questions, self.test_description
+            self.test_name, 
+            self.test_questions,
+            self.test_short_description,
+            self.test_long_description,
+            self.test_description
         )
         
         result = manage_evalset(action="delete", evalset_id=evalset.id)
@@ -277,7 +341,13 @@ class TestEvalSet(unittest.TestCase):
         """Test that template validation works correctly."""
         # Templates are now system-defined, so we skip direct validation tests
         # Instead, let's just check that the default template has the required placeholders
-        evalset = create_evalset(self.test_name, self.test_questions, self.test_description)
+        evalset = create_evalset(
+            self.test_name, 
+            self.test_questions,
+            self.test_short_description,
+            self.test_long_description,
+            self.test_description
+        )
         self.assertIn("{{ conversation }}", evalset.template)
         self.assertIn("{{ eval_question }}", evalset.template)
     
@@ -288,7 +358,9 @@ class TestEvalSet(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             EvalSet(
                 name=self.test_name,
-                questions=too_many_questions
+                questions=too_many_questions,
+                short_description=self.test_short_description,
+                long_description=self.test_long_description
             )
         self.assertIn("Maximum of 100 questions", str(context.exception))
         
@@ -296,9 +368,55 @@ class TestEvalSet(unittest.TestCase):
         max_questions = ["Question"] * 100  # 100 questions is the maximum allowed
         evalset = EvalSet(
             name=self.test_name,
-            questions=max_questions
+            questions=max_questions,
+            short_description=self.test_short_description,
+            long_description=self.test_long_description
         )
         self.assertEqual(len(evalset.questions), 100)
+        
+    def test_short_description_validation(self):
+        """Test short_description length validation."""
+        # Test too short
+        with self.assertRaises(ValueError) as context:
+            EvalSet(
+                name=self.test_name,
+                questions=self.test_questions,
+                short_description="Short",  # Too short (< 6 chars)
+                long_description=self.test_long_description
+            )
+        self.assertIn("short_description must be at least 6 characters", str(context.exception))
+        
+        # Test too long
+        with self.assertRaises(ValueError) as context:
+            EvalSet(
+                name=self.test_name,
+                questions=self.test_questions,
+                short_description="X" * 129,  # Too long (> 128 chars)
+                long_description=self.test_long_description
+            )
+        self.assertIn("short_description must not exceed 128 characters", str(context.exception))
+    
+    def test_long_description_validation(self):
+        """Test long_description length validation."""
+        # Test too short
+        with self.assertRaises(ValueError) as context:
+            EvalSet(
+                name=self.test_name,
+                questions=self.test_questions,
+                short_description=self.test_short_description,
+                long_description="This is too short for a long description."  # Too short (< 256 chars)
+            )
+        self.assertIn("long_description must be at least 256 characters", str(context.exception))
+        
+        # Test too long
+        with self.assertRaises(ValueError) as context:
+            EvalSet(
+                name=self.test_name,
+                questions=self.test_questions,
+                short_description=self.test_short_description,
+                long_description="X" * 1025  # Too long (> 1024 chars)
+            )
+        self.assertIn("long_description must not exceed 1024 characters", str(context.exception))
 
 
 if __name__ == "__main__":

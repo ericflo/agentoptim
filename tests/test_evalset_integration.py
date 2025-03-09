@@ -84,6 +84,8 @@ class TestEvalSetBasics:
                 "Is the response clear and easy to understand?",
                 "Does the response provide complete information?"
             ],
+            short_description=f"Test EvalSet for {test_name} - short",
+            long_description=f"This is a detailed explanation of the test EvalSet for {test_name}. It provides comprehensive information about what this EvalSet measures, how it should be used, and how to interpret the results. This test EvalSet is designed for integration testing purposes only and should not be used in production environments." + " " * 100,
             description=f"Test EvalSet for {test_name}"
         )
         
@@ -180,6 +182,8 @@ class TestEvalSetEvaluation:
                 "Is the response helpful?",
                 "Does the response directly address the user's question?"
             ],
+            short_description=f"Test EvalSet for {test_name} - short",
+            long_description=f"This is a detailed explanation of the test EvalSet for {test_name}. It provides comprehensive information about what this EvalSet measures, how it should be used, and how to interpret the results. This test EvalSet is designed for integration testing purposes only and should not be used in production environments." + " " * 100,
             description=f"Test EvalSet for {test_name}"
         )
         
@@ -289,6 +293,8 @@ class TestRealWorldScenarios:
                 "Is the response clear and easy to understand?",
                 "Does the response provide complete information?"
             ],
+            short_description=f"Evaluation criteria for response quality - short",
+            long_description=f"This is a detailed explanation of the evaluation criteria for response quality. It provides comprehensive information about what metrics are used to assess response quality, how to interpret the results, and why these criteria are important for ensuring high-quality responses. This evaluation set focuses on helpfulness, relevance, clarity, and completeness of responses." + " " * 100,
             description=f"Evaluation criteria for response quality"
         )
         
