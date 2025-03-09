@@ -292,7 +292,12 @@ def manage_evalset(
             
         elif action == "list":
             evalsets = list_evalsets()
-            return format_list([e.to_dict() for e in evalsets])
+            evalset_dicts = [e.to_dict() for e in evalsets]
+            
+            # Add evalsets directly to make it easier to access in the CLI
+            result = format_list(evalset_dicts)
+            result["evalsets"] = {e["id"]: e for e in evalset_dicts}
+            return result
         
         elif action == "get":
             validate_required_params({"evalset_id": evalset_id}, ["evalset_id"])

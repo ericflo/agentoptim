@@ -86,7 +86,7 @@ Examples:
     
     # List command
     list_parser = subparsers.add_parser("list", help="List all available evaluation sets")
-    list_parser.add_argument("--format", choices=["table", "json", "yaml"], default="table", 
+    list_parser.add_argument("--format", choices=["table", "json", "yaml", "text"], default="table", 
                           help="Output format (default: table)")
     list_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
     
@@ -260,7 +260,93 @@ def run_cli():
                         "description": evalset_data["short_description"],
                         "questions": len(evalset_data["questions"])
                     })
-                handle_output(formatted_result, args.format, args.output)
+                
+                # Create custom formatted outputs
+                evalset_count = len(formatted_result)
+                
+                if args.format == "table":
+                    # Use pandas for a nice table display
+                    df = pd.DataFrame(formatted_result)
+                    # Rename columns for better display
+                    df = df.rename(columns={
+                        "id": "ID",
+                        "name": "Name",
+                        "description": "Description",
+                        "questions": "Questions"
+                    })
+                    formatted_data = df.to_string(index=False)
+                    
+                    # Add a title and guidance
+                    title = f"{Fore.CYAN}Available Evaluation Sets ({evalset_count}){Style.RESET_ALL}"
+                    guidance = f"\n{Fore.YELLOW}Use 'agentoptim get <id>' to see details of a specific evaluation set{Style.RESET_ALL}"
+                    
+                    # Print with custom formatting
+                    print(f"{title}\n\n{formatted_data}{guidance}")
+                    if args.output:
+                        # Write to file without ANSI colors if output file is specified
+                        with open(args.output, "w", encoding="utf-8") as f:
+                            plain_title = f"Available Evaluation Sets ({evalset_count})"
+                            plain_guidance = f"\nUse 'agentoptim get <id>' to see details of a specific evaluation set"
+                            f.write(f"{plain_title}\n\n{df.to_string(index=False)}{plain_guidance}")
+                        print(f"Output saved to: {args.output}")
+                    return  # Skip the default handle_output
+                    
+                elif args.format == "text":
+                    # Create a more readable text format
+                    lines = [f"{Fore.CYAN}Available Evaluation Sets ({evalset_count}){Style.RESET_ALL}\n"]
+                    
+                    for item in formatted_result:
+                        # Add name and ID with color
+                        lines.append(f"{Fore.GREEN}* {item['name']}{Style.RESET_ALL}")
+                        lines.append(f"  {Fore.YELLOW}ID:{Style.RESET_ALL} {item['id']}")
+                        
+                        # Add description
+                        if item['description']:
+                            # If description is too long, truncate it
+                            desc = item['description']
+                            if len(desc) > 100:
+                                desc = desc[:97] + "..."
+                            lines.append(f"  {Fore.YELLOW}Description:{Style.RESET_ALL} {desc}")
+                        
+                        # Add question count
+                        lines.append(f"  {Fore.YELLOW}Questions:{Style.RESET_ALL} {item['questions']}")
+                        
+                        # Add separator
+                        lines.append("")
+                    
+                    # Add guidance
+                    lines.append(f"{Fore.BLUE}Use 'agentoptim get <id>' to see details of a specific evaluation set{Style.RESET_ALL}")
+                    
+                    # Print the formatted output
+                    print("\n".join(lines))
+                    
+                    # If output file is specified, write without ANSI colors
+                    if args.output:
+                        plain_lines = [f"Available Evaluation Sets ({evalset_count})\n"]
+                        
+                        for item in formatted_result:
+                            plain_lines.append(f"* {item['name']}")
+                            plain_lines.append(f"  ID: {item['id']}")
+                            
+                            if item['description']:
+                                desc = item['description']
+                                if len(desc) > 100:
+                                    desc = desc[:97] + "..."
+                                plain_lines.append(f"  Description: {desc}")
+                            
+                            plain_lines.append(f"  Questions: {item['questions']}")
+                            plain_lines.append("")
+                        
+                        plain_lines.append(f"Use 'agentoptim get <id>' to see details of a specific evaluation set")
+                        
+                        with open(args.output, "w", encoding="utf-8") as f:
+                            f.write("\n".join(plain_lines))
+                        
+                        print(f"Output saved to: {args.output}")
+                    
+                    return  # Skip the default handle_output
+                else:
+                    handle_output(formatted_result, args.format, args.output)
             else:
                 handle_output(result, args.format, args.output)
                 
