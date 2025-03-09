@@ -252,20 +252,27 @@ def handle_output(data: Any, format_type: str, output_file: Optional[str] = None
             from rich.table import Table
             from rich.style import Style
             
-            # Create a table - set a larger width to handle UUIDs 
-            table = Table(show_header=True, header_style="bold cyan", width=160)
+            # Create a responsive table that fits terminal width
+            console = Console()
+            table = Table(show_header=True, header_style="bold cyan", width=min(160, console.width))
             
             # Add columns
             if len(data) > 0:
                 sample_row = data[0]
                 for column in sample_row.keys():
-                    # Make ID column wide enough to fully display UUIDs
+                    # Make ID column wide enough to fully display UUIDs but adaptive to terminal size
                     if column.lower() == "id":
-                        table.add_column(column.upper(), style="dim", no_wrap=True, width=40)
+                        # Calculate ~30% of terminal width, but at least 36 chars for UUIDs
+                        id_width = max(36, min(40, int(console.width * 0.3)))
+                        table.add_column(column.upper(), style="dim", no_wrap=True, width=id_width)
                     elif "description" in column.lower():
-                        table.add_column(column.title(), style="green", width=50)
+                        # Description gets ~40% of terminal width 
+                        desc_width = max(30, int(console.width * 0.4))
+                        table.add_column(column.title(), style="green", width=desc_width)
                     elif "name" in column.lower():
-                        table.add_column(column.title(), style="yellow", width=30)
+                        # Name gets ~25% of terminal width
+                        name_width = max(25, int(console.width * 0.25))
+                        table.add_column(column.title(), style="yellow", width=name_width)
                     elif "questions" in column.lower() or "count" in column.lower():
                         table.add_column(column.title(), style="blue", justify="right")
                     elif "percentage" in column.lower() or "score" in column.lower():
