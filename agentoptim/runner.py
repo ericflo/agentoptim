@@ -52,7 +52,7 @@ else:
     logger.info("LM Studio compatibility mode is DISABLED")
 
 # Default timeout for API calls
-DEFAULT_TIMEOUT = 60  # seconds
+DEFAULT_TIMEOUT = 120  # seconds - increased for slower models
 
 # Get API base URL from environment or use default
 API_BASE = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234/v1")
@@ -217,24 +217,44 @@ async def call_llm_api(
             safe_headers = {k: v if k.lower() != "authorization" else "Bearer sk-***" for k, v in headers.items()}
             logger.debug(f"API headers: {json.dumps(safe_headers, indent=2)}")
         
-        # Try up to 3 times with different payloads for LM Studio compatibility
+        # Try up to 3 times with different payloads for model compatibility
         max_retries = 3
         retry_count = 0
         last_error = None
+        
+        # Apply model-specific optimizations upfront
+        model_name = str(model).lower() if model else ""
+        
+        # Remove response_format for models known to have issues with it
+        if "qwen" in model_name or "deepseek" in model_name or LMSTUDIO_COMPAT:
+            if "response_format" in payload:
+                del payload["response_format"]
+                logger.info(f"Removed response_format for {model} compatibility")
+        
+        # Adjust max_tokens for slower models to produce JSON responses
+        if "qwen" in model_name:
+            # Qwen models sometimes need more tokens to complete JSON
+            payload["max_tokens"] = max(max_tokens, 1536)  
+            logger.info(f"Adjusted max_tokens to {payload['max_tokens']} for Qwen model")
         
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             while retry_count < max_retries:
                 try:
                     logger.info(f"API call attempt {retry_count+1}/{max_retries}")
                     if retry_count > 0:
-                        # On retry, simplify the payload
+                        # On retry, simplify the payload and increase tokens
                         # Increase max tokens on retries in case we're hitting length limits
-                        payload["max_tokens"] = max_tokens * (retry_count + 1)
+                        payload["max_tokens"] = max(payload.get("max_tokens", max_tokens) * (retry_count + 1), 2048)
                         logger.info(f"Retry: Increased max_tokens to {payload['max_tokens']}")
                         
+                        # Always remove response_format on retries as it commonly causes issues
                         if "response_format" in payload:
                             del payload["response_format"]
                             logger.info("Retry: Removed response_format parameter")
+                            
+                        # On second retry, try to make the prompt simpler and more direct
+                        if retry_count >= 2:
+                            logger.info("Final retry: Using more lenient JSON parsing settings")
                     
                     if DEBUG_MODE:
                         logger.debug(f"Retry {retry_count} payload: {json.dumps(payload, indent=2)}")
@@ -495,24 +515,20 @@ Your evaluation must be based ONLY on this specific conversation. Do not referen
 Your JSON response MUST include these TWO fields:
 
 1. "judgment": (REQUIRED)
-   • Must be a boolean value: true for Yes, false for No
-   • Must use JSON boolean literals (true/false)
-   • Do NOT use Python booleans (True/False)
+   • Use true for Yes, false for No
+   • Must be a proper JSON boolean value
    • Do NOT use strings (like "true"/"false")
-   • This field must be JSON parseable
 
 2. "confidence": (REQUIRED)
    • A number between 0.0 and 1.0
    • Indicates how certain you are in your judgment
-   • Be well-calibrated - don't just use 1.0 for everything
    • Use this scale:
-     - 0.95-1.0: Virtually certain (overwhelming evidence)
-     - 0.85-0.94: Very confident (strong evidence)
-     - 0.70-0.84: Moderately confident (good evidence)
-     - 0.50-0.69: Somewhat confident (mixed evidence)
-     - Below 0.5: Limited confidence (weak evidence)
+     - 0.95-1.0: Virtually certain
+     - 0.85-0.94: Very confident
+     - 0.70-0.84: Moderately confident 
+     - 0.50-0.69: Somewhat confident
 
-EXAMPLE OF CORRECT FORMAT:
+EXAMPLE RESPONSE FORMAT:
 ```json
 {
   "judgment": true,
@@ -520,30 +536,27 @@ EXAMPLE OF CORRECT FORMAT:
 }
 ```
 
-CRITICAL: Your response MUST be valid JSON that can be parsed. Incorrect formats will cause errors. DO NOT include a "reasoning" field in your response."""
+IMPORTANT: Output ONLY this JSON object. Your entire response should be valid JSON only. DO NOT include a "reasoning" field."""
             else:
                 rendered_prompt += """
 
 IMPORTANT INSTRUCTIONS FOR EVALUATION:
 
-CAREFULLY ANALYZE THE EXACT CONVERSATION PROVIDED ABOVE between ### BEGIN CONVERSATION ### and ### END CONVERSATION ### markers. Respond ONLY in the valid JSON format specified below.
+CAREFULLY ANALYZE THE CONVERSATION PROVIDED ABOVE. Your task is to determine if the answer to the evaluation question is Yes or No.
 
-Your evaluation must be based ONLY on this specific conversation. Do not reference any other conversations, scenarios, or prior knowledge. Only evaluate what is explicitly present in this conversation.
+Respond with ONLY a valid JSON object. Do not include any text before or after the JSON.
 
 Your JSON response MUST include these THREE fields:
 
 1. "reasoning": (REQUIRED)
    • Provide a thorough explanation (3-5 sentences)
-   • Include specific evidence from the EXACT conversation provided
-   • Quote relevant parts of the conversation to support your judgment
+   • Include specific evidence from the conversation
    • Be objective and focus on observable elements in the response
 
 2. "judgment": (REQUIRED)
-   • Must be a boolean value: true for Yes, false for No
-   • Must use JSON boolean literals (true/false)
-   • Do NOT use Python booleans (True/False)
+   • Use true for Yes, false for No
+   • Must be a proper JSON boolean value
    • Do NOT use strings (like "true"/"false")
-   • This field must be JSON parseable
 
 3. "confidence": (REQUIRED)
    • A number between 0.0 and 1.0
@@ -556,16 +569,16 @@ Your JSON response MUST include these THREE fields:
      - 0.50-0.69: Somewhat confident (mixed evidence)
      - Below 0.5: Limited confidence (weak evidence)
 
-EXAMPLE OF CORRECT FORMAT:
+EXAMPLE RESPONSE FORMAT:
 ```json
 {
-  "reasoning": "The assistant's response directly addresses the user's question by providing specific instructions on how to reset their password. The response is clear, concise, and gives the exact location of the 'Forgot Password' link, which is precisely what the user needs to solve their problem. The information provided would allow the user to accomplish their task without further assistance.",
+  "reasoning": "The assistant directly answers the user's question with accurate information. The response is clear, well-structured, and provides all the necessary details the user needs.",
   "judgment": true,
   "confidence": 0.92
 }
 ```
 
-CRITICAL: Your response MUST be valid JSON that can be parsed. Incorrect formats will cause errors."""
+IMPORTANT: Output ONLY this JSON object. Do not include any explanations, comments, or text before or after the JSON. Your entire response should be valid JSON."""
             
             # LM Studio needs simpler prompts sometimes
             if len(rendered_prompt) > 2000:
@@ -861,35 +874,72 @@ CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or st
                                    "correct" in lower_content)
                 except json.JSONDecodeError:
                     # Try to parse using regex patterns if JSON parsing fails
-                    # First try to extract judgment
+                    logger.info("JSON parsing failed, attempting to extract judgment using regex patterns")
+                    
+                    # First try to extract judgment using regex
                     for pattern in judgment_patterns:
                         match = pattern.search(content)
                         if match:
                             judgment_str = match.group("judgment").lower()
                             if judgment_str in ["true", "yes", "1"]:
                                 judgment = True
+                                logger.info(f"Found positive judgment '{judgment_str}' via regex pattern")
                             elif judgment_str in ["false", "no", "0"]:
                                 judgment = False
+                                logger.info(f"Found negative judgment '{judgment_str}' via regex pattern")
                             break
                     
-                    # Then try to extract confidence
+                    # Then try to extract confidence using regex
                     for pattern in confidence_patterns:
                         match = pattern.search(content)
                         if match:
                             try:
                                 conf_str = match.group("confidence")
                                 confidence = min(max(float(conf_str), 0.0), 1.0)  # Clamp to 0-1
+                                logger.info(f"Found confidence '{confidence}' via regex pattern")
                                 break
                             except ValueError:
                                 pass
                     
-                    # If patterns didn't match, fall back to simple content analysis
+                    # If patterns didn't match, perform more aggressive text analysis
+                    if judgment is None:
+                        # Try to find JSON-like fragments - some models output only partial JSON
+                        json_fragments = re.findall(r'[\{\[].*?[\}\]]', content, re.DOTALL)
+                        for fragment in json_fragments:
+                            try:
+                                # Try to parse as JSON
+                                fragment_obj = json.loads(fragment)
+                                if isinstance(fragment_obj, dict) and "judgment" in fragment_obj:
+                                    judgment_value = fragment_obj["judgment"]
+                                    if isinstance(judgment_value, bool):
+                                        judgment = judgment_value
+                                    elif isinstance(judgment_value, str):
+                                        judgment = judgment_value.lower() in ["true", "yes", "1"]
+                                    elif isinstance(judgment_value, (int, float)):
+                                        judgment = bool(judgment_value)
+                                    logger.info(f"Found judgment in JSON fragment: {judgment}")
+                                    
+                                    # Also look for confidence
+                                    if "confidence" in fragment_obj:
+                                        try:
+                                            conf_val = fragment_obj["confidence"]
+                                            confidence = min(max(float(conf_val), 0.0), 1.0)
+                                            logger.info(f"Found confidence in JSON fragment: {confidence}")
+                                        except (ValueError, TypeError):
+                                            pass
+                                    break
+                            except json.JSONDecodeError:
+                                continue
+                    
+                    # If still no judgment, use simple text analysis as last resort
                     if judgment is None:
                         # Handle case when it's a direct response instead of JSON
                         if content.lower() in ["true", "yes", "1"]:
                             judgment = True
+                            logger.info("Found direct text judgment: True")
                         elif content.lower() in ["false", "no", "0"]:
                             judgment = False
+                            logger.info("Found direct text judgment: False")
                         else:
                             # If it's not parseable JSON or a direct boolean, analyze text
                             lower_content = content.lower()
@@ -897,6 +947,7 @@ CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or st
                                       "true" in lower_content or 
                                       "1" in lower_content or 
                                       "correct" in lower_content)
+                            logger.info(f"Used text analysis, judgment: {judgment}")
             except Exception as e:
                 # Fallback to basic text analysis
                 logger.warning(f"Error parsing judgment: {str(e)}")
@@ -972,7 +1023,7 @@ async def get_available_models(base_url: str = "http://localhost:1234") -> Optio
     """
     try:
         logger.debug(f"Querying available models from {base_url}/v1/models")
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:  # Increased timeout for slow APIs
             response = await client.get(f"{base_url}/v1/models")
             response.raise_for_status()
             
@@ -983,6 +1034,19 @@ async def get_available_models(base_url: str = "http://localhost:1234") -> Optio
                               if model.get("object") == "model" and "embed" not in model.get("id", "").lower()]
                 
                 if chat_models:
+                    # Sort models to prioritize known chat models with good JSON output capabilities
+                    # This prioritizes LLaMA, Qwen and other models that handle JSON well
+                    preferred_model_keywords = ["llama", "qwen", "mixtral", "mistral", "gpt", "claude"]
+                    
+                    # Find the first model with a preferred keyword in its ID
+                    for keyword in preferred_model_keywords:
+                        for model in chat_models:
+                            model_id = model.get("id", "").lower()
+                            if keyword in model_id:
+                                logger.info(f"Selected preferred model from API: {model['id']} (matched '{keyword}')")
+                                return model["id"]
+                    
+                    # If no preferred models found, use the first available one
                     model_id = chat_models[0]["id"]
                     logger.info(f"Selected model from API: {model_id}")
                     return model_id
