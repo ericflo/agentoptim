@@ -28,6 +28,104 @@ AgentOptim is a powerful toolkit built on the Model Context Protocol (MCP) that 
 - **Parallel processing** for efficient large-scale evaluation
 - **Standardized metrics** to track progress over time
 
+## 📋 Evaluation Results Storage Implementation Progress
+
+We successfully enhanced AgentOptim by implementing persistent storage for evaluation results. This allows users to retrieve past evaluation results by ID and list all evaluation runs, just like they can with EvalSets.
+
+### Implementation Checklist
+
+- [x] **1. Design Data Model for Evaluation Results**
+  - [x] Create `EvalRun` class in new `evalrun.py` module
+  - [x] Define fields: id, evalset_id, timestamp, judge_model, results, summary
+  - [x] Add JSON serialization/deserialization methods
+
+- [x] **2. Create Storage System for Evaluation Results**
+  - [x] Add eval_runs directory in DATA_DIR
+  - [x] Implement save/load functions for eval runs
+  - [x] Create LRU caching for eval runs (similar to evalset cache)
+
+- [x] **3. Transform `run_evalset_tool` into `manage_eval_runs_tool`**
+  - [x] Rename function to `manage_eval_runs_tool` in server.py
+  - [x] Add action parameter (run, get, list) like in manage_evalset_tool
+  - [x] Create get and list actions for retrieving past runs
+  - [x] Implement pagination for list operation
+
+- [x] **4. Update Core Architecture**
+  - [x] Create `evalrun.py` module for run data model and storage
+  - [x] Update module exports for the renamed tool
+  - [x] Modify runner.py to return evaluation IDs that remain consistent
+
+- [x] **5. Update CLI Integration**
+  - [x] Rename eval command to runs
+  - [x] Add list-runs and get-run subcommands
+  - [x] Implement pagination in CLI for list-runs
+
+- [x] **6. Update Examples**
+  - [x] Add example showing how to retrieve past evaluation results
+
+- [x] **7. Update Documentation**
+  - [x] Update README.md with modified tool architecture
+  - [x] Update diagrams and flowcharts to reflect new design
+  - [ ] Update API_REFERENCE.md with new tool documentation
+
+- [x] **8. Remove `get_cache_stats_tool` MCP Tool**
+  - [x] Move cache functionality to remain accessible via CLI
+  - [x] Keep internal functions but remove MCP tool registration
+
+- [ ] **9. Add Tests**
+  - [ ] Add tests for new evalrun.py module in test_evalrun.py
+  - [ ] Add tests for renamed tool and backward compatibility in test_server.py
+  - [ ] Add tests for pagination functionality
+  - [ ] Ensure test coverage remains above 85%
+
+- [ ] **10. Final Polish**
+  - [ ] Update API_REFERENCE.md with new tool documentation
+  - [ ] Ensure consistent naming throughout other examples
+  - [ ] Add migration notes for users of the previous API
+  - [ ] Update CHANGELOG.md with new feature details
+
+### Key Implementation Details
+
+- The `run_evalset_tool` has been transformed into `manage_eval_runs_tool`
+- Evaluation results are now stored persistently in `DATA_DIR/eval_runs/`
+- The new tool maintains all the original functionality while adding:
+  - `run` action: Run evaluations and store results
+  - `get` action: Retrieve past evaluation results by ID
+  - `list` action: List all evaluation runs with pagination
+- We've preserved backward compatibility with a command alias
+- Added the CLI `runs` command with `run`, `get`, and `list` subcommands
+- Updated documentation and diagrams to reflect the new architecture
+
+### Example Usage
+
+```python
+# Run evaluation and store results
+eval_result = await manage_eval_runs_tool(
+    action="run",
+    evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+    conversation=[
+        {"role": "user", "content": "How do I reset my password?"},
+        {"role": "assistant", "content": "To reset your password, go to the login page..."}
+    ]
+)
+
+# Get the run ID for future reference
+eval_run_id = eval_result["id"]
+
+# Later, retrieve the evaluation by ID
+past_eval = await manage_eval_runs_tool(
+    action="get",
+    eval_run_id=eval_run_id
+)
+
+# List all evaluation runs
+all_runs = await manage_eval_runs_tool(
+    action="list",
+    page=1,
+    page_size=10
+)
+```
+
 Whether you're fine-tuning production agents, comparing prompt strategies, or benchmarking different AI models, AgentOptim gives you the tools to make data-driven decisions about conversation quality.
 
 ## 🚀 What's New in v2.1.0!
@@ -48,7 +146,7 @@ Version 2.1.0 completes our architectural simplification by removing the legacy 
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#3498db', 'primaryTextColor': '#fff', 'lineColor': '#2980b9', 'tertiaryColor': '#f5f5f5'}}}%%
 flowchart TD
     User([AI Engineer/Developer]) --> |"&nbsp;&nbsp;Creates evaluation criteria&nbsp;&nbsp;"| A["🛠️ manage_evalset_tool"]
-    User --> |"&nbsp;&nbsp;Evaluates conversations&nbsp;&nbsp;"| B["🔬 run_evalset_tool"]
+    User --> |"&nbsp;&nbsp;Manages evaluations&nbsp;&nbsp;"| B["🔬 manage_eval_runs_tool"]
     
     subgraph Creation ["📝 Evaluation Creation"]
         A --> |"&nbsp;&nbsp;Stores&nbsp;&nbsp;"| C[("📊 EvalSets<br/>Criteria, Templates, Metadata")]
@@ -58,10 +156,12 @@ flowchart TD
         B --> |"&nbsp;&nbsp;Processes&nbsp;&nbsp;"| E["🧩 Conversations<br/>(User + AI interactions)"]
         E --> |"&nbsp;&nbsp;Analyzed by&nbsp;&nbsp;"| D["🧠 Judge Models<br/>(Claude/GPT/Local)"]
         D --> |"&nbsp;&nbsp;Produces&nbsp;&nbsp;"| F["📈 Results<br/>Judgments, Confidence<br/>& Summary metrics"]
+        F --> |"&nbsp;&nbsp;Stored as&nbsp;&nbsp;"| G[("📋 EvalRuns<br/>Persistent Results Storage")]
+        B --> |"&nbsp;&nbsp;Retrieves&nbsp;&nbsp;"| G
     end
     
     C --> |"&nbsp;&nbsp;Provides criteria for&nbsp;&nbsp;"| B
-    F --> |"&nbsp;&nbsp;Informs&nbsp;&nbsp;"| User
+    G --> |"&nbsp;&nbsp;Enables historical analysis&nbsp;&nbsp;"| User
     
     classDef primary fill:#3498db,stroke:#2980b9,color:white,stroke-width:2px;
     classDef tool1 fill:#2ecc71,stroke:#27ae60,color:white,stroke-width:2px;
@@ -76,7 +176,7 @@ flowchart TD
     class User primary;
     class A tool1;
     class B tool2;
-    class C storage;
+    class C,G storage;
     class D model;
     class F result;
     class E conversation;
@@ -86,7 +186,7 @@ flowchart TD
     %% Add tooltip descriptions
     linkStyle 0 stroke:#2ecc71,stroke-width:2px;
     linkStyle 1 stroke:#e74c3c,stroke-width:2px;
-    linkStyle 2,3,4,5,6 stroke:#7f8c8d,stroke-width:2px;
+    linkStyle 2,3,4,5,6,7,8 stroke:#7f8c8d,stroke-width:2px;
 ```
 
 AgentOptim's architecture is built on two powerful tools that work together seamlessly:
@@ -103,7 +203,9 @@ evalset_result = await manage_evalset_tool(
         "Is the response helpful?",
         "Is the response clear?",
         "Is the response accurate?"
-    ]
+    ],
+    short_description="Basic quality assessment",
+    long_description="This EvalSet measures response quality across key dimensions. Use it to evaluate general helpfulness, clarity and accuracy of assistant responses." + " " * 50
 )
 
 # Get the EvalSet ID
@@ -117,11 +219,12 @@ This tool allows you to:
 </details>
 
 <details>
-<summary><b>🔬 run_evalset_tool</b> - Apply evaluation criteria to conversations</summary>
+<summary><b>🔬 manage_eval_runs_tool</b> - Run, store, and retrieve evaluations</summary>
 
 ```python
-# Evaluate a conversation
-results = await run_evalset_tool(
+# 1. Run a new evaluation
+results = await manage_eval_runs_tool(
+    action="run",
     evalset_id=evalset_id,
     conversation=[
         {"role": "system", "content": "You are a helpful assistant."},
@@ -130,14 +233,30 @@ results = await run_evalset_tool(
     ]
 )
 
-# Check the results
+# Check the results and note the evaluation ID
+eval_id = results["id"]
 print(f"Score: {results['summary']['yes_percentage']}%")
+print(f"Evaluation ID: {eval_id}")
+
+# 2. Later, retrieve the evaluation by ID
+past_eval = await manage_eval_runs_tool(
+    action="get",
+    eval_run_id=eval_id
+)
+
+# 3. List all previous evaluations (paginated)
+all_evals = await manage_eval_runs_tool(
+    action="list",
+    page=1,
+    page_size=10
+)
 ```
 
 This tool allows you to:
-- Evaluate single conversations or compare multiple approaches
-- Get detailed judgments with confidence scores
-- Generate summary statistics and insights
+- Run evaluations on conversations and store the results
+- Retrieve past evaluation results for analysis
+- List all previous evaluations with pagination
+- Track evaluation history over time
 </details>
 
 ## 📚 Documentation Roadmap

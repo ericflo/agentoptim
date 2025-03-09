@@ -129,7 +129,42 @@ Examples:
                             help="Output format (default: text)")
     delete_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
     
-    # Evaluate command
+    # Run evaluation command
+    runs_parser = subparsers.add_parser("runs", help="Manage evaluation runs")
+    runs_subparsers = runs_parser.add_subparsers(dest="runs_command", help="Commands for managing evaluation runs")
+    
+    # Run a new evaluation
+    run_parser = runs_subparsers.add_parser("run", help="Run a new evaluation")
+    run_parser.add_argument("evalset_id", help="ID of the evaluation set to use")
+    run_parser.add_argument("conversation", nargs="?", help="Conversation file (JSON format)")
+    run_parser.add_argument("--text", help="Text file to evaluate (treated as a single user message)")
+    run_parser.add_argument("--model", help="Judge model to use for evaluation")
+    run_parser.add_argument("--provider", choices=["local", "openai", "anthropic"], default="local", 
+                          help="API provider (default: local)")
+    run_parser.add_argument("--parallel", type=int, default=3, help="Maximum parallel evaluations (default: 3)")
+    run_parser.add_argument("--no-reasoning", action="store_true", help="Omit reasoning from results")
+    run_parser.add_argument("--format", choices=["text", "json", "yaml", "csv"], default="text", 
+                          help="Output format (default: text)")
+    run_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
+    
+    # Get an evaluation run
+    get_run_parser = runs_subparsers.add_parser("get", help="Get a specific evaluation run")
+    get_run_parser.add_argument("eval_run_id", help="ID of the evaluation run to retrieve")
+    get_run_parser.add_argument("--format", choices=["text", "json", "yaml"], default="text",
+                              help="Output format (default: text)")
+    get_run_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
+    
+    # List evaluation runs
+    list_runs_parser = runs_subparsers.add_parser("list", help="List all evaluation runs")
+    list_runs_parser.add_argument("--evalset-id", help="Filter by evaluation set ID")
+    list_runs_parser.add_argument("--page", type=int, default=1, help="Page number (default: 1)")
+    list_runs_parser.add_argument("--page-size", type=int, default=10, 
+                                help="Number of items per page (default: 10, max: 100)")
+    list_runs_parser.add_argument("--format", choices=["text", "json", "yaml", "table"], default="table",
+                                help="Output format (default: table)")
+    list_runs_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
+    
+    # Keep eval command for backward compatibility
     eval_parser = subparsers.add_parser("eval", help="Evaluate a conversation against an evaluation set")
     eval_parser.add_argument("evalset_id", help="ID of the evaluation set to use")
     eval_parser.add_argument("conversation", nargs="?", help="Conversation file (JSON format)")
@@ -616,9 +651,26 @@ def run_cli():
             result = manage_evalset(action="delete", evalset_id=args.evalset_id)
             handle_output(result, args.format, args.output)
             
-        elif args.command == "eval":
+        elif args.command == "eval" or (args.command == "runs" and args.runs_command == "run"):
             # Load the conversation
-            conversation = load_conversation(args.conversation, args.text)
+            if args.command == "eval":
+                conversation = load_conversation(args.conversation, args.text)
+                evalset_id = args.evalset_id
+                model = args.model
+                no_reasoning = args.no_reasoning
+                parallel = args.parallel
+                provider = args.provider
+                format_type = args.format
+                output_file = args.output
+            else:  # runs run command
+                conversation = load_conversation(args.conversation, args.text)
+                evalset_id = args.evalset_id
+                model = args.model
+                no_reasoning = args.no_reasoning
+                parallel = args.parallel
+                provider = args.provider
+                format_type = args.format
+                output_file = args.output
             
             # Import constants here to avoid circular imports
             from agentoptim.constants import (
@@ -631,44 +683,93 @@ def run_cli():
             )
             
             # Configure provider settings
-            if args.provider:
+            if provider:
                 # Only set API_BASE if not already set by user
                 if "AGENTOPTIM_API_BASE" not in os.environ:
-                    if args.provider == "openai":
+                    if provider == "openai":
                         os.environ["AGENTOPTIM_API_BASE"] = DEFAULT_OPENAI_API_BASE
-                    elif args.provider == "anthropic":
+                    elif provider == "anthropic":
                         os.environ["AGENTOPTIM_API_BASE"] = DEFAULT_ANTHROPIC_API_BASE
-                    elif args.provider == "local":
+                    elif provider == "local":
                         os.environ["AGENTOPTIM_API_BASE"] = DEFAULT_LOCAL_API_BASE
                 
                 # Set default model based on provider if not explicitly specified
-                if not args.model:
-                    if args.provider == "openai":
-                        args.model = DEFAULT_OPENAI_MODEL
-                    elif args.provider == "anthropic":
-                        args.model = DEFAULT_ANTHROPIC_MODEL
-                    elif args.provider == "local":
-                        args.model = DEFAULT_LOCAL_MODEL
+                if not model:
+                    if provider == "openai":
+                        model = DEFAULT_OPENAI_MODEL
+                    elif provider == "anthropic":
+                        model = DEFAULT_ANTHROPIC_MODEL
+                    elif provider == "local":
+                        model = DEFAULT_LOCAL_MODEL
             
             # Set environment variables for judge model and omit_reasoning if specified
-            if args.model:
-                os.environ["AGENTOPTIM_JUDGE_MODEL"] = args.model
-            if args.no_reasoning:
+            if model:
+                os.environ["AGENTOPTIM_JUDGE_MODEL"] = model
+            if no_reasoning:
                 os.environ["AGENTOPTIM_OMIT_REASONING"] = "1"
                 
             # Run the evaluation
             try:
                 # We need to run the async function in the asyncio event loop
-                result = asyncio.run(run_evalset(
-                    evalset_id=args.evalset_id,
-                    conversation=conversation,
-                    judge_model=args.model,
-                    max_parallel=args.parallel,
-                    omit_reasoning=args.no_reasoning
-                ))
+                # For runs run command, use the new manage_eval_runs_tool action=run 
+                if args.command == "runs" and args.runs_command == "run":
+                    from agentoptim.evalrun import manage_eval_runs
+                    from agentoptim.runner import run_evalset
+                    from agentoptim.evalrun import EvalRun, save_eval_run
+                    
+                    # First call run_evalset
+                    run_result = asyncio.run(run_evalset(
+                        evalset_id=evalset_id,
+                        conversation=conversation,
+                        judge_model=model,
+                        max_parallel=parallel,
+                        omit_reasoning=no_reasoning
+                    ))
+                    
+                    # Check for errors
+                    if "error" in run_result:
+                        handle_output(run_result, format_type, output_file)
+                        return
+                    
+                    # Create and save EvalRun
+                    eval_run = EvalRun(
+                        evalset_id=run_result.get("evalset_id"),
+                        evalset_name=run_result.get("evalset_name"),
+                        judge_model=run_result.get("judge_model"),
+                        results=run_result.get("results", []),
+                        conversation=conversation,
+                        summary=run_result.get("summary", {})
+                    )
+                    
+                    # Save to disk
+                    save_success = save_eval_run(eval_run)
+                    if not save_success:
+                        print(f"{Fore.YELLOW}Warning: Failed to save evaluation run.{Style.RESET_ALL}", file=sys.stderr)
+                    
+                    # Add the run ID to the result for future reference
+                    run_result["id"] = eval_run.id
+                    
+                    # Format the output
+                    if "formatted_message" in run_result:
+                        run_result["result"] = run_result.pop("formatted_message")
+                    
+                    # Add a message about the saved run ID
+                    if "result" in run_result and isinstance(run_result["result"], str):
+                        run_result["result"] += f"\n\nEvaluation saved with ID: {eval_run.id}"
+                    
+                    result = run_result
+                else:
+                    # Legacy eval command - just call run_evalset directly
+                    result = asyncio.run(run_evalset(
+                        evalset_id=evalset_id,
+                        conversation=conversation,
+                        judge_model=model,
+                        max_parallel=parallel,
+                        omit_reasoning=no_reasoning
+                    ))
                 
                 # For CSV format, flatten the results
-                if args.format == "csv":
+                if format_type == "csv":
                     # Extract just the results list for CSV output
                     if "results" in result:
                         flattened_results = []
@@ -680,63 +781,236 @@ def run_cli():
                                 "confidence": r["confidence"],
                                 "reasoning": r.get("reasoning", "")
                             })
-                        handle_output(flattened_results, args.format, args.output)
+                        handle_output(flattened_results, format_type, output_file)
                     else:
-                        handle_output(result, args.format, args.output)
+                        handle_output(result, format_type, output_file)
                 else:
-                    handle_output(result, args.format, args.output)
+                    handle_output(result, format_type, output_file)
             except Exception as e:
                 print(f"{Fore.RED}Error: {str(e)}{Style.RESET_ALL}", file=sys.stderr)
                 sys.exit(1)
+        
+        elif args.command == "runs" and args.runs_command == "get":
+            # Get a specific evaluation run by ID
+            from agentoptim.evalrun import get_eval_run, get_formatted_eval_run
+            eval_run = get_eval_run(args.eval_run_id)
+            
+            if eval_run is None:
+                print(f"{Fore.RED}Error: Evaluation run with ID '{args.eval_run_id}' not found{Style.RESET_ALL}", file=sys.stderr)
+                sys.exit(1)
+                
+            # Format the evaluation run for output
+            formatted_run = get_formatted_eval_run(eval_run)
+            handle_output(formatted_run, args.format, args.output)
+            
+        elif args.command == "runs" and args.runs_command == "list":
+            # List evaluation runs with pagination
+            from agentoptim.evalrun import list_eval_runs
+            
+            # Convert evalset-id argument to evalset_id
+            evalset_id = args.evalset_id if hasattr(args, 'evalset_id') else None
+            
+            # Get paginated list of evaluation runs
+            eval_runs, total_count = list_eval_runs(
+                page=args.page,
+                page_size=args.page_size,
+                evalset_id=evalset_id
+            )
+            
+            # Calculate pagination metadata
+            total_pages = (total_count + args.page_size - 1) // args.page_size
+            has_next = args.page < total_pages
+            has_prev = args.page > 1
+            
+            # Format output based on format type
+            if args.format == "table":
+                # Create a pretty table for display
+                filtered_text = f" for EvalSet '{evalset_id}'" if evalset_id else ""
+                title = f"{Fore.CYAN}╭──────────────────────────────────────────────────╮{Style.RESET_ALL}"
+                title += f"\n{Fore.CYAN}│    Evaluation Runs{filtered_text} ({total_count})             │{Style.RESET_ALL}"
+                title += f"\n{Fore.CYAN}│    Page {args.page} of {total_pages}                                  │{Style.RESET_ALL}"
+                title += f"\n{Fore.CYAN}╰──────────────────────────────────────────────────╯{Style.RESET_ALL}"
+                
+                if eval_runs:
+                    # Calculate column widths
+                    id_width = 10  # We'll truncate IDs for readability
+                    name_width = max(len(run.get("evalset_name", "")) for run in eval_runs)
+                    name_width = min(name_width, 20)  # Limit name length
+                    date_width = 19  # Fixed width for formatted timestamp
+                    score_width = 14  # Fixed width for score display
+                    
+                    # Table header
+                    table = [
+                        f"{Fore.WHITE}┌{'─' * (id_width + 2)}┬{'─' * (name_width + 2)}┬{'─' * (date_width + 2)}┬{'─' * (score_width + 2)}┐{Style.RESET_ALL}",
+                        f"{Fore.WHITE}│ {Fore.YELLOW}{'ID'.ljust(id_width)}{Style.RESET_ALL} │ {Fore.YELLOW}{'EvalSet'.ljust(name_width)}{Style.RESET_ALL} │ {Fore.YELLOW}{'Time'.ljust(date_width)}{Style.RESET_ALL} │ {Fore.YELLOW}{'Score'.ljust(score_width)}{Style.RESET_ALL} │{Style.RESET_ALL}",
+                        f"{Fore.WHITE}├{'─' * (id_width + 2)}┼{'─' * (name_width + 2)}┼{'─' * (date_width + 2)}┼{'─' * (score_width + 2)}┤{Style.RESET_ALL}"
+                    ]
+                    
+                    # Table rows
+                    for i, run in enumerate(eval_runs):
+                        run_id = run.get("id", "")[:id_width]
+                        name = run.get("evalset_name", "")
+                        if len(name) > name_width:
+                            name = name[:name_width-3] + "..."
+                        
+                        timestamp = run.get("timestamp_formatted", "")
+                        
+                        # Get score from summary if available
+                        score_str = "N/A"
+                        if "summary" in run and run["summary"]:
+                            yes_pct = run["summary"].get("yes_percentage", 0)
+                            score_str = f"{yes_pct:.1f}%"
+                        
+                        row = f"{Fore.WHITE}│ {Fore.GREEN}{run_id.ljust(id_width)}{Style.RESET_ALL} │ "
+                        row += f"{Fore.GREEN}{name.ljust(name_width)}{Style.RESET_ALL} │ "
+                        row += f"{Fore.CYAN}{timestamp.ljust(date_width)}{Style.RESET_ALL} │ "
+                        row += f"{Fore.BLUE}{score_str.ljust(score_width)}{Style.RESET_ALL} │"
+                        table.append(row)
+                        
+                        # Add separator between rows except after the last row
+                        if i < len(eval_runs) - 1:
+                            table.append(f"{Fore.WHITE}├{'─' * (id_width + 2)}┼{'─' * (name_width + 2)}┼{'─' * (date_width + 2)}┼{'─' * (score_width + 2)}┤{Style.RESET_ALL}")
+                    
+                    # Table footer
+                    table.append(f"{Fore.WHITE}└{'─' * (id_width + 2)}┴{'─' * (name_width + 2)}┴{'─' * (date_width + 2)}┴{'─' * (score_width + 2)}┘{Style.RESET_ALL}")
+                    
+                    # Add pagination info and guidance
+                    pagination_info = []
+                    if has_prev:
+                        pagination_info.append(f"{Fore.YELLOW}Previous page:{Style.RESET_ALL} agentoptim runs list --page {args.page - 1}")
+                    if has_next:
+                        pagination_info.append(f"{Fore.YELLOW}Next page:{Style.RESET_ALL} agentoptim runs list --page {args.page + 1}")
+                    
+                    guidance = [
+                        f"\n{Fore.YELLOW}Usage:{Style.RESET_ALL}",
+                        f"  {Fore.GREEN}agentoptim runs get <id> {Style.RESET_ALL}- View details of an evaluation run",
+                        f"  {Fore.GREEN}agentoptim runs run <evalset_id> <conversation.json> {Style.RESET_ALL}- Run a new evaluation"
+                    ]
+                    
+                    # Print everything
+                    table_str = "\n".join(table)
+                    pagination_str = "\n".join(pagination_info)
+                    guidance_str = "\n".join(guidance)
+                    print(f"{title}\n\n{table_str}\n\n{pagination_str}\n{guidance_str}")
+                    
+                    # Handle file output if specified
+                    if args.output:
+                        # Create plain text version without colors
+                        plain_title = f"Evaluation Runs{filtered_text} ({total_count})"
+                        plain_title += f"\nPage {args.page} of {total_pages}"
+                        
+                        plain_table = [
+                            f"┌{'─' * (id_width + 2)}┬{'─' * (name_width + 2)}┬{'─' * (date_width + 2)}┬{'─' * (score_width + 2)}┐",
+                            f"│ {'ID'.ljust(id_width)} │ {'EvalSet'.ljust(name_width)} │ {'Time'.ljust(date_width)} │ {'Score'.ljust(score_width)} │",
+                            f"├{'─' * (id_width + 2)}┼{'─' * (name_width + 2)}┼{'─' * (date_width + 2)}┼{'─' * (score_width + 2)}┤"
+                        ]
+                        
+                        for i, run in enumerate(eval_runs):
+                            run_id = run.get("id", "")[:id_width]
+                            name = run.get("evalset_name", "")
+                            if len(name) > name_width:
+                                name = name[:name_width-3] + "..."
+                            
+                            timestamp = run.get("timestamp_formatted", "")
+                            
+                            # Get score from summary if available
+                            score_str = "N/A"
+                            if "summary" in run and run["summary"]:
+                                yes_pct = run["summary"].get("yes_percentage", 0)
+                                score_str = f"{yes_pct:.1f}%"
+                            
+                            row = f"│ {run_id.ljust(id_width)} │ {name.ljust(name_width)} │ {timestamp.ljust(date_width)} │ {score_str.ljust(score_width)} │"
+                            plain_table.append(row)
+                            
+                            # Add separator between rows except after the last row
+                            if i < len(eval_runs) - 1:
+                                plain_table.append(f"├{'─' * (id_width + 2)}┼{'─' * (name_width + 2)}┼{'─' * (date_width + 2)}┼{'─' * (score_width + 2)}┤")
+                        
+                        # Table footer
+                        plain_table.append(f"└{'─' * (id_width + 2)}┴{'─' * (name_width + 2)}┴{'─' * (date_width + 2)}┴{'─' * (score_width + 2)}┘")
+                        
+                        # Add pagination info and guidance
+                        plain_pagination = []
+                        if has_prev:
+                            plain_pagination.append(f"Previous page: agentoptim runs list --page {args.page - 1}")
+                        if has_next:
+                            plain_pagination.append(f"Next page: agentoptim runs list --page {args.page + 1}")
+                        
+                        plain_guidance = [
+                            "\nUsage:",
+                            "  agentoptim runs get <id> - View details of an evaluation run",
+                            "  agentoptim runs run <evalset_id> <conversation.json> - Run a new evaluation"
+                        ]
+                        
+                        with open(args.output, "w", encoding="utf-8") as f:
+                            plain_table_str = "\n".join(plain_table)
+                            plain_pagination_str = "\n".join(plain_pagination)
+                            plain_guidance_str = "\n".join(plain_guidance)
+                            f.write(f"{plain_title}\n\n{plain_table_str}\n\n{plain_pagination_str}\n{plain_guidance_str}")
+                        
+                        print(f"Output saved to: {args.output}")
+                else:
+                    print(f"{title}\n\nNo evaluation runs found.")
+                
+                return  # Skip the default handle_output
+            else:
+                # For other formats, create a structured response
+                response = {
+                    "status": "success",
+                    "eval_runs": eval_runs,
+                    "pagination": {
+                        "page": args.page,
+                        "page_size": args.page_size,
+                        "total_count": total_count,
+                        "total_pages": total_pages,
+                        "has_next": has_next,
+                        "has_prev": has_prev,
+                        "next_page": args.page + 1 if has_next else None,
+                        "prev_page": args.page - 1 if has_prev else None
+                    }
+                }
+                
+                # Add a formatted message
+                filtered_text = f" for EvalSet '{evalset_id}'" if evalset_id else ""
+                formatted_message = []
+                formatted_message.append(f"# Evaluation Runs{filtered_text}")
+                formatted_message.append(f"Page {args.page} of {total_pages} ({total_count} total)")
+                formatted_message.append("")
+                
+                if eval_runs:
+                    for i, run in enumerate(eval_runs):
+                        formatted_message.append(f"## {i+1}. Run: {run['id']}")
+                        formatted_message.append(f"- EvalSet: {run['evalset_name']} ({run['evalset_id']})")
+                        formatted_message.append(f"- Time: {run['timestamp_formatted']}")
+                        formatted_message.append(f"- Judge Model: {run['judge_model'] or 'auto-detected'}")
+                        
+                        # Add summary if available
+                        if "summary" in run and run["summary"]:
+                            summary = run["summary"]
+                            yes_percentage = summary.get("yes_percentage", 0)
+                            total_questions = summary.get("total_questions", 0)
+                            formatted_message.append(f"- Score: {yes_percentage}% ({summary.get('yes_count', 0)}/{total_questions})")
+                        
+                        # Add separator for readability
+                        formatted_message.append("")
+                else:
+                    formatted_message.append("No evaluation runs found.")
+                
+                # Add pagination instructions
+                if has_prev or has_next:
+                    formatted_message.append("## Pagination")
+                    if has_prev:
+                        formatted_message.append(f"- Previous page: agentoptim runs list --page {args.page - 1}")
+                    if has_next:
+                        formatted_message.append(f"- Next page: agentoptim runs list --page {args.page + 1}")
+                
+                response["formatted_message"] = "\n".join(formatted_message)
+                handle_output(response, args.format, args.output)
                 
         elif args.command == "stats":
-            evalset_stats = get_cache_statistics()
-            api_stats = get_api_cache_stats()
-            
-            # Calculate overall stats
-            total_hits = evalset_stats["hits"] + api_stats["hits"]
-            total_misses = evalset_stats["misses"] + api_stats["misses"]
-            total_requests = total_hits + total_misses
-            overall_hit_rate = (total_hits / total_requests * 100) if total_requests > 0 else 0
-            
-            stats = {
-                "evalset_cache": evalset_stats,
-                "api_cache": api_stats,
-                "overall": {
-                    "hit_rate_pct": round(overall_hit_rate, 2),
-                    "total_hits": total_hits,
-                    "total_misses": total_misses,
-                    "estimated_time_saved_seconds": round(total_hits * 0.5, 1)
-                }
-            }
-            
-            # Format a message with the statistics
-            stats["formatted_message"] = "\n".join([
-                "# Cache Performance Statistics",
-                "",
-                "## EvalSet Cache",
-                f"- Size: {evalset_stats['size']} / {evalset_stats['capacity']} (current/max)",
-                f"- Hit Rate: {evalset_stats['hit_rate_pct']}%",
-                f"- Hits: {evalset_stats['hits']}",
-                f"- Misses: {evalset_stats['misses']}",
-                f"- Evictions: {evalset_stats['evictions']}",
-                f"- Expirations: {evalset_stats['expirations']}",
-                "",
-                "## API Response Cache",
-                f"- Size: {api_stats['size']} / {api_stats['capacity']} (current/max)",
-                f"- Hit Rate: {api_stats['hit_rate_pct']}%",
-                f"- Hits: {api_stats['hits']}",
-                f"- Misses: {api_stats['misses']}",
-                f"- Evictions: {api_stats['evictions']}",
-                f"- Expirations: {api_stats['expirations']}",
-                "",
-                "## Overall Performance",
-                f"- Combined Hit Rate: {round(overall_hit_rate, 2)}%",
-                f"- Total Hits: {total_hits}",
-                f"- Total Misses: {total_misses}",
-                f"- Resource Savings: Approximately {round(total_hits * 0.5, 1)} seconds of API processing time saved"
-            ])
-            
+            # Use the server.py get_cache_stats function
+            from agentoptim.server import get_cache_stats
+            stats = get_cache_stats()
             handle_output(stats, args.format, args.output)
 
 def main():
