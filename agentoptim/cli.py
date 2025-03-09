@@ -252,16 +252,16 @@ def handle_output(data: Any, format_type: str, output_file: Optional[str] = None
             from rich.table import Table
             from rich.style import Style
             
-            # Create a table
-            table = Table(show_header=True, header_style="bold cyan")
+            # Create a table - set a larger width to handle UUIDs 
+            table = Table(show_header=True, header_style="bold cyan", width=160)
             
             # Add columns
             if len(data) > 0:
                 sample_row = data[0]
                 for column in sample_row.keys():
-                    # Make ID column narrower
+                    # Make ID column wide enough to fully display UUIDs
                     if column.lower() == "id":
-                        table.add_column(column.upper(), style="dim", no_wrap=True, width=10)
+                        table.add_column(column.upper(), style="dim", no_wrap=True, width=40)
                     elif "description" in column.lower():
                         table.add_column(column.title(), style="green", width=50)
                     elif "name" in column.lower():
@@ -285,8 +285,8 @@ def handle_output(data: Any, format_type: str, output_file: Optional[str] = None
                         elif isinstance(val, (dict, list)):
                             formatted_row.append(str(val)[:20] + "..." if len(str(val)) > 20 else str(val))
                         elif col.lower() == "id":
-                            # Truncate IDs for readability
-                            formatted_row.append(f"{str(val)[:8]}...")
+                            # Keep full IDs for usability
+                            formatted_row.append(str(val))
                         else:
                             formatted_row.append(str(val))
                     
@@ -790,7 +790,7 @@ def run_cli():
                 if len(str(model)) > 15:
                     model = str(model)[:12] + "..."
                 
-                # Create a nice entry for the table with standardized fields
+                # Create a nice entry for the table with standardized fields - keep full ID
                 formatted_run = {
                     "id": run.get("id", "Unknown"),
                     "date": timestamp,
