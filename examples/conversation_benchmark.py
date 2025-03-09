@@ -397,7 +397,7 @@ async def main():
     # Prepare data for export
     benchmark_summary = {
         "timestamp": datetime.now().isoformat(),
-        "judge_model": "meta-llama-3.1-8b-instruct",
+        "judge_model": "auto-detected",  # Using auto-detection feature
         "overall_scores": overall_scores,
         "category_scores": {k: sum(v)/len(v) for k, v in category_scores.items()},
         "difficulty_scores": {k: sum(v)/len(v) for k, v in difficulty_scores.items()},

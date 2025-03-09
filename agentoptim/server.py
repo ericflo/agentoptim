@@ -576,9 +576,9 @@ async def run_evalset_tool(
             # This can happen during tests or when no request context is available
             logger.debug(f"Could not access request context: {e}")
         
-        # Use judge_model from options/env, or fall back to default model
-        eval_model = judge_model or "meta-llama-3.1-8b-instruct"
-        logger.info(f"Evaluating with model: {eval_model}")
+        # Use judge_model from options/env, or leave as None to trigger auto-detection
+        eval_model = judge_model  # No fallback to allow auto-detection in runner.py
+        logger.info(f"Evaluating with model: {eval_model or 'auto-detect'}")
                 
         # Call the async function and await its result
         result = await run_evalset(

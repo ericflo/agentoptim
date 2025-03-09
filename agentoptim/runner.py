@@ -101,7 +101,7 @@ class EvalResults(BaseModel):
 
 async def call_llm_api(
     prompt: Optional[str] = None,
-    model: str = "meta-llama-3.1-8b-instruct",
+    model: Optional[str] = None,  # Changed to None to trigger model auto-detection
     temperature: float = 0.0,
     max_tokens: int = 1024,  # Increased to 1024 to ensure complete responses
     logit_bias: Optional[Dict[int, float]] = None,
@@ -127,6 +127,24 @@ async def call_llm_api(
     response = None
     
     try:
+        # Auto-detect model if not provided
+        if model is None:
+            logger.info("No model specified, attempting to auto-detect from API")
+            # Extract the base URL from API_BASE
+            base_url = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234/v1")
+            # Remove '/v1' if present to get the base server URL
+            if base_url.endswith("/v1"):
+                base_url = base_url[:-3]
+            
+            detected_model = await get_available_models(base_url)
+            if detected_model:
+                model = detected_model
+                logger.info(f"Auto-detected model: {model}")
+            else:
+                # If detection fails, use a default model that's not meta-llama-3.1-8b-instruct
+                model = "gpt-3.5-turbo"  # Fallback default
+                logger.info(f"Model auto-detection failed, using fallback: {model}")
+            
         # Allow either messages or prompt parameter
         if messages is None:
             if prompt is None:
@@ -402,7 +420,7 @@ async def evaluate_question(
     conversation: List[Dict[str, str]],
     question: str,
     template: str,
-    judge_model: str = "meta-llama-3.1-8b-instruct",
+    judge_model: Optional[str] = None,  # Changed to None to trigger model auto-detection
     omit_reasoning: bool = False
 ) -> EvalResult:
     """
@@ -942,10 +960,47 @@ def get_api_cache_stats() -> Dict[str, Any]:
     return API_RESPONSE_CACHE.get_stats()
 
 
+async def get_available_models(base_url: str = "http://localhost:1234") -> Optional[str]:
+    """
+    Query the API to get a list of available models and return the first suitable one.
+    
+    Args:
+        base_url: The base URL of the API server
+        
+    Returns:
+        The ID of the first available model, or None if no models are available or an error occurs
+    """
+    try:
+        logger.debug(f"Querying available models from {base_url}/v1/models")
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{base_url}/v1/models")
+            response.raise_for_status()
+            
+            models_data = response.json()
+            if "data" in models_data and len(models_data["data"]) > 0:
+                # Filter out embedding models which contain "embed" in their ID
+                chat_models = [model for model in models_data["data"] 
+                              if model.get("object") == "model" and "embed" not in model.get("id", "").lower()]
+                
+                if chat_models:
+                    model_id = chat_models[0]["id"]
+                    logger.info(f"Selected model from API: {model_id}")
+                    return model_id
+                else:
+                    logger.warning("No suitable chat models found in API response")
+            else:
+                logger.warning("No models found in API response")
+                
+    except Exception as e:
+        logger.warning(f"Error querying available models: {str(e)}")
+        
+    return None
+
+
 async def run_evalset(
     evalset_id: str,
     conversation: List[Dict[str, str]],
-    judge_model: str = "meta-llama-3.1-8b-instruct",
+    judge_model: Optional[str] = None,  # Changed to None to trigger model auto-detection
     max_parallel: int = 3,
     omit_reasoning: bool = False
 ) -> Dict[str, Any]:
