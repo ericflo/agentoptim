@@ -51,13 +51,21 @@ flowchart TD
     User --> |"&nbsp;&nbsp;Evaluates conversations&nbsp;&nbsp;"| B["🔬 run_evalset_tool"]
     
     subgraph Creation ["📝 Evaluation Creation"]
-        A --> |"&nbsp;&nbsp;Stores&nbsp;&nbsp;"| C[("📊 EvalSets\n- Criteria questions\n- Templates\n- Metadata")]
+        A --> |"&nbsp;&nbsp;Stores&nbsp;&nbsp;"| C[("📊 EvalSets
+- Criteria questions
+- Templates
+- Metadata")]
     end
     
     subgraph Execution ["⚙️ Evaluation Execution"]
-        B --> |"&nbsp;&nbsp;Processes&nbsp;&nbsp;"| E["🧩 Conversations\n(User + AI interactions)"]
-        E --> |"&nbsp;&nbsp;Analyzed by&nbsp;&nbsp;"| D["🧠 Judge Models\n(Claude/GPT/Local)"]
-        D --> |"&nbsp;&nbsp;Produces&nbsp;&nbsp;"| F["📈 Results\n- Judgments\n- Confidence scores\n- Summary metrics"]
+        B --> |"&nbsp;&nbsp;Processes&nbsp;&nbsp;"| E["🧩 Conversations
+(User + AI interactions)"]
+        E --> |"&nbsp;&nbsp;Analyzed by&nbsp;&nbsp;"| D["🧠 Judge Models
+(Claude/GPT/Local)"]
+        D --> |"&nbsp;&nbsp;Produces&nbsp;&nbsp;"| F["📈 Results
+- Judgments
+- Confidence scores
+- Summary metrics"]
     end
     
     C --> |"&nbsp;&nbsp;Provides criteria for&nbsp;&nbsp;"| B
