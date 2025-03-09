@@ -313,7 +313,6 @@ async def manage_evalset_tool(
 async def run_evalset_tool(
     evalset_id: str,
     conversation: List[Dict[str, str]],
-    model: Optional[str] = None,  # Will use judge_model from options if not provided
     max_parallel: int = 3
 ) -> dict:
     """
@@ -345,12 +344,9 @@ async def run_evalset_tool(
                     {"role": "assistant", "content": "Go to the login page and click 'Forgot Password'."}
                 ]
                 
-    model: The LLM to use as the evaluation judge.
-          OPTIONAL. If not provided, will use:
-          1. First, the "judge_model" option from client configuration if available
-          2. Otherwise, falls back to "meta-llama-3.1-8b-instruct"
-          Should be a model capable of reasoning about conversations and following instructions.
-          Example: "meta-llama-3.1-8b-instruct", "gpt-4o-mini", or "anthropic/claude-3-sonnet"
+    (The model used for evaluation is controlled by the server configuration,
+    either through the AGENTOPTIM_JUDGE_MODEL environment variable or the judge_model option
+    in client configuration. If neither is specified, the default "meta-llama-3.1-8b-instruct" is used.)
           
     max_parallel: Maximum number of evaluation questions to process simultaneously.
                 OPTIONAL. Defaults to 3.
@@ -487,16 +483,15 @@ async def run_evalset_tool(
             # This can happen during tests or when no request context is available
             logger.debug(f"Could not access request context: {e}")
         
-        # Use model parameter if provided, otherwise use judge_model from options/env,
-        # or fall back to default model
-        eval_model = model or judge_model or "meta-llama-3.1-8b-instruct"
+        # Use judge_model from options/env, or fall back to default model
+        eval_model = judge_model or "meta-llama-3.1-8b-instruct"
         logger.info(f"Evaluating with model: {eval_model}")
                 
         # Call the async function and await its result
         result = await run_evalset(
             evalset_id=evalset_id,
             conversation=conversation,
-            model=eval_model,
+            judge_model=eval_model,
             max_parallel=max_parallel,
             omit_reasoning=omit_reasoning
         )

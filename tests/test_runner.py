@@ -75,7 +75,7 @@ class TestRunner(unittest.TestCase):
         result = await run_evalset(
             evalset_id="test-evalset-id",
             conversation=self.test_conversation,
-            model="test-model",
+            judge_model="test-model",
             max_parallel=2
         )
         
@@ -83,7 +83,7 @@ class TestRunner(unittest.TestCase):
         self.assertEqual(result.get("status"), "success")
         self.assertEqual(result.get("evalset_id"), "test-evalset-id")
         self.assertEqual(result.get("evalset_name"), "Test EvalSet")
-        self.assertEqual(result.get("model"), "test-model")
+        self.assertEqual(result.get("judge_model"), "test-model")
         
         # Check that results array exists and has expected length
         self.assertIn("results", result)
@@ -160,7 +160,7 @@ class TestRunner(unittest.TestCase):
             conversation=self.test_conversation,
             question="Is the response helpful?",
             template=self.test_evalset.template,
-            model="test-model"
+            judge_model="test-model"
         )
         
         # Check result structure with reasoning
@@ -176,7 +176,7 @@ class TestRunner(unittest.TestCase):
             conversation=self.test_conversation,
             question="Is the response helpful?",
             template=self.test_evalset.template,
-            model="test-model",
+            judge_model="test-model",
             omit_reasoning=True
         )
         
@@ -198,7 +198,7 @@ class TestRunner(unittest.TestCase):
             conversation=self.test_conversation,
             question="Is the response helpful?",
             template=self.test_evalset.template,
-            model="test-model"
+            judge_model="test-model"
         )
         
         # Check result structure for error
@@ -328,7 +328,7 @@ async def test_run_evalset_omit_reasoning():
     # Create a mock evaluate_question function
     original_evaluate_question = agentoptim.runner.evaluate_question
     
-    async def mock_evaluate_question(conversation, question, template, model, omit_reasoning=False):
+    async def mock_evaluate_question(conversation, question, template, judge_model, omit_reasoning=False):
         # Return different results based on omit_reasoning
         if omit_reasoning:
             # No reasoning when omitted
@@ -362,7 +362,7 @@ async def test_run_evalset_omit_reasoning():
         result_with_reasoning = await run_evalset(
             evalset_id="test-evalset-id",
             conversation=conversation,
-            model="test-model",
+            judge_model="test-model",
             max_parallel=1,
             omit_reasoning=False
         )
@@ -371,7 +371,7 @@ async def test_run_evalset_omit_reasoning():
         result_without_reasoning = await run_evalset(
             evalset_id="test-evalset-id",
             conversation=conversation,
-            model="test-model",
+            judge_model="test-model",
             max_parallel=1,
             omit_reasoning=True
         )
@@ -441,7 +441,7 @@ async def test_evaluate_question_missing_fields_standalone():
             conversation=conversation,
             question="Is the response helpful?",
             template=template,
-            model="test-model"
+            judge_model="test-model"
         )
         
         # Check result structure - should use default values
@@ -456,7 +456,7 @@ async def test_evaluate_question_missing_fields_standalone():
             conversation=conversation,
             question="Is the response helpful?",
             template=template,
-            model="test-model",
+            judge_model="test-model",
             omit_reasoning=True
         )
         

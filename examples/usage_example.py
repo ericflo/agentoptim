@@ -56,7 +56,6 @@ async def main():
     eval_results = await run_evalset_tool(
         evalset_id=evalset_id,
         conversation=conversation,
-        model="meta-llama-3.1-8b-instruct",  # Use your preferred model
         max_parallel=3
     )
     
@@ -76,7 +75,6 @@ async def main():
     less_helpful_results = await run_evalset_tool(
         evalset_id=evalset_id,
         conversation=less_helpful_conversation,
-        model="meta-llama-3.1-8b-instruct",
         max_parallel=3
     )
     

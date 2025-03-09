@@ -222,8 +222,7 @@ async def main():
     # 3️⃣ Run the evaluation
     results = await run_evalset_tool(
         evalset_id=evalset_id,
-        conversation=conversation,
-        model="meta-llama-3.1-8b-instruct"
+        conversation=conversation
     )
     
     # 4️⃣ View the results
@@ -380,20 +379,19 @@ After adding the configuration, launch Claude Code with:
 claude --mcp-server=optim
 ```
 
-### 🧩 Understanding Model Selection and Options
+### 🧩 Judge Model Selection
 
-AgentOptim uses a clear priority system to determine which judge model evaluates your conversations:
+AgentOptim uses a simple priority system to determine which judge model evaluates your conversations:
 
 | Priority | Method | Example |
 |----------|--------|---------|
-| 1️⃣ Highest | Tool parameter | `run_evalset_tool(evalset_id="123", conversation=conv, model="gpt-4o")` |
-| 2️⃣ Second | Environment variable | `AGENTOPTIM_JUDGE_MODEL=claude-3-haiku-20240307 agentoptim` |
-| 3️⃣ Third | Client configuration | In Claude Code's config.json under env settings |
-| 4️⃣ Default | Built-in default | Falls back to `meta-llama-3.1-8b-instruct` |
+| 1️⃣ Highest | Environment variable | `AGENTOPTIM_JUDGE_MODEL=claude-3-haiku-20240307 agentoptim` |
+| 2️⃣ Second | Client configuration | In Claude Code's config.json under env settings |
+| 3️⃣ Default | Built-in default | Falls back to `meta-llama-3.1-8b-instruct` |
 
 **💡 Pro Tips:**
-- For teams, use environment variables in config to ensure everyone uses the same judge model
-- For benchmarking, explicitly set the model parameter in each evaluation to compare different judges
+- For teams, set the environment variable in your Claude Code config to ensure consistent model usage
+- For benchmarking different models, modify the AGENTOPTIM_JUDGE_MODEL environment variable between runs
 - When publishing results, always document which judge model you used
 - For local development, LM Studio models are free and provide excellent results
 

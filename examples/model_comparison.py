@@ -126,9 +126,15 @@ async def main():
     # Store all results by model and conversation
     all_results = {}
     
+    # In AgentOptim v2.1.0, the model selection is controlled via environment variables
+    # rather than the run_evalset_tool parameter. We'll set the environment variable
+    # for each model we want to test.
     for model in available_models:
         print(f"\nEvaluating with {model}:")
         model_results = {}
+        
+        # Set the model via environment variable for this iteration
+        os.environ["AGENTOPTIM_JUDGE_MODEL"] = model
         
         for conv_type, conversation in [
             ("good", good_conversation),
@@ -141,7 +147,6 @@ async def main():
                 eval_result = await run_evalset_tool(
                     evalset_id=evalset_id,
                     conversation=conversation,
-                    model=model,
                     max_parallel=3
                 )
                 model_results[conv_type] = eval_result

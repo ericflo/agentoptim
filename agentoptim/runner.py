@@ -397,7 +397,7 @@ async def evaluate_question(
     conversation: List[Dict[str, str]],
     question: str,
     template: str,
-    model: str = "meta-llama-3.1-8b-instruct",
+    judge_model: str = "meta-llama-3.1-8b-instruct",
     omit_reasoning: bool = False
 ) -> EvalResult:
     """
@@ -407,7 +407,7 @@ async def evaluate_question(
         conversation: List of conversation messages
         question: The evaluation question
         template: The evaluation template
-        model: LLM model to use
+        judge_model: LLM model to use for evaluation
         omit_reasoning: If True, don't generate or include reasoning in results
     
     Returns:
@@ -912,7 +912,7 @@ CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or st
 async def run_evalset(
     evalset_id: str,
     conversation: List[Dict[str, str]],
-    model: str = "meta-llama-3.1-8b-instruct",
+    judge_model: str = "meta-llama-3.1-8b-instruct",
     max_parallel: int = 3,
     omit_reasoning: bool = False
 ) -> Dict[str, Any]:
@@ -922,21 +922,15 @@ async def run_evalset(
     Args:
         evalset_id: ID of the EvalSet to use
         conversation: List of conversation messages
-        model: LLM model to use for evaluations
+        judge_model: LLM model to use for evaluations (from server config)
         max_parallel: Maximum number of parallel evaluations
         omit_reasoning: If True, don't generate or include reasoning in results
     
     Returns:
         Dictionary with evaluation results
     """
-    # Check if environment has a default model specified
-    default_model_env = os.environ.get("AGENTOPTIM_JUDGE_MODEL")
-    if default_model_env and model != default_model_env and model != "meta-llama-3.1-8b-instruct":
-        logger.warning(
-            f"NOTE: The 'model' parameter in run_evalset_tool ({model}) is overriding "
-            f"the AGENTOPTIM_JUDGE_MODEL environment variable ({default_model_env}). "
-            f"To prevent this override, do not specify a model in the run_evalset_tool call."
-        )
+    # Log the model being used for evaluation
+    logger.info(f"Using judge model: {judge_model}")
         
     try:
         # Validate parameters
@@ -967,7 +961,7 @@ async def run_evalset(
                     conversation=conversation,
                     question=question,
                     template=evalset.template,
-                    model=model,
+                    judge_model=judge_model,
                     omit_reasoning=omit_reasoning
                 )
         
