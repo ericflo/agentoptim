@@ -94,7 +94,8 @@ async def main():
         eval_result = await run_evalset_tool(
             evalset_id=evalset_id,
             conversation=conversations[lang],
-            model="meta-llama-3.1-8b-instruct",
+            # Note: Model is set via environment variable
+            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
             max_parallel=3
         )
         results[lang] = eval_result

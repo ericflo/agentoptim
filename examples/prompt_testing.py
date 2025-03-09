@@ -132,7 +132,9 @@ Balance policy adherence with customer satisfaction, using your judgment to make
     basic_results = await run_evalset_tool(
         evalset_id=evalset_id,
         conversation=basic_conversation,
-        model="meta-llama-3.1-8b-instruct",
+        # Note: Model is set via environment variable
+            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
+            
         max_parallel=3
     )
     
@@ -140,7 +142,9 @@ Balance policy adherence with customer satisfaction, using your judgment to make
     detailed_results = await run_evalset_tool(
         evalset_id=evalset_id,
         conversation=detailed_conversation,
-        model="meta-llama-3.1-8b-instruct",
+        # Note: Model is set via environment variable
+            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
+            
         max_parallel=3
     )
     
@@ -148,7 +152,9 @@ Balance policy adherence with customer satisfaction, using your judgment to make
     persona_results = await run_evalset_tool(
         evalset_id=evalset_id,
         conversation=persona_conversation,
-        model="meta-llama-3.1-8b-instruct",
+        # Note: Model is set via environment variable
+            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
+            
         max_parallel=3
     )
     
@@ -156,7 +162,9 @@ Balance policy adherence with customer satisfaction, using your judgment to make
     principles_results = await run_evalset_tool(
         evalset_id=evalset_id,
         conversation=principles_conversation,
-        model="meta-llama-3.1-8b-instruct",
+        # Note: Model is set via environment variable
+            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
+            
         max_parallel=3
     )
     
@@ -164,7 +172,9 @@ Balance policy adherence with customer satisfaction, using your judgment to make
     constraints_results = await run_evalset_tool(
         evalset_id=evalset_id,
         conversation=constraints_conversation,
-        model="meta-llama-3.1-8b-instruct",
+        # Note: Model is set via environment variable
+            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
+            
         max_parallel=3
     )
     

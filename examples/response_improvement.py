@@ -126,7 +126,9 @@ async def main():
     initial_results = await run_evalset_tool(
         evalset_id=evalset_id,
         conversation=initial_conversation,
-        model="meta-llama-3.1-8b-instruct",
+        # Note: Model is set via environment variable
+            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
+            
         max_parallel=3
     )
     
@@ -166,7 +168,9 @@ async def main():
     suggestion_results = await run_evalset_tool(
         evalset_id=suggestion_evalset_id,
         conversation=initial_conversation,
-        model="meta-llama-3.1-8b-instruct",
+        # Note: Model is set via environment variable
+            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
+            
         max_parallel=3
     )
     
@@ -261,7 +265,9 @@ The choice between supervised and unsupervised learning depends on your specific
     improved_results = await run_evalset_tool(
         evalset_id=evalset_id,
         conversation=improved_conversation,
-        model="meta-llama-3.1-8b-instruct",
+        # Note: Model is set via environment variable
+            # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
+            
         max_parallel=3
     )
     

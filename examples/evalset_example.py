@@ -96,7 +96,8 @@ async def main():
     good_results = await run_evalset_tool(
         evalset_id=evalset_id,
         conversation=good_conversation,
-        model="meta-llama-3.1-8b-instruct",
+        # Note: Model is set via environment variable
+        # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
         max_parallel=3
     )
     
@@ -104,7 +105,8 @@ async def main():
     average_results = await run_evalset_tool(
         evalset_id=evalset_id,
         conversation=average_conversation,
-        model="meta-llama-3.1-8b-instruct",
+        # Note: Model is set via environment variable
+        # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
         max_parallel=3
     )
     
@@ -112,7 +114,8 @@ async def main():
     poor_results = await run_evalset_tool(
         evalset_id=evalset_id,
         conversation=poor_conversation,
-        model="meta-llama-3.1-8b-instruct",
+        # Note: Model is set via environment variable
+        # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
         max_parallel=3
     )
     

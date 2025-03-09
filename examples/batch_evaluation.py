@@ -165,11 +165,12 @@ async def main():
         # Extract the conversation messages
         conversation = conv_data["conversation"]
         
-        # Run the evaluation
+        # Run the evaluation 
+        # Note: In v2.1.0, models are specified via environment variables
+        # AGENTOPTIM_JUDGE_MODEL can be set before starting the server
         eval_results = await run_evalset_tool(
             evalset_id=evalset_id,
             conversation=conversation,
-            model="meta-llama-3.1-8b-instruct",
             max_parallel=3
         )
         
