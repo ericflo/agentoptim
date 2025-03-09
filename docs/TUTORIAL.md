@@ -213,24 +213,28 @@ Repeat this for `average_conversation.json` and `poor_conversation.json` with th
 Then evaluate each with the CLI:
 
 ```bash
-# Assuming your EvalSet ID is 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e
+# First, list all evalsets to get a real ID:
+agentoptim evalset list
+
+# Then use the ID from the output above (substituting your actual ID)
+# Example: If your EvalSet ID is 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e
 
 # Evaluate good response
-agentoptim run create 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e good_conversation.json \
+agentoptim run create <your-evalset-id> good_conversation.json \
   --model "meta-llama-3.1-8b-instruct" \
   --concurrency 3 \
   --output good_results.json \
   --format json
 
 # Evaluate average response
-agentoptim run create 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e average_conversation.json \
+agentoptim run create <your-evalset-id> average_conversation.json \
   --model "meta-llama-3.1-8b-instruct" \
   --concurrency 3 \
   --output average_results.json \
   --format json
 
 # Evaluate poor response
-agentoptim run create 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e poor_conversation.json \
+agentoptim run create <your-evalset-id> poor_conversation.json \
   --model "meta-llama-3.1-8b-instruct" \
   --concurrency 3 \
   --output poor_results.json \

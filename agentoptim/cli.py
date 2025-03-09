@@ -59,14 +59,14 @@ def setup_parser():
           # Create an evaluation set
           agentoptim evalset create --name "Support Quality" --questions questions.txt
           
-          # List all evaluation sets
+          # List all evaluation sets to get their IDs
           agentoptim evalset list
           
-          # Run an evaluation
-          agentoptim run create 6f8d9e2a conversation.json
+          # Run an evaluation (use an ID from evalset list output)
+          agentoptim run create <evalset-id> conversation.json
           
-          # Get evaluation results
-          agentoptim run get 9f8d7e6a
+          # Get the most recent evaluation results
+          agentoptim run get latest
           
           # List all evaluation runs
           agentoptim run list
@@ -147,7 +147,7 @@ def setup_parser():
     
     # run get
     run_get_parser = run_subparsers.add_parser("get", help="Get a specific evaluation run")
-    run_get_parser.add_argument("eval_run_id", help="ID of the evaluation run to retrieve")
+    run_get_parser.add_argument("eval_run_id", help="ID of the evaluation run to retrieve, or 'latest' for most recent run")
     run_get_parser.add_argument("--format", choices=["text", "json", "yaml"], default="text",
                             help="Output format (default: text)")
     run_get_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
@@ -495,9 +495,23 @@ def run_cli():
         
         elif args.action == "get":
             # Import run retrieval functions
-            from agentoptim.evalrun import get_eval_run, get_formatted_eval_run
+            from agentoptim.evalrun import get_eval_run, get_formatted_eval_run, list_eval_runs
             
-            eval_run = get_eval_run(args.eval_run_id)
+            # Check if user wants the latest run
+            if args.eval_run_id.lower() == 'latest':
+                # Get the most recent run
+                recent_runs, _ = list_eval_runs(page=1, page_size=1)
+                if not recent_runs:
+                    print(f"{Fore.RED}Error: No evaluation runs found in the system{Style.RESET_ALL}", file=sys.stderr)
+                    sys.exit(1)
+                
+                # Use the most recent run's ID
+                latest_run_id = recent_runs[0]["id"]
+                print(f"{Fore.CYAN}Using latest run: {latest_run_id}{Style.RESET_ALL}")
+                eval_run = get_eval_run(latest_run_id)
+            else:
+                # Get the specified run
+                eval_run = get_eval_run(args.eval_run_id)
             
             if eval_run is None:
                 print(f"{Fore.RED}Error: Evaluation run with ID '{args.eval_run_id}' not found{Style.RESET_ALL}", file=sys.stderr)

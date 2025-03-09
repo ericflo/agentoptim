@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `agentoptim run list/get/create` for Run management
   - `agentoptim dev cache/logs` for developer tools
   - Short aliases: `agentoptim es` and `agentoptim r`
+- Added `latest` option to `run get` command for retrieving most recent evaluation
 - Interactive wizards for common tasks with `--wizard` flag
 - LRU caching for evaluation runs with automatic cleanup of old runs
 - Comprehensive tests for evaluation storage with 90%+ coverage

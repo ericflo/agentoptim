@@ -23,7 +23,7 @@ That's it! Your server is now running and ready to use.
 AgentOptim includes a powerful command-line interface:
 
 ```bash
-# List all available evaluation sets
+# List all available evaluation sets to get their IDs
 agentoptim evalset list
 
 # Create a new evaluation set
@@ -35,8 +35,11 @@ agentoptim evalset create --name "Response Quality" \
 # Create a new evaluation set interactively (easier!)
 agentoptim evalset create --wizard
 
-# Evaluate a conversation file against an evaluation set
-agentoptim run create 6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e conversation.json
+# Evaluate a conversation file against an evaluation set (use an ID from evalset list)
+agentoptim run create <evalset-id> conversation.json
+
+# Get the most recent evaluation result
+agentoptim run get latest
 
 # View developer tools like cache statistics
 agentoptim dev cache

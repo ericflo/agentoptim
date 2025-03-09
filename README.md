@@ -375,7 +375,7 @@ AgentOptim provides an elegant command-line interface for evaluation and optimiz
 agentoptim server
 
 # EvalSet Management
-agentoptim evalset list                     # List all evaluation sets
+agentoptim evalset list                     # List all evaluation sets (use this to get IDs)
 agentoptim evalset get <id>                 # Get details about a specific evaluation set
 agentoptim evalset create                   # Create a new evaluation set interactively
 agentoptim evalset create --name "Response Quality" \
@@ -385,7 +385,8 @@ agentoptim evalset create --name "Response Quality" \
 
 # Run Management
 agentoptim run list                         # List all evaluation runs
-agentoptim run get <id>                     # Get a specific evaluation result
+agentoptim run get latest                   # Get the most recent evaluation result
+agentoptim run get <id>                     # Get a specific evaluation result by ID
 agentoptim run create <evalset-id> conversation.json   # Evaluate a conversation
 agentoptim run create <evalset-id> --text response.txt # Evaluate a text response
 
