@@ -47,8 +47,12 @@ logger.info("* Using verbalized confidence scores")
 # Default timeout for API calls
 DEFAULT_TIMEOUT = 120  # seconds - increased for slower models
 
-# Get API base URL from environment or use default
-API_BASE = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234/v1")
+# Default API base URL
+DEFAULT_API_BASE = "http://localhost:1234/v1"
+
+# API_BASE function to always get the latest value from environment
+def get_api_base():
+    return os.environ.get("AGENTOPTIM_API_BASE", DEFAULT_API_BASE)
 
 # Create LRU cache for API responses to avoid re-evaluating identical questions/conversations
 # Default: 100 items capacity, 1 hour TTL
@@ -123,8 +127,8 @@ async def call_llm_api(
         # Auto-detect model if not provided
         if model is None:
             logger.info("No model specified, attempting to auto-detect from API")
-            # Extract the base URL from API_BASE
-            base_url = os.environ.get("AGENTOPTIM_API_BASE", "http://localhost:1234/v1")
+            # Extract the base URL using get_api_base()
+            base_url = get_api_base()
             # Remove '/v1' if present to get the base server URL
             if base_url.endswith("/v1"):
                 base_url = base_url[:-3]
@@ -200,11 +204,12 @@ async def call_llm_api(
         # Add API authentication headers based on provider
         openai_api_key = os.environ.get("OPENAI_API_KEY")
         anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
+        api_base = get_api_base()
         
-        if "openai.com" in API_BASE and openai_api_key:
+        if "openai.com" in api_base and openai_api_key:
             logger.info("Using OpenAI API with authentication")
             headers["Authorization"] = f"Bearer {openai_api_key}"
-        elif "anthropic.com" in API_BASE and anthropic_api_key:
+        elif "anthropic.com" in api_base and anthropic_api_key:
             logger.info("Using Anthropic API with authentication")
             headers["x-api-key"] = anthropic_api_key
             headers["anthropic-version"] = "2023-06-01"  # Use appropriate version
@@ -246,8 +251,10 @@ async def call_llm_api(
                     if DEBUG_MODE:
                         logger.debug(f"Retry {retry_count} payload: {json.dumps(payload, indent=2)}")
                     
+                    api_base = get_api_base()
+                    logger.info(f"Using API endpoint: {api_base}")
                     response = await client.post(
-                        f"{API_BASE}/chat/completions", 
+                        f"{api_base}/chat/completions", 
                         json=payload,
                         headers=headers
                     )
@@ -263,7 +270,8 @@ async def call_llm_api(
                         
                         # Special handling for auth errors
                         if response.status_code == 401:
-                            if "openai.com" in API_BASE:
+                            api_base = get_api_base()
+                            if "openai.com" in api_base:
                                 if not openai_api_key:
                                     logger.error("Authentication failed: OPENAI_API_KEY environment variable is not set")
                                 else:
@@ -271,7 +279,7 @@ async def call_llm_api(
                                     # Check if the key looks properly formatted
                                     if not openai_api_key.startswith("sk-"):
                                         logger.error("The API key doesn't start with 'sk-', which is unusual for OpenAI keys")
-                            elif "anthropic.com" in API_BASE:
+                            elif "anthropic.com" in api_base:
                                 if not anthropic_api_key:
                                     logger.error("Authentication failed: ANTHROPIC_API_KEY environment variable is not set")
                                 else:
@@ -424,7 +432,7 @@ async def call_llm_api(
                 ],
                 "request_info": {
                     "model": model,
-                    "api_base": API_BASE,
+                    "api_base": get_api_base(),
                     "timeout": DEFAULT_TIMEOUT
                 }
             }
