@@ -95,7 +95,7 @@ Client → manage_evalset_tool → Validation → EvalSet Repository → Client
 
 ### Conversation Evaluation
 
-1. Client calls `run_evalset_tool` with conversation and evalset_id
+1. Client calls `manage_eval_runs_tool` with conversation and evalset_id
 2. Server validates inputs and retrieves the specified EvalSet
 3. For each evaluation question:
    a. Template is rendered with conversation and question
@@ -105,7 +105,7 @@ Client → manage_evalset_tool → Validation → EvalSet Repository → Client
 5. Complete evaluation results are returned to client
 
 ```
-Client → run_evalset_tool → Validation → EvalSet Repository → 
+Client → manage_eval_runs_tool → Validation → EvalSet Repository → 
 Evaluation Runner → Judge Model API → Results Processing → Client
 ```
 

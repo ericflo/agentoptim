@@ -115,10 +115,12 @@ The AgentOptim project has been completely rewritten to use a simpler 2-tool arc
    - ✅ Add parallel evaluation support
    - ✅ Create results formatting and summary generation
 
-4. ✅ Implement `run_evalset_tool`
+4. ✅ Implement `manage_eval_runs_tool` (formerly `manage_eval_runs_tool`)
    - ✅ Support multiple conversation formats
    - ✅ Add configurable model selection
    - ✅ Implement detailed result reporting
+   - ✅ Add persistent storage for evaluation results
+   - ✅ Enable retrieval of past evaluation runs
 
 5. ✅ Optimize performance
    - ✅ Implement caching for frequently used data

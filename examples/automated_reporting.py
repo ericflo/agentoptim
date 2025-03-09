@@ -21,7 +21,7 @@ import numpy as np
 from collections import defaultdict
 import base64
 
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 
 async def main():
@@ -105,7 +105,7 @@ async def main():
     print("\n3. In a real scenario, we would evaluate each knowledge base article")
     print("   For demonstration purposes, we'll use simulated results to show the reporting capabilities")
     print("   In a real application, you would run:")
-    print(f"   - run_evalset_tool(evalset_id={evalset_id}, conversation=conversation)")
+    print(f"   - manage_eval_runs_tool(evalset_id={evalset_id}, conversation=conversation)")
     print("   for each article in the knowledge base")
     
     # Simulate evaluation results

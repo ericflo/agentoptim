@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from collections import defaultdict
 
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 # Set to True to run in simulation mode without making actual API calls
 # This is useful for faster testing and demonstrations
@@ -149,7 +149,7 @@ async def main():
     all_results = {}
     
     # In AgentOptim v2.1.0, the model selection is controlled via environment variables
-    # rather than the run_evalset_tool parameter. We'll set the environment variable
+    # rather than the manage_eval_runs_tool parameter. We'll set the environment variable
     # for each model we want to test.
     for model in available_models:
         # Display model name (convert None to "auto-detected" for readability)
@@ -246,7 +246,7 @@ async def main():
                     
                 else:
                     # Run actual evaluation
-                    eval_result = await run_evalset_tool(
+                    eval_result = await manage_eval_runs_tool(action="run", 
                         evalset_id=evalset_id,
                         conversation=conversation,
                         max_parallel=3

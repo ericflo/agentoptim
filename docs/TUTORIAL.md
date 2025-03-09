@@ -16,7 +16,7 @@ AgentOptim simplifies conversation evaluation and optimization with two interfac
 
 1. **Python API** - For programmatic access and integration
    - `manage_evalset_tool` - Create and manage sets of evaluation criteria
-   - `run_evalset_tool` - Run evaluations on conversations using an EvalSet
+   - `manage_eval_runs_tool` - Run evaluations on conversations using an EvalSet
 
 2. **Command-Line Interface (CLI)** - For quick access and direct usage
    - `agentoptim create` - Create evaluation sets
@@ -33,7 +33,7 @@ Let's create a simple script that uses AgentOptim to evaluate different support 
 # support_response_evaluation.py
 
 import asyncio
-from agentoptim import manage_evalset_tool, run_evalset_tool
+from agentoptim import manage_evalset_tool, manage_eval_runs_tool
 
 async def main():
     print("AgentOptim Support Response Evaluation")
@@ -165,7 +165,7 @@ print("\n3. Running evaluations...")
 
 # Evaluate the good response
 print("\nEvaluating good response...")
-good_results = await run_evalset_tool(
+good_results = await manage_eval_runs_tool(
     evalset_id=evalset_id,
     conversation=good_conversation,
     model="meta-llama-3.1-8b-instruct",
@@ -174,7 +174,7 @@ good_results = await run_evalset_tool(
 
 # Evaluate the average response
 print("\nEvaluating average response...")
-average_results = await run_evalset_tool(
+average_results = await manage_eval_runs_tool(
     evalset_id=evalset_id,
     conversation=average_conversation,
     model="meta-llama-3.1-8b-instruct",
@@ -183,7 +183,7 @@ average_results = await run_evalset_tool(
 
 # Evaluate the poor response
 print("\nEvaluating poor response...")
-poor_results = await run_evalset_tool(
+poor_results = await manage_eval_runs_tool(
     evalset_id=evalset_id,
     conversation=poor_conversation,
     model="meta-llama-3.1-8b-instruct",

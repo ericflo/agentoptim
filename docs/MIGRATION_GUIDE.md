@@ -23,9 +23,9 @@ Here's how the old tools map to the new tools:
 | Old Tools | New Tools |
 |-----------|-----------|
 | `manage_evaluation_tool` | `manage_evalset_tool` |
-| `manage_dataset_tool` + `run_job_tool` | `run_evalset_tool` |
+| `manage_dataset_tool` + `run_job_tool` | `manage_eval_runs_tool` |
 | `manage_experiment_tool` | No longer needed; use variables in templates |
-| `analyze_results_tool` | Results directly returned by `run_evalset_tool` |
+| `analyze_results_tool` | Results directly returned by `manage_eval_runs_tool` |
 
 ## Migration Steps
 
@@ -134,7 +134,7 @@ status_result = run_job_tool(
 #### New API:
 ```python
 # Evaluate a conversation directly
-evaluation_result = run_evalset_tool(
+evaluation_result = manage_eval_runs_tool(
     evalset_id=evalset_id,  # From the manage_evalset_tool call above
     conversation=[
         {"role": "system", "content": "You are a helpful AI assistant."},
@@ -168,7 +168,7 @@ The results format has changed to be simpler and more focused.
 }
 ```
 
-#### New API (results from run_evalset_tool):
+#### New API (results from manage_eval_runs_tool):
 ```python
 {
     "status": "success",
@@ -212,7 +212,7 @@ If you were using any of the following imports or functions, you must update you
 - The compatibility conversion utilities in `agentoptim.compat`
 - References to the old 5-tool architecture in your code
 
-The code now exclusively uses the 2-tool architecture with `manage_evalset_tool` and `run_evalset_tool`.
+The code now exclusively uses the 2-tool architecture with `manage_evalset_tool` and `manage_eval_runs_tool`.
 
 ### What's Been Removed
 

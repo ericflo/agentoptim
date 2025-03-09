@@ -17,7 +17,7 @@ from pprint import pprint
 import matplotlib.pyplot as plt
 import numpy as np
 
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 
 async def main():
@@ -109,10 +109,10 @@ async def main():
     print("\n3. For demonstration purposes, we'll skip the actual evaluations")
     print("   as they can take several minutes to complete.")
     print("   In a real scenario, we would run these evaluations:")
-    print("   - run_evalset_tool(evalset_id, formal_conversation)")
-    print("   - run_evalset_tool(evalset_id, casual_conversation)")
-    print("   - run_evalset_tool(evalset_id, technical_conversation)")
-    print("   - run_evalset_tool(evalset_id, empathetic_conversation)")
+    print("   - manage_eval_runs_tool(evalset_id, formal_conversation)")
+    print("   - manage_eval_runs_tool(evalset_id, casual_conversation)")
+    print("   - manage_eval_runs_tool(evalset_id, technical_conversation)")
+    print("   - manage_eval_runs_tool(evalset_id, empathetic_conversation)")
     
     print("\nCreating simulated results for example purposes...")
     

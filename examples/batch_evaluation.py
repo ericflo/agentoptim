@@ -20,7 +20,7 @@ import numpy as np
 from collections import defaultdict
 from pprint import pprint
 
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 
 # Helper function to load sample conversations
@@ -174,7 +174,7 @@ async def main():
     print("\n3. In a real scenario, we would run batch evaluation on all conversations")
     print("   For demonstration purposes, we'll use simulated results to show the analysis")
     print("   In a real application, you would run:")
-    print(f"   - run_evalset_tool(evalset_id={evalset_id}, conversation=conversation)")
+    print(f"   - manage_eval_runs_tool(evalset_id={evalset_id}, conversation=conversation)")
     print("   for each conversation in the dataset")
     
     # Create a dictionary to store results

@@ -15,7 +15,7 @@ import json
 import re
 from pprint import pprint
 
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 
 async def main():
@@ -148,11 +148,11 @@ Balance policy adherence with customer satisfaction, using your judgment to make
     print("\n3. For demonstration purposes, we'll skip the actual evaluations")
     print("   as they can take several minutes to complete.")
     print("   In a real scenario, we would run these evaluations:")
-    print("   - run_evalset_tool(evalset_id, basic_conversation)")
-    print("   - run_evalset_tool(evalset_id, detailed_conversation)")
-    print("   - run_evalset_tool(evalset_id, persona_conversation)")
-    print("   - run_evalset_tool(evalset_id, principles_conversation)")
-    print("   - run_evalset_tool(evalset_id, constraints_conversation)")
+    print("   - manage_eval_runs_tool(evalset_id, basic_conversation)")
+    print("   - manage_eval_runs_tool(evalset_id, detailed_conversation)")
+    print("   - manage_eval_runs_tool(evalset_id, persona_conversation)")
+    print("   - manage_eval_runs_tool(evalset_id, principles_conversation)")
+    print("   - manage_eval_runs_tool(evalset_id, constraints_conversation)")
     
     print("\nCreating simulated results for example purposes...")
     

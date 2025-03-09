@@ -17,7 +17,7 @@ Here's a complete example of the AgentOptim workflow:
 
 ```python
 import asyncio
-from agentoptim import manage_evalset_tool, run_evalset_tool
+from agentoptim import manage_evalset_tool, manage_eval_runs_tool
 
 async def main():
     # 1. Create an EvalSet with evaluation criteria
@@ -53,7 +53,7 @@ async def main():
     ]
     
     # 3. Run the evaluation
-    eval_results = await run_evalset_tool(
+    eval_results = await manage_eval_runs_tool(
         evalset_id=evalset_id,
         conversation=conversation,
         model="meta-llama-3.1-8b-instruct",
@@ -155,9 +155,9 @@ result = await manage_evalset_tool(
 print(f"Deletion success: {result.get('success', False)}")
 ```
 
-### Evaluating Conversations with `run_evalset_tool`
+### Evaluating Conversations with `manage_eval_runs_tool`
 
-The `run_evalset_tool` evaluates conversations against an EvalSet:
+The `manage_eval_runs_tool` evaluates conversations against an EvalSet:
 
 ```python
 # Define a conversation to evaluate
@@ -168,7 +168,7 @@ conversation = [
 ]
 
 # Run the evaluation
-eval_results = await run_evalset_tool(
+eval_results = await manage_eval_runs_tool(
     evalset_id="evalset_123abc",
     conversation=conversation,
     model="meta-llama-3.1-8b-instruct",  # Specify the judge model
@@ -202,7 +202,7 @@ async def compare_conversations(evalset_id, conversations, model="meta-llama-3.1
     
     for name, conversation in conversations.items():
         print(f"Evaluating {name}...")
-        eval_result = await run_evalset_tool(
+        eval_result = await manage_eval_runs_tool(action="run", 
             evalset_id=evalset_id,
             conversation=conversation,
             model=model,
@@ -252,7 +252,7 @@ This example demonstrates evaluating and improving customer support responses:
 
 ```python
 import asyncio
-from agentoptim import manage_evalset_tool, run_evalset_tool
+from agentoptim import manage_evalset_tool, manage_eval_runs_tool
 
 async def main():
     # 1. Create a support quality EvalSet
@@ -329,7 +329,7 @@ async def main():
     password_results = {}
     for style, conversation in password_reset.items():
         print(f"  Evaluating {style} style...")
-        result = await run_evalset_tool(
+        result = await manage_eval_runs_tool(
             evalset_id=evalset_id,
             conversation=conversation,
             model="meta-llama-3.1-8b-instruct",
@@ -341,7 +341,7 @@ async def main():
     order_results = {}
     for style, conversation in order_status.items():
         print(f"  Evaluating {style} style...")
-        result = await run_evalset_tool(
+        result = await manage_eval_runs_tool(
             evalset_id=evalset_id,
             conversation=conversation,
             model="meta-llama-3.1-8b-instruct",

@@ -450,7 +450,7 @@ filtered_runs = await manage_eval_runs_tool(
 2. **Pagination**: The `list` action supports pagination to efficiently handle large numbers of evaluation runs.
 3. **Filtering**: When listing evaluation runs, you can filter by `evalset_id` to find specific evaluations.
 4. **Judge Model**: By default, the tool uses "meta-llama-3.1-8b-instruct" as the judge model, but this can be configured.
-5. **Backward Compatibility**: This tool replaces and extends the functionality of the previous `run_evalset_tool`.
+5. **Backward Compatibility**: This tool replaces and extends the functionality of the previous `manage_eval_runs_tool`.
 
 ## Environment Variables
 

@@ -4,7 +4,7 @@ import asyncio
 import json
 import uuid
 
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 
 async def main():
@@ -80,8 +80,9 @@ async def main():
             {"role": "assistant", "content": "The capital of France is Paris. It's known as the 'City of Light' and is famous for landmarks like the Eiffel Tower, the Louvre Museum, and Notre-Dame Cathedral."}
         ]
         
-        # Run the evaluation
-        eval_result = await run_evalset_tool(
+        # Run the evaluation using manage_eval_runs_tool
+        eval_result = await manage_eval_runs_tool(
+            action="run",
             evalset_id=evalset_id,
             conversation=conversation,
             max_parallel=3  # Optionally control parallelism for speed
@@ -94,6 +95,10 @@ async def main():
         if eval_result.get('error'):
             print(f"Error: {eval_result.get('message', 'Unknown error')}")
         else:
+            # Store the evaluation ID for future reference
+            eval_run_id = eval_result.get('id')
+            print(f"Evaluation ID: {eval_run_id} (save this ID to retrieve the evaluation later)")
+            
             # Format 1: v2.1.0 structure with results list
             results = eval_result.get('results', [])
             if results and isinstance(results, list):
@@ -118,9 +123,33 @@ async def main():
             if formatted_result:
                 print("\nFormatted Result:")
                 print(formatted_result)
+                
+            # Demonstrate retrieving the evaluation by ID
+            print("\nRetrieving the evaluation by ID...")
+            retrieved_eval = await manage_eval_runs_tool(
+                action="get",
+                eval_run_id=eval_run_id
+            )
+            
+            if "error" not in retrieved_eval:
+                print(f"Successfully retrieved evaluation run with ID: {eval_run_id}")
+                
+            # Demonstrate listing evaluations
+            print("\nListing recent evaluations...")
+            eval_list = await manage_eval_runs_tool(
+                action="list",
+                page=1,
+                page_size=5
+            )
+            
+            if "error" not in eval_list and "eval_runs" in eval_list:
+                runs = eval_list["eval_runs"]
+                print(f"Found {len(runs)} recent evaluation runs")
+                for run in runs[:3]:  # Show max 3 runs
+                    print(f"- Run ID: {run.get('id')} ({run.get('timestamp_formatted')})")
         
-        print("\nAgentOptim provides a simple API for creating and running evaluation sets to assess conversation quality.")
-        print("This example showed how to list, create, and evaluate conversations with EvalSets.")
+        print("\nAgentOptim provides a simple API for creating, running, and retrieving evaluation results.")
+        print("This example showed how to list, create, evaluate, and retrieve evaluations.")
         
     except Exception as e:
         print(f"Error: {e}")

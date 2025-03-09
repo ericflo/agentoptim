@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Persistent storage for evaluation results
-- New `manage_eval_runs_tool` replacing `run_evalset_tool` with expanded functionality:
+- New `manage_eval_runs_tool` replacing `manage_eval_runs_tool` with expanded functionality:
   - `run` action: Run evaluations and store results (backward compatible)
   - `get` action: Retrieve past evaluation results by ID
   - `list` action: List all evaluation runs with pagination
@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Maintain backward compatibility with existing `eval` command
 
 ### Changed
-- Transformed `run_evalset_tool` into more powerful `manage_eval_runs_tool`
+- Transformed `manage_eval_runs_tool` into more powerful `manage_eval_runs_tool`
 - Updated API reference documentation for the new tool
 - Removed `get_cache_stats_tool` MCP tool (functionality still available via CLI)
 

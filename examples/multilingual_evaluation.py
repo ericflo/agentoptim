@@ -17,7 +17,7 @@ from pprint import pprint
 import matplotlib.pyplot as plt
 import numpy as np
 
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 
 async def main():
@@ -109,7 +109,7 @@ async def main():
     print("   as they can take several minutes to complete.")
     print("   In a real scenario, we would run these evaluations for each language:")
     for lang in languages:
-        print(f"   - run_evalset_tool(evalset_id, {lang} conversation)")
+        print(f"   - manage_eval_runs_tool(evalset_id, {lang} conversation)")
     
     print("\nCreating simulated results for example purposes...")
     

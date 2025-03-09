@@ -24,7 +24,7 @@ Note: The compat.py module has been completely removed as planned for v2.1.0.
 The server.py module has exceeded our target coverage of 85%. Great progress has been made in this area with the addition of:
 
 - Comprehensive input validation tests
-- Detailed tests for both `manage_evalset_tool` and `run_evalset_tool`
+- Detailed tests for both `manage_evalset_tool` and `manage_eval_runs_tool`
 - Error handling tests for various scenarios
 - Integration tests for full workflows
 
@@ -41,7 +41,7 @@ All the following suggested additions have been implemented:
    - ✅ Test error cases for each action
    - ✅ Test with various parameter combinations
 
-3. ✅ **Test detailed functionality of run_evalset_tool**:
+3. ✅ **Test detailed functionality of manage_eval_runs_tool**:
    - ✅ Test with different conversation formats
    - ✅ Test with different model parameters
    - ✅ Test error handling for invalid evalset_id

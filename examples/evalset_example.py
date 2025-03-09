@@ -14,7 +14,7 @@ import asyncio
 import json
 from pprint import pprint
 
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 
 async def main():
@@ -108,19 +108,19 @@ async def main():
     
     # Here's what the evaluation code would look like:
     """
-    good_results = await run_evalset_tool(
+    good_results = await manage_eval_runs_tool(action="run", 
         evalset_id=evalset_id,
         conversation=good_conversation,
         max_parallel=3
     )
     
-    average_results = await run_evalset_tool(
+    average_results = await manage_eval_runs_tool(action="run", 
         evalset_id=evalset_id,
         conversation=average_conversation,
         max_parallel=3
     )
     
-    poor_results = await run_evalset_tool(
+    poor_results = await manage_eval_runs_tool(action="run", 
         evalset_id=evalset_id,
         conversation=poor_conversation,
         max_parallel=3

@@ -17,13 +17,13 @@ The original architecture consisted of 5 separate tools:
 
 The simplified architecture consisted of just 2 tools:
 - `manage_evalset_tool` - Create and manage EvalSets (evaluation criteria)
-- `run_evalset_tool` - Evaluate conversations using an EvalSet
+- `manage_eval_runs_tool` - Evaluate conversations using an EvalSet
 
 ### v2.1.0 Architecture
 
 The enhanced architecture adds caching and monitoring capabilities:
 - `manage_evalset_tool` - Create and manage EvalSets (evaluation criteria)
-- `run_evalset_tool` - Evaluate conversations using an EvalSet
+- `manage_eval_runs_tool` - Evaluate conversations using an EvalSet
 - `get_cache_stats_tool` - Monitor cache performance and statistics
 
 Key improvements include:
@@ -169,7 +169,7 @@ The evolution from v1.x through v2.0 to v2.1.0 is now complete. The codebase is 
 The architecture now consists of three focused tools:
 
 1. `manage_evalset_tool` - For creating and managing evaluation criteria
-2. `run_evalset_tool` - For evaluating conversations against criteria
+2. `manage_eval_runs_tool` - For evaluating conversations against criteria
 3. `get_cache_stats_tool` - For monitoring cache performance and statistics
 
 With the addition of LRU caching and performance monitoring, the system now provides better performance and more efficient resource utilization, particularly for repeated evaluations and large datasets.

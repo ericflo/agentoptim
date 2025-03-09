@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pprint import pprint
 
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 # Set to True to run in simulation mode without making actual API calls
 # This is useful for faster testing and demonstrations
@@ -172,7 +172,7 @@ async def main():
         await asyncio.sleep(1.0)
     else:
         # Run actual evaluation
-        initial_results = await run_evalset_tool(
+        initial_results = await manage_eval_runs_tool(action="run", 
             evalset_id=evalset_id,
             conversation=initial_conversation,
             # Note: Model is set via environment variable
@@ -280,7 +280,7 @@ async def main():
         await asyncio.sleep(1.0)
     else:
         # For each failed criterion, get improvement suggestions
-        suggestion_results = await run_evalset_tool(
+        suggestion_results = await manage_eval_runs_tool(action="run", 
             evalset_id=suggestion_evalset_id,
             conversation=initial_conversation,
             # Note: Model is set via environment variable
@@ -404,7 +404,7 @@ The choice between supervised and unsupervised learning depends on your specific
         await asyncio.sleep(1.0)
     else:
         # Run actual evaluation
-        improved_results = await run_evalset_tool(
+        improved_results = await manage_eval_runs_tool(action="run", 
             evalset_id=evalset_id,
             conversation=improved_conversation,
             # Note: Model is set via environment variable

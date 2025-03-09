@@ -18,7 +18,7 @@ import json
 import re
 from pprint import pprint
 
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 
 async def main():
@@ -201,10 +201,10 @@ async def main():
     print("\n6. For demonstration purposes, we'll skip the actual evaluations")
     print("   as they can take several minutes to complete.")
     print("   In a real scenario, we would run these evaluations with each question set:")
-    print(f"   - run_evalset_tool(evalset_id={standard_evalset_id}, conversation=conversation)")
-    print(f"   - run_evalset_tool(evalset_id={likert_evalset_id}, conversation=conversation)")
-    print(f"   - run_evalset_tool(evalset_id={multi_criteria_evalset_id}, conversation=conversation)")
-    print(f"   - run_evalset_tool(evalset_id={code_review_evalset_id}, conversation=conversation)")
+    print(f"   - manage_eval_runs_tool(evalset_id={standard_evalset_id}, conversation=conversation)")
+    print(f"   - manage_eval_runs_tool(evalset_id={likert_evalset_id}, conversation=conversation)")
+    print(f"   - manage_eval_runs_tool(evalset_id={multi_criteria_evalset_id}, conversation=conversation)")
+    print(f"   - manage_eval_runs_tool(evalset_id={code_review_evalset_id}, conversation=conversation)")
     
     print("\nCreating simulated results for example purposes...")
     

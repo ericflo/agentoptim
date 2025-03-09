@@ -69,11 +69,11 @@ If you're updating from v2.0, here are the key changes:
 
 ```python
 import time
-from agentoptim import manage_evalset_tool, run_evalset_tool, get_cache_stats_tool
+from agentoptim import manage_evalset_tool, manage_eval_runs_tool, get_cache_stats_tool
 
 # Run the first evaluation (cache miss)
 start_time = time.time()
-result1 = await run_evalset_tool(
+result1 = await manage_eval_runs_tool(action="run", 
     evalset_id="your_evalset_id",
     conversation=[
         {"role": "user", "content": "How do I reset my password?"},
@@ -85,7 +85,7 @@ print(f"First run (cache miss): {first_time:.2f} seconds")
 
 # Run the same evaluation again (cache hit)
 start_time = time.time()
-result2 = await run_evalset_tool(
+result2 = await manage_eval_runs_tool(
     evalset_id="your_evalset_id",
     conversation=[
         {"role": "user", "content": "How do I reset my password?"},

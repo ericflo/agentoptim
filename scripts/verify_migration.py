@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 # Import the EvalSet API
 from agentoptim import (
     manage_evalset_tool,
-    run_evalset_tool,
+    manage_eval_runs_tool,
 )
 
 
@@ -36,24 +36,31 @@ async def test_evalset_api():
     evalset_result = await manage_evalset_tool(
         action="create",
         name="Test EvalSet",
-        template="""
-        Given this conversation:
-        {{ conversation }}
-        
-        Please answer the following yes/no question about the final assistant response:
-        {{ eval_question }}
-        
-        Return a JSON object with the following format:
-        {"judgment": 1} for yes or {"judgment": 0} for no.
-        """,
         questions=[
             "Is the response helpful?",
             "Is the response accurate?"
         ],
-        description="Test evaluation criteria"
+        short_description="Test evaluation criteria",
+        long_description="This is a test evaluation set for verifying the AgentOptim v2.1.0 API. It contains simple criteria to assess response quality. The criteria focus on helpfulness and accuracy of responses, which are key aspects of evaluating AI assistant interactions. These evaluation criteria can be applied to various types of conversations to ensure consistent assessment of response quality across different scenarios and use cases." + " " * 100
     )
     
-    evalset_id = evalset_result.get("evalset", {}).get("id")
+    evalset_id = None
+    
+    if "evalset" in evalset_result and "id" in evalset_result["evalset"]:
+        evalset_id = evalset_result["evalset"]["id"]
+    elif "evalset_id" in evalset_result:
+        evalset_id = evalset_result["evalset_id"]
+    elif "result" in evalset_result and isinstance(evalset_result["result"], str):
+        # Try to extract ID from result message
+        import re
+        id_match = re.search(r'ID: ([0-9a-f-]+)', evalset_result["result"])
+        if id_match:
+            evalset_id = id_match.group(1)
+    
+    if not evalset_id:
+        print("Failed to get evalset_id from result:", evalset_result)
+        raise ValueError("Could not get evalset_id from creation result")
+        
     print(f"Created EvalSet with ID: {evalset_id}")
     
     # Test a conversation
@@ -64,7 +71,8 @@ async def test_evalset_api():
     ]
     
     print("\nRunning evaluation...")
-    eval_result = await run_evalset_tool(
+    eval_result = await manage_eval_runs_tool(
+        action="run",
         evalset_id=evalset_id,
         conversation=conversation
         # Model will be auto-detected

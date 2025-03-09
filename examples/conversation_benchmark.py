@@ -21,7 +21,7 @@ from collections import defaultdict
 from pprint import pprint
 import random
 
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 # Set to True to run in simulation mode without making actual API calls
 # This is useful for faster testing and demonstrations
@@ -320,7 +320,7 @@ async def main():
                 eval_result = simulated_result
             else:
                 # Run actual evaluation
-                eval_result = await run_evalset_tool(
+                eval_result = await manage_eval_runs_tool(action="run", 
                     evalset_id=evalset_id,
                     conversation=conversation,
                     # Note: Model is set via environment variable

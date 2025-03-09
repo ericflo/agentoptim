@@ -17,7 +17,7 @@ AgentOptim v1.x used a complex 5-tool architecture that proved to be too cumbers
 
 In v2.0, we simplified the architecture to 2 tools:
 - `manage_evalset_tool` - Create and manage evaluation criteria
-- `run_evalset_tool` - Evaluate conversations using an EvalSet
+- `manage_eval_runs_tool` - Evaluate conversations using an EvalSet
 
 Key improvements included:
 - **Simplified workflow**: Reduced from 5 tools to 2 tools
@@ -49,7 +49,7 @@ The current architecture consists of 3 powerful tools:
    - Create, retrieve, update, list, and delete EvalSets
    - Manage evaluation criteria and templates
 
-2. **`run_evalset_tool`**:
+2. **`manage_eval_runs_tool`**:
    - Evaluate conversations against EvalSets
    - Generate detailed results with confidence scores
    - Provide summary statistics

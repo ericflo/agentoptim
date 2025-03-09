@@ -46,7 +46,7 @@ The evaluations module executes assessments of conversations using EvalSets by:
 The server module exposes AgentOptim functionality as MCP tools that:
 
 - Allow agents to create and manage EvalSets through `manage_evalset_tool`
-- Provide an interface for evaluating conversations through `run_evalset_tool`
+- Provide an interface for evaluating conversations through `manage_eval_runs_tool`
 - Handle validation and error handling for tool inputs
 
 ### Data Flow
@@ -177,7 +177,7 @@ result = await manage_evalset_tool(
 
 ### Running Evaluations
 
-Evaluations are run using the `run_evalset_tool`:
+Evaluations are run using the `manage_eval_runs_tool`:
 
 ```python
 # Define a conversation to evaluate
@@ -188,7 +188,7 @@ conversation = [
 ]
 
 # Run the evaluation
-eval_results = await run_evalset_tool(
+eval_results = await manage_eval_runs_tool(
     evalset_id="evalset_123abc",
     conversation=conversation,
     model="meta-llama-3.1-8b-instruct",

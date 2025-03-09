@@ -19,7 +19,7 @@ import hashlib
 import os
 
 # Import tools directly from agentoptim server
-from agentoptim.server import manage_evalset_tool, run_evalset_tool, get_cache_stats_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool, get_cache_stats_tool
 
 # Simulation mode enables faster execution without making actual API calls
 # - True: Fast execution with simulated timing (great for demonstrations)
@@ -83,7 +83,7 @@ class EvalCache:
             }
             
         # Call the AgentOptim evaluation function
-        result = await run_evalset_tool(
+        result = await manage_eval_runs_tool(action="run", 
             evalset_id=evalset_id,
             conversation=conversation,
             max_parallel=max_parallel,
@@ -256,7 +256,7 @@ async def run_benchmark_no_cache(evalset_id: str, iterations: int = 5):
                 total_questions += question_count_per_conversation
             else:
                 # Run actual evaluation without caching
-                result = await run_evalset_tool(
+                result = await manage_eval_runs_tool(action="run", 
                     evalset_id=evalset_id,
                     conversation=conversation,
                     max_parallel=3
@@ -318,7 +318,7 @@ async def run_benchmark_with_built_in_cache(evalset_id: str, iterations: int = 5
                 total_questions += question_count_per_conversation
             else:
                 # Run actual evaluation with built-in caching
-                result = await run_evalset_tool(
+                result = await manage_eval_runs_tool(action="run", 
                     evalset_id=evalset_id,
                     conversation=conversation,
                     max_parallel=3
@@ -431,7 +431,7 @@ async def optimize_parallel_execution(evalset_id: str):
                 print(f"Conversation {j+1}/{len(CONVERSATIONS)}")
                 
                 # Run evaluation with current parallel setting
-                result = await run_evalset_tool(
+                result = await manage_eval_runs_tool(action="run", 
                     evalset_id=evalset_id,
                     conversation=conversation,
                     max_parallel=parallel
@@ -492,7 +492,7 @@ async def demonstrate_omit_reasoning_optimization(evalset_id: str):
         for j, conversation in enumerate(CONVERSATIONS):
             print(f"Conversation {j+1}/{len(CONVERSATIONS)}")
             
-            result = await run_evalset_tool(
+            result = await manage_eval_runs_tool(action="run", 
                 evalset_id=evalset_id,
                 conversation=conversation,
                 max_parallel=3,
@@ -511,7 +511,7 @@ async def demonstrate_omit_reasoning_optimization(evalset_id: str):
         for j, conversation in enumerate(CONVERSATIONS):
             print(f"Conversation {j+1}/{len(CONVERSATIONS)}")
             
-            result = await run_evalset_tool(
+            result = await manage_eval_runs_tool(action="run", 
                 evalset_id=evalset_id,
                 conversation=conversation,
                 max_parallel=3,
@@ -707,7 +707,7 @@ async def main():
         # First run - should be a cache miss
         print("\nRun #1 (expect cache miss)...")
         start_time = time.time()
-        response = await run_evalset_tool(
+        response = await manage_eval_runs_tool(action="run", 
             evalset_id=evalset_id,
             conversation=conversation
         )
@@ -723,7 +723,7 @@ async def main():
         # Second run - should be a cache hit
         print("\nRun #2 (expect cache hit)...")
         start_time = time.time()
-        response = await run_evalset_tool(
+        response = await manage_eval_runs_tool(action="run", 
             evalset_id=evalset_id,
             conversation=conversation
         )
@@ -734,7 +734,7 @@ async def main():
         # Third run - should be a cache hit
         print("\nRun #3 (expect cache hit)...")
         start_time = time.time()
-        response = await run_evalset_tool(
+        response = await manage_eval_runs_tool(action="run", 
             evalset_id=evalset_id,
             conversation=conversation
         )

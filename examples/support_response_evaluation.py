@@ -11,7 +11,7 @@ See the full tutorial in docs/TUTORIAL.md
 """
 
 import asyncio
-from agentoptim.server import manage_evalset_tool, run_evalset_tool
+from agentoptim.server import manage_evalset_tool, manage_eval_runs_tool
 
 async def main():
     print("AgentOptim Support Response Evaluation")
@@ -88,9 +88,9 @@ async def main():
     # as they can take a long time to complete
     print("\n3. For this simplified example, we're skipping the actual evaluations")
     print("   In a real scenario, we would run the following:")
-    print("   - run_evalset_tool(evalset_id, good_conversation)")
-    print("   - run_evalset_tool(evalset_id, average_conversation)")
-    print("   - run_evalset_tool(evalset_id, poor_conversation)")
+    print("   - manage_eval_runs_tool(evalset_id, good_conversation)")
+    print("   - manage_eval_runs_tool(evalset_id, average_conversation)")
+    print("   - manage_eval_runs_tool(evalset_id, poor_conversation)")
     
     # For demonstration purposes, we'll simulate the results
     good_results = {

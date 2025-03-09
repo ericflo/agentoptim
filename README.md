@@ -44,7 +44,7 @@ We successfully enhanced AgentOptim by implementing persistent storage for evalu
   - [x] Implement save/load functions for eval runs
   - [x] Create LRU caching for eval runs (similar to evalset cache)
 
-- [x] **3. Transform `run_evalset_tool` into `manage_eval_runs_tool`**
+- [x] **3. Transform `manage_eval_runs_tool` into `manage_eval_runs_tool`**
   - [x] Rename function to `manage_eval_runs_tool` in server.py
   - [x] Add action parameter (run, get, list) like in manage_evalset_tool
   - [x] Create get and list actions for retrieving past runs
@@ -86,7 +86,7 @@ We successfully enhanced AgentOptim by implementing persistent storage for evalu
 
 ### Key Implementation Details
 
-- The `run_evalset_tool` has been transformed into `manage_eval_runs_tool`
+- The `manage_eval_runs_tool` has been transformed into `manage_eval_runs_tool`
 - Evaluation results are now stored persistently in `DATA_DIR/eval_runs/`
 - The new tool maintains all the original functionality while adding:
   - `run` action: Run evaluations and store results
@@ -311,7 +311,7 @@ We're expanding our documentation to make AgentOptim more accessible and powerfu
 
 ```python
 import asyncio
-from agentoptim import manage_evalset_tool, run_evalset_tool
+from agentoptim import manage_evalset_tool, manage_eval_runs_tool
 
 async def main():
     # 1️⃣ Create an EvalSet with quality criteria
@@ -339,13 +339,15 @@ async def main():
     ]
     
     # 3️⃣ Run the evaluation
-    results = await run_evalset_tool(
+    results = await manage_eval_runs_tool(
+        action="run",
         evalset_id=evalset_id,
         conversation=conversation
     )
     
     # 4️⃣ View the results
     print(f"Overall score: {results['summary']['yes_percentage']}%")
+    print(f"Evaluation ID: {results['id']}")  # Store this ID to retrieve the evaluation later
     for item in results["results"]:
         print(f"✅ {item['question']}" if item["judgment"] else f"❌ {item['question']}")
 

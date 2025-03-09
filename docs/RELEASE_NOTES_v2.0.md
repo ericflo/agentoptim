@@ -12,7 +12,7 @@ We've completely reimagined AgentOptim with a streamlined architecture:
 
 - **Just 2 tools instead of 5**: 
   - `manage_evalset_tool` - Create and manage evaluation criteria
-  - `run_evalset_tool` - Evaluate conversations against criteria
+  - `manage_eval_runs_tool` - Evaluate conversations against criteria
 
 - **40% faster performance** with lower memory usage
 - **Conversation-based evaluation** for more accurate assessment
@@ -31,7 +31,7 @@ conversation = [
 ]
 
 # Run the evaluation
-results = await run_evalset_tool(
+results = await manage_eval_runs_tool(action="run", 
     evalset_id="evalset_123abc",
     conversation=conversation,
     model="meta-llama-3.1-8b-instruct"
@@ -98,7 +98,7 @@ pip install agentoptim
 
 ```python
 import asyncio
-from agentoptim import manage_evalset_tool, run_evalset_tool
+from agentoptim import manage_evalset_tool, manage_eval_runs_tool
 
 async def main():
     # Create an EvalSet
@@ -132,7 +132,7 @@ async def main():
     ]
     
     # Evaluate the conversation
-    eval_results = await run_evalset_tool(
+    eval_results = await manage_eval_runs_tool(
         evalset_id=evalset_id,
         conversation=conversation,
         model="meta-llama-3.1-8b-instruct"

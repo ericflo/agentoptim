@@ -47,7 +47,7 @@ Here's a complete example to evaluate a conversation using the Python API:
 
 ```python
 import asyncio
-from agentoptim import manage_evalset_tool, run_evalset_tool
+from agentoptim import manage_evalset_tool, manage_eval_runs_tool
 
 async def main():
     # 1. Create an EvalSet with your quality criteria
@@ -72,7 +72,7 @@ async def main():
     ]
     
     # 3. Run the evaluation
-    results = await run_evalset_tool(
+    results = await manage_eval_runs_tool(
         evalset_id=evalset_id,
         conversation=conversation
     )
@@ -124,7 +124,7 @@ evalsets = result["evalsets"]
 ### Evaluating a Conversation
 
 ```python
-results = await run_evalset_tool(
+results = await manage_eval_runs_tool(
     evalset_id="your_evalset_id",
     conversation=[
         {"role": "system", "content": "You are a helpful assistant."},
@@ -137,7 +137,7 @@ results = await run_evalset_tool(
 ### Using a Specific Judge Model
 
 ```python
-results = await run_evalset_tool(
+results = await manage_eval_runs_tool(action="run", 
     evalset_id="your_evalset_id",
     conversation=conversation,
     model="meta-llama-3.1-8b-instruct"  # or "gpt-4", "claude-3-haiku-20240307", etc.
