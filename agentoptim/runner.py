@@ -634,7 +634,7 @@ CRITICAL: Your response MUST be valid JSON. Use true/false (not True/False or st
         # Call the LLM API with proper message format
         response = await call_llm_api(
             messages=messages,  # Now passing prepared messages with system prompt for LM Studio
-            model=model,
+            model=judge_model,
             omit_reasoning=omit_reasoning
         )
         
@@ -1084,7 +1084,7 @@ async def run_evalset(
             "id": str(uuid.uuid4()),
             "evalset_id": evalset_id,
             "evalset_name": evalset.name,
-            "model": model,
+            "judge_model": judge_model,
             "results": results_for_response,
             "summary": summary,
             "formatted_message": "\n".join(formatted_results)

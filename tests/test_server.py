@@ -26,11 +26,9 @@ async def test_manage_evalset_tool():
             action="list",
             evalset_id=None,
             name=None,
-            template=None,
             questions=None,
             short_description=None,
-            long_description=None,
-            description=None
+            long_description=None
         )
         
         assert result == {"status": "success", "message": "Success"}

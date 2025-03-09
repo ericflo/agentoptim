@@ -68,16 +68,6 @@ class TestEvalSetBasics:
         evalset_result = manage_evalset(
             action="create",
             name=f"{test_name}",
-            template="""
-            Given this conversation:
-            {{ conversation }}
-            
-            Please answer the following yes/no question about the final assistant response:
-            {{ eval_question }}
-            
-            Return a JSON object with the following format:
-            {"judgment": 1} for yes or {"judgment": 0} for no.
-            """,
             questions=[
                 "Is the response helpful?",
                 "Does the response directly address the user's question?",
@@ -85,8 +75,7 @@ class TestEvalSetBasics:
                 "Does the response provide complete information?"
             ],
             short_description=f"Test EvalSet for {test_name} - short",
-            long_description=f"This is a detailed explanation of the test EvalSet for {test_name}. It provides comprehensive information about what this EvalSet measures, how it should be used, and how to interpret the results. This test EvalSet is designed for integration testing purposes only and should not be used in production environments." + " " * 100,
-            description=f"Test EvalSet for {test_name}"
+            long_description=f"This is a detailed explanation of the test EvalSet for {test_name}. It provides comprehensive information about what this EvalSet measures, how it should be used, and how to interpret the results. This test EvalSet is designed for integration testing purposes only and should not be used in production environments." + " " * 100
         )
         
         # Verify EvalSet was created
@@ -168,23 +157,12 @@ class TestEvalSetEvaluation:
         evalset_result = manage_evalset(
             action="create",
             name=f"{test_name}",
-            template="""
-            Given this conversation:
-            {{ conversation }}
-            
-            Please answer the following yes/no question about the final assistant response:
-            {{ eval_question }}
-            
-            Return a JSON object with the following format:
-            {"judgment": 1} for yes or {"judgment": 0} for no.
-            """,
             questions=[
                 "Is the response helpful?",
                 "Does the response directly address the user's question?"
             ],
             short_description=f"Test EvalSet for {test_name} - short",
-            long_description=f"This is a detailed explanation of the test EvalSet for {test_name}. It provides comprehensive information about what this EvalSet measures, how it should be used, and how to interpret the results. This test EvalSet is designed for integration testing purposes only and should not be used in production environments." + " " * 100,
-            description=f"Test EvalSet for {test_name}"
+            long_description=f"This is a detailed explanation of the test EvalSet for {test_name}. It provides comprehensive information about what this EvalSet measures, how it should be used, and how to interpret the results. This test EvalSet is designed for integration testing purposes only and should not be used in production environments." + " " * 100
         )
         
         evalset_id = evalset_result["evalset"]["id"]
@@ -213,7 +191,7 @@ class TestEvalSetEvaluation:
             eval_result = await run_evalset(
                 evalset_id=evalset_id,
                 conversation=conversation,
-                model="test-model",
+                judge_model="test-model",
                 max_parallel=1
             )
             
@@ -265,16 +243,6 @@ class TestRealWorldScenarios:
         evalset_result = manage_evalset(
             action="create",
             name=f"{test_name}",
-            template="""
-            Given this conversation:
-            {{ conversation }}
-            
-            Please answer the following yes/no question about the final assistant response:
-            {{ eval_question }}
-            
-            Return a JSON object with the following format:
-            {"judgment": 1} for yes or {"judgment": 0} for no.
-            """,
             questions=[
                 "Is the response helpful?",
                 "Does the response directly address the user's question?",
@@ -386,7 +354,7 @@ class TestRealWorldScenarios:
             good_result = await run_evalset(
                 evalset_id=evalset_id,
                 conversation=good_response,
-                model="test-model",
+                judge_model="test-model",
                 max_parallel=1
             )
             
@@ -394,7 +362,7 @@ class TestRealWorldScenarios:
             poor_result = await run_evalset(
                 evalset_id=evalset_id,
                 conversation=poor_response,
-                model="test-model",
+                judge_model="test-model",
                 max_parallel=1
             )
             

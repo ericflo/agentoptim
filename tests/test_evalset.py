@@ -57,11 +57,10 @@ class TestEvalSet(unittest.TestCase):
     def test_create_evalset(self):
         """Test creating an EvalSet."""
         evalset = create_evalset(
-            self.test_name, 
-            self.test_questions, 
+            self.test_name,
+            self.test_questions,
             self.test_short_description,
-            self.test_long_description,
-            self.test_description
+            self.test_long_description
         )
         
         self.assertEqual(evalset.name, self.test_name)
@@ -69,7 +68,8 @@ class TestEvalSet(unittest.TestCase):
         self.assertEqual(evalset.questions, self.test_questions)
         self.assertEqual(evalset.short_description, self.test_short_description)
         self.assertEqual(evalset.long_description, self.test_long_description)
-        self.assertEqual(evalset.description, self.test_description)
+        # description is deprecated
+        self.assertFalse(hasattr(evalset, 'description'))
         
         # Check that the file was created
         self.assertTrue(os.path.exists(os.path.join(self.temp_dir, f"{evalset.id}.json")))
@@ -77,11 +77,10 @@ class TestEvalSet(unittest.TestCase):
     def test_get_evalset(self):
         """Test retrieving an EvalSet."""
         created = create_evalset(
-            self.test_name, 
-            self.test_questions, 
+            self.test_name,
+            self.test_questions,
             self.test_short_description,
-            self.test_long_description,
-            self.test_description
+            self.test_long_description
         )
         
         retrieved = get_evalset(created.id)
@@ -92,7 +91,8 @@ class TestEvalSet(unittest.TestCase):
         self.assertEqual(retrieved.questions, self.test_questions)
         self.assertEqual(retrieved.short_description, self.test_short_description)
         self.assertEqual(retrieved.long_description, self.test_long_description)
-        self.assertEqual(retrieved.description, self.test_description)
+        # description attribute has been removed in v2.1.0
+        self.assertFalse(hasattr(retrieved, 'description'))
         
         # Test non-existent EvalSet
         self.assertIsNone(get_evalset("nonexistent-id"))
@@ -100,11 +100,10 @@ class TestEvalSet(unittest.TestCase):
     def test_update_evalset(self):
         """Test updating an EvalSet."""
         evalset = create_evalset(
-            self.test_name, 
+            self.test_name,
             self.test_questions,
             self.test_short_description,
-            self.test_long_description,
-            self.test_description
+            self.test_long_description
         )
         
         # Update some fields
@@ -127,7 +126,8 @@ class TestEvalSet(unittest.TestCase):
         self.assertEqual(updated.questions, new_questions)
         self.assertEqual(updated.short_description, new_short_description)
         self.assertEqual(updated.long_description, new_long_description)
-        self.assertEqual(updated.description, self.test_description)  # Unchanged
+        # description field has been removed in v2.1.0
+        self.assertFalse(hasattr(updated, 'description'))
         
         # Test non-existent EvalSet
         self.assertIsNone(update_evalset("nonexistent-id", name="New Name"))
@@ -135,11 +135,10 @@ class TestEvalSet(unittest.TestCase):
     def test_delete_evalset(self):
         """Test deleting an EvalSet."""
         evalset = create_evalset(
-            self.test_name, 
+            self.test_name,
             self.test_questions,
             self.test_short_description,
-            self.test_long_description,
-            self.test_description
+            self.test_long_description
         )
         
         # Check that the file exists
@@ -157,17 +156,19 @@ class TestEvalSet(unittest.TestCase):
     def test_list_evalsets(self):
         """Test listing EvalSets."""
         # Create a few EvalSets
+        # Fixed to match required function signature
+        long_desc = "Long description must be at least 256 characters long so this is a very long string. " + " " * 220
         eval1 = create_evalset(
-            "Eval 1", 
-            ["Q1", "Q2"], 
+            "Eval 1",
+            ["Q1", "Q2"],
             "Short description 1",
-            "Long description for EvalSet 1. This is a comprehensive explanation of what this EvalSet measures and how to interpret the results. It provides detailed context for users." + " " * 100
+            long_desc
         )
         eval2 = create_evalset(
-            "Eval 2", 
+            "Eval 2",
             ["Q3", "Q4"],
             "Short description 2",
-            "Long description for EvalSet 2. This is a comprehensive explanation of what this EvalSet measures and how to interpret the results. It provides detailed context for users." + " " * 100
+            long_desc
         )
         
         evalsets = list_evalsets()
@@ -181,11 +182,9 @@ class TestEvalSet(unittest.TestCase):
         result = manage_evalset(
             action="create",
             name=self.test_name,
-            template=self.test_template,  # Will be ignored
             questions=self.test_questions,
             short_description=self.test_short_description,
-            long_description=self.test_long_description,
-            description=self.test_description,
+            long_description=self.test_long_description
         )
         
         self.assertEqual(result.get("status"), "success")
@@ -199,16 +198,16 @@ class TestEvalSet(unittest.TestCase):
         """Test the manage_evalset function for listing EvalSets."""
         # Create a few EvalSets
         create_evalset(
-            "Eval 1", 
-            ["Q1", "Q2"], 
+            "Eval 1",
+            ["Q1", "Q2"],
             "Short description 1",
-            "Long description for EvalSet 1. This is a comprehensive explanation of what this EvalSet measures and how to interpret the results. It provides detailed context for users." + " " * 100
+            "Long description must be at least 256 characters long so this is a very long string that I am creating to satisfy the requirement. It needs to contain enough text to exceed the minimum length. Here is more filler text to ensure we have enough characters in this description to meet the validation requirements from the EvalSet class." + " " * 50
         )
         create_evalset(
-            "Eval 2", 
+            "Eval 2",
             ["Q3", "Q4"],
             "Short description 2",
-            "Long description for EvalSet 2. This is a comprehensive explanation of what this EvalSet measures and how to interpret the results. It provides detailed context for users." + " " * 100
+            "Long description must be at least 256 characters long so this is a very long string that I am creating to satisfy the requirement. It needs to contain enough text to exceed the minimum length. Here is more filler text to ensure we have enough characters in this description to meet the validation requirements from the EvalSet class." + " " * 50
         )
         
         result = manage_evalset(action="list")
@@ -224,11 +223,10 @@ class TestEvalSet(unittest.TestCase):
     def test_manage_evalset_get(self):
         """Test the manage_evalset function for getting an EvalSet."""
         evalset = create_evalset(
-            self.test_name, 
+            self.test_name,
             self.test_questions,
             self.test_short_description,
-            self.test_long_description,
-            self.test_description
+            self.test_long_description
         )
         
         result = manage_evalset(action="get", evalset_id=evalset.id)
@@ -239,7 +237,8 @@ class TestEvalSet(unittest.TestCase):
         evalset_data = result.get("evalset", {})
         self.assertEqual(evalset_data.get("id"), evalset.id)
         self.assertEqual(evalset_data.get("name"), self.test_name)
-        self.assertEqual(evalset_data.get("description"), self.test_description)
+        self.assertEqual(evalset_data.get("short_description"), self.test_short_description)
+        self.assertEqual(evalset_data.get("long_description"), self.test_long_description)
         self.assertEqual(evalset_data.get("questions"), self.test_questions)
         
         # Test non-existent EvalSet
@@ -249,11 +248,10 @@ class TestEvalSet(unittest.TestCase):
     def test_manage_evalset_update(self):
         """Test the manage_evalset function for updating EvalSets."""
         evalset = create_evalset(
-            self.test_name, 
+            self.test_name,
             self.test_questions,
             self.test_short_description,
-            self.test_long_description,
-            self.test_description
+            self.test_long_description
         )
         
         new_name = "Updated Name"
@@ -277,11 +275,10 @@ class TestEvalSet(unittest.TestCase):
     def test_manage_evalset_delete(self):
         """Test the manage_evalset function for deleting EvalSets."""
         evalset = create_evalset(
-            self.test_name, 
+            self.test_name,
             self.test_questions,
             self.test_short_description,
-            self.test_long_description,
-            self.test_description
+            self.test_long_description
         )
         
         result = manage_evalset(action="delete", evalset_id=evalset.id)
@@ -319,7 +316,8 @@ class TestEvalSet(unittest.TestCase):
             name=self.test_name,
             template=self.test_template,
             questions=self.test_questions,
-            description=self.test_description,
+            short_description=self.test_short_description,
+            long_description=self.test_long_description,
         )
         
         # Test to_dict method
@@ -327,7 +325,9 @@ class TestEvalSet(unittest.TestCase):
         self.assertEqual(eval_dict["name"], self.test_name)
         self.assertEqual(eval_dict["template"], self.test_template)
         self.assertEqual(eval_dict["questions"], self.test_questions)
-        self.assertEqual(eval_dict["description"], self.test_description)
+        # description field has been removed in v2.1.0 and replaced with short_description/long_description
+        self.assertEqual(eval_dict["short_description"], self.test_short_description)
+        self.assertEqual(eval_dict["long_description"], self.test_long_description)
         
         # Test from_dict method
         eval2 = EvalSet.from_dict(eval_dict)
@@ -335,18 +335,19 @@ class TestEvalSet(unittest.TestCase):
         self.assertEqual(eval2.name, self.test_name)
         self.assertEqual(eval2.template, self.test_template)
         self.assertEqual(eval2.questions, self.test_questions)
-        self.assertEqual(eval2.description, self.test_description)
+        # description field has been removed in v2.1.0 and replaced with short_description/long_description
+        self.assertEqual(eval2.short_description, self.test_short_description)
+        self.assertEqual(eval2.long_description, self.test_long_description)
     
     def test_template_validation(self):
         """Test that template validation works correctly."""
         # Templates are now system-defined, so we skip direct validation tests
         # Instead, let's just check that the default template has the required placeholders
         evalset = create_evalset(
-            self.test_name, 
+            self.test_name,
             self.test_questions,
             self.test_short_description,
-            self.test_long_description,
-            self.test_description
+            self.test_long_description
         )
         self.assertIn("{{ conversation }}", evalset.template)
         self.assertIn("{{ eval_question }}", evalset.template)

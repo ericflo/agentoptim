@@ -50,23 +50,12 @@ class TestFullWorkflow:
         evalset_result = manage_evalset(
             action="create",
             name="Test EvalSet",
-            template="""
-            Given this conversation:
-            {{ conversation }}
-            
-            Please answer the following yes/no question about the final assistant response:
-            {{ eval_question }}
-            
-            Return a JSON object with the following format:
-            {"judgment": 1} for yes or {"judgment": 0} for no.
-            """,
             questions=[
                 "Is the response helpful?",
                 "Is the response clear and concise?", 
                 "Does the response directly address the question?",
                 "Is the response accurate?"
             ],
-            description="Test EvalSet for integration testing",
             short_description="Concise test for integration testing",
             long_description="This is a detailed explanation of the test EvalSet for integration testing. It provides comprehensive information about what this EvalSet measures and how to interpret the results. This EvalSet is designed for integration testing purposes only." + " " * 200
         )
@@ -128,7 +117,7 @@ class TestFullWorkflow:
             result = await run_evalset(
                 evalset_id=evalset_id,
                 conversation=conversation,
-                model="mock-model",
+                judge_model="mock-model",
                 max_parallel=2
             )
             
@@ -136,7 +125,7 @@ class TestFullWorkflow:
             assert result is not None
             assert result.get("status") == "success"
             assert result.get("evalset_id") == evalset_id
-            assert result.get("model") == "mock-model"
+            assert result.get("judge_model") == "mock-model"
             
             # Check results array
             assert "results" in result
@@ -201,18 +190,7 @@ class TestParallelProcessing:
         evalset_result = manage_evalset(
             action="create",
             name="Parallel Test EvalSet",
-            template="""
-            Given this conversation:
-            {{ conversation }}
-            
-            Please answer the following yes/no question about the final assistant response:
-            {{ eval_question }}
-            
-            Return a JSON object with the following format:
-            {"judgment": 1} for yes or {"judgment": 0} for no.
-            """,
             questions=[f"Test question {i}?" for i in range(10)],  # 10 questions
-            description="EvalSet for testing parallel processing",
             short_description="Parallel processing evaluation test",
             long_description="This is a detailed explanation of the EvalSet used for testing parallel processing capabilities. It contains multiple questions to test the system's ability to run evaluations concurrently and efficiently process multiple judgment requests." + " " * 200
         )
@@ -263,7 +241,7 @@ class TestParallelProcessing:
             result = await run_evalset(
                 evalset_id=evalset_id,
                 conversation=conversation,
-                model="mock-model",
+                judge_model="mock-model",
                 max_parallel=4  # Run up to 4 evaluations in parallel
             )
             
