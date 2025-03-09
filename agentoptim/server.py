@@ -26,6 +26,9 @@ DEBUG_MODE = os.environ.get("AGENTOPTIM_DEBUG", "0") == "1"
 # 2. No logprobs support (always returns null)
 # 3. System prompts work well and help control the output format
 LMSTUDIO_COMPAT = os.environ.get("AGENTOPTIM_LMSTUDIO_COMPAT", "1") == "1"  # Enable by default
+# Environment variable overrides for judge model and omit reasoning
+DEFAULT_JUDGE_MODEL = os.environ.get("AGENTOPTIM_JUDGE_MODEL", None)
+DEFAULT_OMIT_REASONING = os.environ.get("AGENTOPTIM_OMIT_REASONING", "0").lower() in ('true', 't', '1', 'yes', 'y', 'on', 'enabled')
 
 # Configure logging - only log to file and stderr, not stdout (to avoid breaking MCP's stdio transport)
 log_file_path = os.path.join(DATA_DIR, "agentoptim.log")
@@ -419,31 +422,41 @@ async def run_evalset_tool(
     logger.info(f"run_evalset_tool called with evalset_id={evalset_id}")
     try:
         # Check for judge_model and omit_reasoning in options (passed from client config)
-        judge_model = None
-        omit_reasoning = False
+        judge_model = DEFAULT_JUDGE_MODEL  # Use env var as first priority
+        omit_reasoning = DEFAULT_OMIT_REASONING  # Use env var as first priority
+        
+        # Log environment variable settings if present
+        if DEFAULT_JUDGE_MODEL:
+            logger.info(f"Using judge_model from environment: {DEFAULT_JUDGE_MODEL}")
+        if DEFAULT_OMIT_REASONING:
+            logger.info(f"Using omit_reasoning from environment: {DEFAULT_OMIT_REASONING}")
+        
         try:
             if hasattr(mcp, '_mcp_server'):
                 request_context = mcp._mcp_server.request_context
                 
                 if request_context and hasattr(request_context, 'init_options'):
                     options = request_context.init_options or {}
-                    if 'judge_model' in options:
+                    logger.info(f"DEBUG: Received init_options: {options}")
+                    # Only use client options if env vars are not set
+                    if not DEFAULT_JUDGE_MODEL and 'judge_model' in options:
                         judge_model = options['judge_model']
                         logger.info(f"Using judge_model from client options: {judge_model}")
                     
-                    # Check for omit_reasoning flag
-                    if 'omit_reasoning' in options:
+                    # Check for omit_reasoning flag (only if env var not set)
+                    if not DEFAULT_OMIT_REASONING and 'omit_reasoning' in options:
                         omit_reasoning_str = str(options['omit_reasoning']).lower()
                         # Accept various forms of "true" for better user experience
                         omit_reasoning = omit_reasoning_str in ('true', 't', '1', 'yes', 'y', 'on', 'enabled')
                         logger.info(f"omit_reasoning option set to: {omit_reasoning}")
-                        if omit_reasoning:
-                            logger.info("Reasoning will be omitted from evaluation results")
+                        
+                if omit_reasoning:
+                    logger.info("Reasoning will be omitted from evaluation results")
         except (AttributeError, LookupError) as e:
             # This can happen during tests or when no request context is available
             logger.debug(f"Could not access request context: {e}")
         
-        # Use model parameter if provided, otherwise use judge_model from options,
+        # Use model parameter if provided, otherwise use judge_model from options/env,
         # or fall back to default model
         eval_model = model or judge_model or "meta-llama-3.1-8b-instruct"
         logger.info(f"Evaluating with model: {eval_model}")

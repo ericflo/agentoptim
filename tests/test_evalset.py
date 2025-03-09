@@ -55,11 +55,11 @@ class TestEvalSet(unittest.TestCase):
     def test_create_evalset(self):
         """Test creating an EvalSet."""
         evalset = create_evalset(
-            self.test_name, self.test_template, self.test_questions, self.test_description
+            self.test_name, self.test_questions, self.test_description
         )
         
         self.assertEqual(evalset.name, self.test_name)
-        self.assertEqual(evalset.template, self.test_template)
+        # Templates are now system-defined, so we don't test for that
         self.assertEqual(evalset.questions, self.test_questions)
         self.assertEqual(evalset.description, self.test_description)
         
@@ -69,14 +69,14 @@ class TestEvalSet(unittest.TestCase):
     def test_get_evalset(self):
         """Test retrieving an EvalSet."""
         created = create_evalset(
-            self.test_name, self.test_template, self.test_questions, self.test_description
+            self.test_name, self.test_questions, self.test_description
         )
         
         retrieved = get_evalset(created.id)
         
         self.assertEqual(retrieved.id, created.id)
         self.assertEqual(retrieved.name, self.test_name)
-        self.assertEqual(retrieved.template, self.test_template)
+        # Templates are now system-defined, so we don't test for exact template
         self.assertEqual(retrieved.questions, self.test_questions)
         self.assertEqual(retrieved.description, self.test_description)
         
@@ -86,7 +86,7 @@ class TestEvalSet(unittest.TestCase):
     def test_update_evalset(self):
         """Test updating an EvalSet."""
         evalset = create_evalset(
-            self.test_name, self.test_template, self.test_questions, self.test_description
+            self.test_name, self.test_questions, self.test_description
         )
         
         # Update some fields
@@ -99,7 +99,7 @@ class TestEvalSet(unittest.TestCase):
         
         self.assertEqual(updated.id, evalset.id)
         self.assertEqual(updated.name, new_name)
-        self.assertEqual(updated.template, self.test_template)  # Unchanged
+        # Templates are now system-defined, so we don't test for template
         self.assertEqual(updated.questions, new_questions)
         self.assertEqual(updated.description, self.test_description)  # Unchanged
         
@@ -109,7 +109,7 @@ class TestEvalSet(unittest.TestCase):
     def test_delete_evalset(self):
         """Test deleting an EvalSet."""
         evalset = create_evalset(
-            self.test_name, self.test_template, self.test_questions, self.test_description
+            self.test_name, self.test_questions, self.test_description
         )
         
         # Check that the file exists
@@ -127,8 +127,8 @@ class TestEvalSet(unittest.TestCase):
     def test_list_evalsets(self):
         """Test listing EvalSets."""
         # Create a few EvalSets
-        eval1 = create_evalset("Eval 1", self.test_template, ["Q1", "Q2"])
-        eval2 = create_evalset("Eval 2", self.test_template, ["Q3", "Q4"])
+        eval1 = create_evalset("Eval 1", ["Q1", "Q2"])
+        eval2 = create_evalset("Eval 2", ["Q3", "Q4"])
         
         evalsets = list_evalsets()
         
@@ -156,8 +156,8 @@ class TestEvalSet(unittest.TestCase):
     def test_manage_evalset_list(self):
         """Test the manage_evalset function for listing EvalSets."""
         # Create a few EvalSets
-        create_evalset("Eval 1", self.test_template, ["Q1", "Q2"])
-        create_evalset("Eval 2", self.test_template, ["Q3", "Q4"])
+        create_evalset("Eval 1", ["Q1", "Q2"])
+        create_evalset("Eval 2", ["Q3", "Q4"])
         
         result = manage_evalset(action="list")
         
@@ -172,7 +172,7 @@ class TestEvalSet(unittest.TestCase):
     def test_manage_evalset_get(self):
         """Test the manage_evalset function for getting an EvalSet."""
         evalset = create_evalset(
-            self.test_name, self.test_template, self.test_questions, self.test_description
+            self.test_name, self.test_questions, self.test_description
         )
         
         result = manage_evalset(action="get", evalset_id=evalset.id)
@@ -193,7 +193,7 @@ class TestEvalSet(unittest.TestCase):
     def test_manage_evalset_update(self):
         """Test the manage_evalset function for updating EvalSets."""
         evalset = create_evalset(
-            self.test_name, self.test_template, self.test_questions, self.test_description
+            self.test_name, self.test_questions, self.test_description
         )
         
         new_name = "Updated Name"
@@ -217,7 +217,7 @@ class TestEvalSet(unittest.TestCase):
     def test_manage_evalset_delete(self):
         """Test the manage_evalset function for deleting EvalSets."""
         evalset = create_evalset(
-            self.test_name, self.test_template, self.test_questions, self.test_description
+            self.test_name, self.test_questions, self.test_description
         )
         
         result = manage_evalset(action="delete", evalset_id=evalset.id)
@@ -275,25 +275,11 @@ class TestEvalSet(unittest.TestCase):
     
     def test_template_validation(self):
         """Test that template validation works correctly."""
-        # Test with missing conversation placeholder
-        invalid_template = "Template without conversation placeholder {{ eval_question }}"
-        with self.assertRaises(ValueError) as context:
-            EvalSet(
-                name=self.test_name,
-                template=invalid_template,
-                questions=self.test_questions
-            )
-        self.assertIn("{{ conversation }}", str(context.exception))
-        
-        # Test with missing eval_question placeholder
-        invalid_template = "Template without question placeholder {{ conversation }}"
-        with self.assertRaises(ValueError) as context:
-            EvalSet(
-                name=self.test_name,
-                template=invalid_template,
-                questions=self.test_questions
-            )
-        self.assertIn("{{ eval_question }}", str(context.exception))
+        # Templates are now system-defined, so we skip direct validation tests
+        # Instead, let's just check that the default template has the required placeholders
+        evalset = create_evalset(self.test_name, self.test_questions, self.test_description)
+        self.assertIn("{{ conversation }}", evalset.template)
+        self.assertIn("{{ eval_question }}", evalset.template)
     
     def test_questions_count_validation(self):
         """Test that the maximum questions count validation works."""
@@ -302,7 +288,6 @@ class TestEvalSet(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             EvalSet(
                 name=self.test_name,
-                template=self.test_template,
                 questions=too_many_questions
             )
         self.assertIn("Maximum of 100 questions", str(context.exception))
@@ -311,7 +296,6 @@ class TestEvalSet(unittest.TestCase):
         max_questions = ["Question"] * 100  # 100 questions is the maximum allowed
         evalset = EvalSet(
             name=self.test_name,
-            template=self.test_template,
             questions=max_questions
         )
         self.assertEqual(len(evalset.questions), 100)

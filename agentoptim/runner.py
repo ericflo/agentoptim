@@ -929,6 +929,15 @@ async def run_evalset(
     Returns:
         Dictionary with evaluation results
     """
+    # Check if environment has a default model specified
+    default_model_env = os.environ.get("AGENTOPTIM_JUDGE_MODEL")
+    if default_model_env and model != default_model_env and model != "meta-llama-3.1-8b-instruct":
+        logger.warning(
+            f"NOTE: The 'model' parameter in run_evalset_tool ({model}) is overriding "
+            f"the AGENTOPTIM_JUDGE_MODEL environment variable ({default_model_env}). "
+            f"To prevent this override, do not specify a model in the run_evalset_tool call."
+        )
+        
     try:
         # Validate parameters
         validate_required_params({

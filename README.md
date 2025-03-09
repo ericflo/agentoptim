@@ -154,11 +154,15 @@ Set these environment variables to control server behavior:
 
 - `AGENTOPTIM_LMSTUDIO_COMPAT=1`: Enable LM Studio compatibility mode (enabled by default)
 - `AGENTOPTIM_DEBUG=1`: Enable detailed debug logging
+- `AGENTOPTIM_JUDGE_MODEL=model-name`: Default judge model to use (takes precedence over client options)
+- `AGENTOPTIM_OMIT_REASONING=1`: Omit reasoning in evaluation results by default
 
 For example:
 ```bash
-AGENTOPTIM_LMSTUDIO_COMPAT=1 AGENTOPTIM_DEBUG=1 agentoptim
+AGENTOPTIM_LMSTUDIO_COMPAT=0 AGENTOPTIM_JUDGE_MODEL=gpt-4o-mini AGENTOPTIM_OMIT_REASONING=1 agentoptim
 ```
+
+**Note:** When using `AGENTOPTIM_JUDGE_MODEL`, the specified model will override any client configuration. However, if the client explicitly provides a `model` parameter in the `run_evalset_tool` call, that will still take precedence.
 
 ### LM Studio Compatibility
 
@@ -183,11 +187,9 @@ Configure Claude Code to use the AgentOptim MCP server with different LLM provid
       "command": "bash",
       "args": [
         "-c",
-        "AGENTOPTIM_LMSTUDIO_COMPAT=1 agentoptim"
+        "AGENTOPTIM_LMSTUDIO_COMPAT=1 AGENTOPTIM_JUDGE_MODEL=lmstudio-community/meta-llama-3.1-8b-instruct agentoptim"
       ],
-      "options": {
-        "judge_model": "lmstudio-community/meta-llama-3.1-8b-instruct"
-      }
+      "options": {}
     }
   }
 }
@@ -202,11 +204,9 @@ Configure Claude Code to use the AgentOptim MCP server with different LLM provid
       "command": "bash",
       "args": [
         "-c",
-        "OPENAI_API_KEY=your_openai_api_key_here agentoptim"
+        "OPENAI_API_KEY=your_openai_api_key_here AGENTOPTIM_JUDGE_MODEL=gpt-4o-mini agentoptim"
       ],
-      "options": {
-        "judge_model": "gpt-4o-mini"
-      }
+      "options": {}
     }
   }
 }
@@ -221,11 +221,9 @@ Configure Claude Code to use the AgentOptim MCP server with different LLM provid
       "command": "bash",
       "args": [
         "-c",
-        "ANTHROPIC_API_KEY=your_anthropic_api_key_here agentoptim"
+        "ANTHROPIC_API_KEY=your_anthropic_api_key_here AGENTOPTIM_JUDGE_MODEL=claude-3-sonnet-20240229 agentoptim"
       ],
-      "options": {
-        "judge_model": "claude-3-sonnet-20240229"
-      }
+      "options": {}
     }
   }
 }
@@ -236,24 +234,26 @@ Configure Claude Code to use the AgentOptim MCP server with different LLM provid
 AgentOptim selects the model to use for evaluations according to this priority:
 
 1. If a `model` parameter is explicitly provided in the `run_evalset_tool` call, this takes highest precedence
-2. If no model parameter is provided, the `judge_model` from client options (shown in the configs above) is used
-3. If neither is specified, the default model `meta-llama-3.1-8b-instruct` is used
+2. If the `AGENTOPTIM_JUDGE_MODEL` environment variable is set, it will be used next
+3. If the `judge_model` option is provided in client configuration, it will be used third
+4. If none of the above are specified, the default model `meta-llama-3.1-8b-instruct` is used
 
-This allows Claude to send the client name (like "optim") as the model parameter, which will be ignored in favor of the configured judge_model.
+Using environment variables is strongly recommended as it prevents Claude from overriding your model choice.
 
 #### Additional Configuration Options
 
-The following additional options can be set in the client configuration:
+The following additional options can be controlled either via environment variables or client configuration:
 
-- **omit_reasoning**: When set to "True", the evaluation will not generate or include detailed reasoning in results. This provides several benefits:
+- **omit_reasoning**: When enabled, the evaluation will not generate or include detailed reasoning in results. This provides several benefits:
   - **Performance**: Significantly improves evaluation speed (up to 30-40% faster)
   - **Efficiency**: Reduces token usage by not generating lengthy explanations
   - **Simplicity**: Provides cleaner results focused on judgments and confidence scores
   - **Cost savings**: For API-based LLMs, reduces token costs for evaluations
 
+  Can be set via the `AGENTOPTIM_OMIT_REASONING` environment variable or the `omit_reasoning` client option.
   The system will accept various formats for enabling this option: "true", "yes", "1", "t", "y", "on", or "enabled" (case-insensitive).
 
-Example configuration with omit_reasoning:
+Example configuration with environment variables (recommended):
 
 ```json
 {
@@ -262,12 +262,9 @@ Example configuration with omit_reasoning:
       "command": "bash",
       "args": [
         "-c",
-        "OPENAI_API_KEY=your_api_key_here agentoptim"
+        "OPENAI_API_KEY=your_api_key_here AGENTOPTIM_JUDGE_MODEL=gpt-4o-mini AGENTOPTIM_OMIT_REASONING=1 agentoptim"
       ],
-      "options": {
-        "judge_model": "gpt-4o-mini",
-        "omit_reasoning": "True"
-      }
+      "options": {}
     }
   }
 }
