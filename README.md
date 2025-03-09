@@ -47,21 +47,21 @@ Version 2.1.0 completes our architectural simplification by removing the legacy 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#3498db', 'primaryTextColor': '#fff', 'lineColor': '#2980b9', 'tertiaryColor': '#f5f5f5'}}}%%
 flowchart TD
-    User([AI Engineer/Developer]) --> |Creates evaluation criteria| A["🛠️ manage_evalset_tool"]
-    User --> |Evaluates conversations| B["🔬 run_evalset_tool"]
+    User([AI Engineer/Developer]) --> |"&nbsp;&nbsp;Creates evaluation criteria&nbsp;&nbsp;"| A["🛠️ manage_evalset_tool"]
+    User --> |"&nbsp;&nbsp;Evaluates conversations&nbsp;&nbsp;"| B["🔬 run_evalset_tool"]
     
     subgraph Creation ["📝 Evaluation Creation"]
-        A --> |Stores| C[("📊 EvalSets\n- Criteria questions\n- Templates\n- Metadata")]
+        A --> |"&nbsp;&nbsp;Stores&nbsp;&nbsp;"| C[("📊 EvalSets\n- Criteria questions\n- Templates\n- Metadata")]
     end
     
     subgraph Execution ["⚙️ Evaluation Execution"]
-        B --> |Processes| E["🧩 Conversations\n(User + AI interactions)"]
-        E --> |Analyzed by| D["🧠 Judge Models\n(Claude/GPT/Local)"]
-        D --> |Produces| F["📈 Results\n- Judgments\n- Confidence scores\n- Summary metrics"]
+        B --> |"&nbsp;&nbsp;Processes&nbsp;&nbsp;"| E["🧩 Conversations\n(User + AI interactions)"]
+        E --> |"&nbsp;&nbsp;Analyzed by&nbsp;&nbsp;"| D["🧠 Judge Models\n(Claude/GPT/Local)"]
+        D --> |"&nbsp;&nbsp;Produces&nbsp;&nbsp;"| F["📈 Results\n- Judgments\n- Confidence scores\n- Summary metrics"]
     end
     
-    C --> |Provides criteria for| B
-    F --> |Informs| User
+    C --> |"&nbsp;&nbsp;Provides criteria for&nbsp;&nbsp;"| B
+    F --> |"&nbsp;&nbsp;Informs&nbsp;&nbsp;"| User
     
     classDef primary fill:#3498db,stroke:#2980b9,color:white,stroke-width:2px;
     classDef tool1 fill:#2ecc71,stroke:#27ae60,color:white,stroke-width:2px;
