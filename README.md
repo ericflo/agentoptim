@@ -122,6 +122,50 @@ Version 2.1.1 adds delightful CLI enhancements that make AgentOptim even more us
 - 🔧 **Advanced Error Handling** - Actionable troubleshooting suggestions with executable commands
 - 🧩 **Personalization** - Theme support, skill level adaptation, and time-based interactions
 
+## 📋 Verbalized Confidence Score Implementation Roadmap
+
+AgentOptim v2.2.0 will focus on implementing advanced verbalized confidence score elicitation techniques based on the latest research. This will enable more accurate and reliable uncertainty quantification in evaluations.
+
+### Phase 1: Core Implementation
+- [x] **1.1** Create new `confidence.py` module with base infrastructure
+- [x] **1.2** Design `PromptMethod` base class and confidence extraction utilities
+- [x] **1.3** Implement robust regex pattern matching for confidence extraction
+- [x] **1.4** Add confidence score normalization functions 
+- [x] **1.5** Design response classification system (valid/invalid/no_answer)
+
+### Phase 2: Elicitation Methods
+- [x] **2.1** Implement `basic_percentage` elicitation method (0-100%)
+- [x] **2.2** Implement `basic_float` elicitation method (0.0-1.0)
+- [x] **2.3** Implement `basic_letter` elicitation method (A through E grades)
+- [x] **2.4** Implement `basic_text` elicitation method (very low to very high)
+- [x] **2.5** Implement `advanced_probability` method with uncertainty factors
+- [x] **2.6** Implement `combo_exemplars` method with few-shot examples
+- [x] **2.7** Implement `multi_guess` method for top-k predictions with probabilities
+
+### Phase 3: Integration & Evaluation
+- [ ] **3.1** Add confidence elicitation to EvalSet configuration
+- [ ] **3.2** Integrate confidence scores into evaluation results schema
+- [ ] **3.3** Implement Expected Calibration Error (ECE) calculation
+- [ ] **3.4** Create calibration curve calculation utility
+- [ ] **3.5** Design confidence distribution analysis tools
+- [ ] **3.6** Add confidence diversity metrics (distinct values, variance)
+- [ ] **3.7** Implement MCP Tool for confidence score evaluation
+
+### Phase 4: Visualization & Reporting
+- [ ] **4.1** Add confidence visualization to CLI output
+- [ ] **4.2** Implement calibration curve plotting
+- [ ] **4.3** Create confidence distribution histogram generation
+- [ ] **4.4** Add confidence metrics to evaluation reports
+- [ ] **4.5** Support confidence data in export formats (CSV, JSON, HTML)
+- [ ] **4.6** Design calibration comparison view for multiple models
+
+### Phase 5: Documentation & Examples
+- [ ] **5.1** Write confidence elicitation API documentation
+- [ ] **5.2** Create tutorial with examples of different elicitation methods
+- [ ] **5.3** Add example scripts for confidence evaluation
+- [ ] **5.4** Document best practices for confidence score elicitation
+- [ ] **5.5** Update API reference with confidence-related features
+
 Version 2.1.0 completed our architectural simplification by removing the legacy compatibility layer and delivering a clean, modern API:
 
 - **Removed compatibility layer** - No more legacy code or backward compatibility
