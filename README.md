@@ -116,28 +116,11 @@ Whether you're fine-tuning production agents, comparing prompt strategies, or be
 
 Version 2.1.1 adds delightful CLI enhancements that make AgentOptim even more user-friendly and productive:
 
-- ✨ **Interactive Conversation Creator** - Create conversations to evaluate with an interactive TUI
-- 📊 **Rich Progress Visualization** - Watch evaluation progress with beautiful progress bars
-- 🎨 **Colorful Output with Emojis** - More readable and visually appealing results
-- 🪄 **Enchanting Spinners** - Delightful loading animations with real-time progress updates
-- 🌈 **Contextual Score Indicators** - Visual emoji indicators based on score performance (🔝👍👌👎)
-- 💡 **Random Pro Tips** - Helpful usage tips to discover new features
-- 🔠 **Command Auto-Completion** - Tab completion for all commands and options
-- 🔍 **Command Suggestion System** - Helpful suggestions when commands are mistyped
-- 📱 **Intelligent Error Messages** - Clear, context-specific help when something goes wrong
-- 📋 **Export Results to Multiple Formats** - Export evaluations as HTML, Markdown, CSV, JSON, or PDF
-- 📈 **Powerful Comparison Tool** - Compare evaluation runs side by side with visual indicators
-- ⏱️ **Command Execution Timer** - See how long commands take to run
-- ⚙️ **Scriptability Improvements** - Quiet mode and machine-readable outputs for automation
-- 🔄 **Latest Run References** - Use 'latest' and 'latest-N' to easily reference recent runs
-- 👋 **Time-based Greetings** - Friendly welcome messages based on time of day
-- 🎭 **Theme Support** - Server startup with beautiful thematic animations (Ocean, Sunset, Forest, Candy)
-- 🧩 **Beautiful Boxes** - Elegant bordered boxes for displaying information and tips
-- 👨‍🏫 **Context-Aware Welcome** - Command-specific welcome messages to guide you through the experience
-- 🧮 **Smart Progress Tracking** - Natural-looking progress animations that feel realistic
-- 🔧 **Helpful Troubleshooting** - Intelligent error suggestions based on command context
-- 🎯 **Interactive Mode Guidance** - Special welcome messages when using interactive features
-- 📑 **Dashboard-like Displays** - Beautiful information displays for complex data
+- ✨ **Enhanced User Experience** - Interactive conversation creation, colorful output, and smart command suggestions
+- 📊 **Intelligent Progress Visualization** - Real-time progress tracking with adaptive ETA estimation
+- 💡 **Productivity Features** - Command chaining, auto-completion, and contextual help system
+- 🔧 **Advanced Error Handling** - Actionable troubleshooting suggestions with executable commands
+- 🧩 **Personalization** - Theme support, skill level adaptation, and time-based interactions
 
 Version 2.1.0 completed our architectural simplification by removing the legacy compatibility layer and delivering a clean, modern API:
 
