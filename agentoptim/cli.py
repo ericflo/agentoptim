@@ -12,11 +12,15 @@ import logging
 import uuid
 import time
 import textwrap
+import random
+import threading
 from typing import List, Dict, Any, Optional
 import pandas as pd
 from pathlib import Path
 import colorama
 from colorama import Fore, Style
+import itertools
+import datetime
 
 # Configure logging first
 from agentoptim.utils import DATA_DIR, ensure_data_directories
@@ -44,6 +48,137 @@ logger = logging.getLogger("agentoptim")
 # Constants
 VERSION = "2.1.1"  # Updated for CLI delight features
 MAX_WIDTH = 100  # Maximum width for formatted output
+
+# ASCII Art Logo
+LOGO = f"""{Fore.CYAN}
+  █████  ██████  ███████ ███    ██ ████████  ██████  ██████  ████████ ██ ███    ███ 
+ ██   ██ ██      ██      ████   ██    ██    ██    ██ ██   ██    ██    ██ ████  ████ 
+ ███████ ██  ███ █████   ██ ██  ██    ██    ██    ██ ██████     ██    ██ ██ ████ ██ 
+ ██   ██ ██   ██ ██      ██  ██ ██    ██    ██    ██ ██         ██    ██ ██  ██  ██ 
+ ██   ██  █████  ███████ ██   ████    ██     ██████  ██         ██    ██ ██      ██{Style.RESET_ALL}
+                                                                          v{VERSION}
+{Fore.YELLOW}📚 Your Complete Toolkit for AI Conversation Evaluation and Optimization{Style.RESET_ALL}
+"""
+
+# CLI Tips/Fortune Cookies
+CLI_TIPS = [
+    "💡 Use 'latest' to quickly access your most recent evaluation run",
+    "💡 Try the --interactive flag to create and evaluate conversations in real-time",
+    "💡 Set AGENTOPTIM_SHOW_TIMER=1 to see how long commands take to run",
+    "💡 Install tab completion with 'agentoptim --install-completion'",
+    "💡 Use 'agentoptim run export latest --format html' to generate beautiful reports",
+    "💡 Try comparing runs with 'agentoptim run compare latest latest-1'",
+    "💡 Use short aliases: 'es' for evalset and 'r' for run",
+    "💡 Export to multiple formats: markdown, CSV, HTML, JSON, or PDF",
+    "💡 Use --brief flag for faster evaluations without detailed reasoning",
+    "💡 Try different judge models with --model <model_name>",
+    "💡 Stuck? Add --help to any command for guidance",
+    "💡 Set up a daily evaluation workflow with cron and agentoptim",
+    "💡 Use /dev/cache to view caching statistics",
+    "💡 Need scripting? Use --format json --quiet for machine-readable output",
+    "💡 Combine runs with csvstack: 'agentoptim r export latest --format csv'",
+    "💡 Want to run evaluations faster? Try the --concurrency flag",
+]
+
+# Fancy spinners for loading animations
+SPINNERS = {
+    'dots': ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
+    'line': ['|', '/', '-', '\\'],
+    'dots2': ['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'],
+    'pulse': ['█▁▁▁▁', '▁█▁▁▁', '▁▁█▁▁', '▁▁▁█▁', '▁▁▁▁█', '▁▁▁█▁', '▁▁█▁▁', '▁█▁▁▁'],
+    'stars': ['✶', '✸', '✹', '✺', '✹', '✷'],
+    'sparkles': ['✨ ', ' ✨', '  ✨', '   ✨', '    ✨', '   ✨', '  ✨', ' ✨'],
+    'magic': ['🔮 ', ' 🔮', '  🔮', '   🔮', '    🔮', '   🔮', '  🔮', ' 🔮'],
+}
+
+def get_random_tip():
+    """Get a random tip from the CLI_TIPS list."""
+    return random.choice(CLI_TIPS)
+
+def get_time_based_greeting():
+    """Return a greeting based on the time of day."""
+    hour = datetime.datetime.now().hour
+    
+    if 5 <= hour < 12:
+        return f"{Fore.YELLOW}Good morning!{Style.RESET_ALL}"
+    elif 12 <= hour < 18:
+        return f"{Fore.GREEN}Good afternoon!{Style.RESET_ALL}"
+    else:
+        return f"{Fore.BLUE}Good evening!{Style.RESET_ALL}"
+
+
+class FancySpinner:
+    """A fancy spinner for CLI animations."""
+    def __init__(self, spinner_type='sparkles', text='Working', color=Fore.CYAN):
+        """Initialize spinner with style, text and color."""
+        self.spinner = itertools.cycle(SPINNERS.get(spinner_type, SPINNERS['dots']))
+        self.text = text
+        self.color = color
+        self.running = False
+        self.spinner_thread = None
+        self.start_time = None
+        self.stop_event = threading.Event()
+
+    def _spin(self):
+        """Internal spinner loop function."""
+        while not self.stop_event.is_set():
+            elapsed = time.time() - self.start_time
+            mins, secs = divmod(int(elapsed), 60)
+            timestr = f"{mins:02d}:{secs:02d}" if mins > 0 else f"{secs}s"
+            
+            sys.stdout.write(f"\r{self.color}{next(self.spinner)} {self.text} ({timestr}){Style.RESET_ALL}")
+            sys.stdout.flush()
+            time.sleep(0.1)
+
+    def start(self):
+        """Start the spinner."""
+        if self.running:
+            return
+            
+        self.running = True
+        self.start_time = time.time()
+        self.stop_event.clear()
+        
+        # Start spinner in a separate thread
+        self.spinner_thread = threading.Thread(target=self._spin)
+        self.spinner_thread.daemon = True
+        self.spinner_thread.start()
+        return self
+
+    def stop(self, message=None):
+        """Stop the spinner and optionally display a message."""
+        if not self.running:
+            return
+            
+        self.stop_event.set()
+        if self.spinner_thread:
+            self.spinner_thread.join()
+            
+        # Clear the spinner line
+        sys.stdout.write("\r" + " " * 100 + "\r")
+        
+        # Show final message if provided
+        if message:
+            elapsed = time.time() - self.start_time
+            mins, secs = divmod(int(elapsed), 60)
+            timestr = f"{mins:02d}:{secs:02d}" if mins > 0 else f"{secs}s"
+            sys.stdout.write(f"{message} ({timestr})\n")
+            
+        sys.stdout.flush()
+        self.running = False
+        
+    def __enter__(self):
+        """Support for context manager."""
+        self.start()
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Support for context manager exit."""
+        self.stop()
+        
+    def update(self, text):
+        """Update the spinner text."""
+        self.text = text
 
 
 def setup_parser():
@@ -261,33 +396,59 @@ def handle_output(data: Any, format_type: str, output_file: Optional[str] = None
             if len(data) > 0:
                 sample_row = data[0]
                 for column in sample_row.keys():
-                    # Don't set specific widths to allow full content display
+                    # Enhanced column titles with emojis for delight
                     if column.lower() == "id":
-                        table.add_column(column.upper(), style="dim", no_wrap=True)
+                        table.add_column("🆔 ID", style="dim", no_wrap=True)
                     elif "description" in column.lower():
-                        table.add_column(column.title(), style="green", overflow="fold")
+                        table.add_column("📝 Description", style="green", overflow="fold")
                     elif "name" in column.lower():
-                        table.add_column(column.title(), style="yellow", overflow="fold")
-                    elif "questions" in column.lower() or "count" in column.lower():
-                        table.add_column(column.title(), style="blue", justify="right")
+                        table.add_column("✨ Name", style="yellow", overflow="fold")
+                    elif "questions" in column.lower():
+                        table.add_column("❓ Questions", style="blue", justify="right")
+                    elif "count" in column.lower():
+                        table.add_column("🔢 Count", style="blue", justify="right")
                     elif "percentage" in column.lower() or "score" in column.lower():
-                        table.add_column(column.title(), style="magenta", justify="right")
+                        table.add_column("📊 Score", style="magenta", justify="right")
                     elif "date" in column.lower() or "time" in column.lower():
-                        table.add_column(column.title(), style="cyan")
+                        table.add_column("📅 Date", style="cyan")
+                    elif "evalset" in column.lower():
+                        table.add_column("📋 EvalSet", style="green", overflow="fold")
+                    elif "model" in column.lower():
+                        table.add_column("🧠 Model", style="yellow")
+                    elif "conv" in column.lower() or "len" in column.lower():
+                        table.add_column("💬 Length", style="blue", justify="right")
                     else:
                         table.add_column(column.title())
                 
                 # Add rows
                 for row in data:
-                    # Format certain columns specially
+                    # Format certain columns specially with more delightful formatting
                     formatted_row = []
                     for col, val in row.items():
                         if isinstance(val, float) and ("percentage" in col.lower() or "score" in col.lower()):
-                            formatted_row.append(f"{val:.1f}%")
+                            # Format scores with visual indicator based on value
+                            score = val
+                            if score >= 90:
+                                formatted_row.append(f"🔝 {score:.1f}%")
+                            elif score >= 75:
+                                formatted_row.append(f"👍 {score:.1f}%")
+                            elif score >= 50:
+                                formatted_row.append(f"👌 {score:.1f}%")
+                            else:
+                                formatted_row.append(f"👎 {score:.1f}%")
                         elif isinstance(val, (dict, list)):
                             formatted_row.append(str(val)[:20] + "..." if len(str(val)) > 20 else str(val))
                         elif col.lower() == "id":
                             # Keep full IDs for usability
+                            formatted_row.append(str(val))
+                        elif "questions" in col.lower() and isinstance(val, int):
+                            # Add visual indicator for question count
+                            if val > 10:
+                                formatted_row.append(f"🔍 {val}")
+                            else:
+                                formatted_row.append(f"{val}")
+                        elif "date" in col.lower() or "time" in col.lower():
+                            # Keep date/time as is
                             formatted_row.append(str(val))
                         else:
                             formatted_row.append(str(val))
@@ -556,8 +717,83 @@ def run_cli():
         logger.info(f"API base: {os.environ.get('AGENTOPTIM_API_BASE')}")
         logger.info(f"Judge model: {os.environ.get('AGENTOPTIM_JUDGE_MODEL')}")
         
-        # Start the server
+        # Start the server with a fancy startup sequence
         try:
+            # Create a delightful startup experience
+            judge_model = os.environ.get("AGENTOPTIM_JUDGE_MODEL", "default model")
+            port = os.environ.get("AGENTOPTIM_PORT", "40000")
+            provider = args.provider
+            
+            try:
+                from rich.console import Console
+                from rich.panel import Panel
+                from rich.markdown import Markdown
+                from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+                
+                console = Console()
+                
+                # Display server info
+                server_info = [
+                    f"[cyan]Judge Model:[/cyan] [yellow]{judge_model}[/yellow]",
+                    f"[cyan]Provider:[/cyan] [yellow]{provider}[/yellow]",
+                    f"[cyan]Port:[/cyan] [yellow]{port}[/yellow]",
+                ]
+                
+                console.print(Panel("\n".join(server_info), 
+                                    title="🚀 Server Configuration", 
+                                    border_style="cyan",
+                                    title_align="left"))
+                
+                # Show a nice animated startup sequence
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[bold blue]{task.description}"),
+                    BarColumn(complete_style="green"),
+                    TimeElapsedColumn(),
+                ) as progress:
+                    task1 = progress.add_task("[cyan]Initializing server...", total=100)
+                    task2 = progress.add_task("[cyan]Loading judge model...", total=100)
+                    task3 = progress.add_task("[cyan]Preparing MCP tools...", total=100)
+                    
+                    # Create an animated effect while loading
+                    for i in range(101):
+                        if i < 70:
+                            progress.update(task1, completed=i)
+                        elif i < 90:
+                            progress.update(task1, completed=100)
+                            progress.update(task2, completed=(i-70)*5)
+                        else:
+                            progress.update(task1, completed=100)
+                            progress.update(task2, completed=100)
+                            progress.update(task3, completed=(i-90)*10)
+                        time.sleep(0.01)
+                
+                console.print(f"[green]✅ Server initialized and ready to evaluate![/green]")
+                console.print(f"[cyan]Listening on port {port} with {judge_model} as judge[/cyan]")
+                console.print("")
+                
+            except ImportError:
+                # Fallback to simple spinner
+                with FancySpinner(
+                    spinner_type='sparkles',
+                    text=f"Starting AgentOptim server with {judge_model}",
+                    color=Fore.CYAN
+                ) as spinner:
+                    # Simulate initialization steps
+                    time.sleep(0.5)
+                    spinner.update(f"Initializing server on port {port}")
+                    time.sleep(0.5)
+                    spinner.update(f"Loading judge model {judge_model}")
+                    time.sleep(0.5)
+                    spinner.update(f"Preparing MCP tools")
+                    time.sleep(0.5)
+                
+                # Print success message
+                print(f"{Fore.GREEN}✅ Server initialized and ready to evaluate!{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}Listening on port {port} with {judge_model} as judge{Style.RESET_ALL}")
+                print("")
+            
+            # Actually start the server
             from agentoptim.server import main as server_main
             server_main()
         except Exception as e:
@@ -602,10 +838,10 @@ def run_cli():
                         from rich.table import Table
                         from rich.box import SIMPLE
                         
-                        # Print the header
+                        # Print the header with a more delightful style
                         console = Console()
-                        header = f"[bold cyan]Evaluation Sets[/bold cyan]\n[dim]{len(formatted_result)} sets available[/dim]"
-                        console.print(Panel(header, expand=False))
+                        header = f"[bold cyan]✨ Evaluation Sets ✨[/bold cyan]\n[dim]🔍 {len(formatted_result)} sets available[/dim]"
+                        console.print(Panel(header, expand=False, border_style="cyan", title="📋 AgentOptim", title_align="left"))
                         
                         # Create a table with minimal styling that shows full content
                         table = Table(show_header=True, header_style="bold cyan", box=SIMPLE)
@@ -614,16 +850,19 @@ def run_cli():
                         if len(formatted_result) > 0:
                             sample_row = formatted_result[0]
                             for column in sample_row.keys():
-                                # Don't set specific widths to allow full content display
+                                # Enhanced column titles with emojis for delight
                                 if column.lower() == "id":
-                                    table.add_column(column.upper(), style="dim", no_wrap=True)
+                                    table.add_column("🆔 ID", style="dim", no_wrap=True)
                                 elif "description" in column.lower():
-                                    table.add_column(column.title(), style="green", overflow="fold")
+                                    table.add_column("📝 Description", style="green", overflow="fold")
                                 elif "name" in column.lower():
-                                    table.add_column(column.title(), style="yellow", overflow="fold")
-                                elif "questions" in column.lower() or "count" in column.lower():
-                                    table.add_column(column.title(), style="blue", justify="right")
+                                    table.add_column("✨ Name", style="yellow", overflow="fold")
+                                elif "questions" in column.lower():
+                                    table.add_column("❓ Questions", style="blue", justify="right")
+                                elif "count" in column.lower():
+                                    table.add_column("🔢 Count", style="blue", justify="right")
                                 else:
+                                    # Keep original format for unfamiliar columns
                                     table.add_column(column.title())
                             
                             # Add rows
@@ -638,12 +877,30 @@ def run_cli():
                             # Print the table
                             console.print(table)
                         else:
-                            console.print("No evaluation sets found.")
+                            # More friendly and helpful empty state message
+                            from rich.panel import Panel
+                            console.print(Panel(
+                                "[yellow]No evaluation sets found yet.[/yellow]\n\n" +
+                                "To create your first evaluation set, try:\n" +
+                                "[green]agentoptim evalset create --wizard[/green]",
+                                title="✨ Get Started",
+                                border_style="cyan"
+                            ))
                         
-                        # Add helpful tips
-                        print("")
-                        print(f"{Fore.CYAN}Tip:{Style.RESET_ALL} Use {Fore.GREEN}agentoptim evalset get <id>{Style.RESET_ALL} to view details of a specific evaluation set")
-                        print(f"{Fore.CYAN}Tip:{Style.RESET_ALL} Use {Fore.GREEN}agentoptim run create <evalset-id> --interactive{Style.RESET_ALL} to run an evaluation")
+                        # Add helpful tips with a delightful touch
+                        # Display a random tip for delight
+                        tip = get_random_tip()
+                        console.print("")
+                        console.print(Panel(f"[yellow]{tip}[/yellow]", 
+                                           title="💡 Pro Tip", 
+                                           title_align="left",
+                                           border_style="yellow"))
+                        
+                        # Display action suggestions
+                        console.print("")
+                        console.print("[cyan]Next steps:[/cyan]")
+                        console.print(f"  [green]→[/green] [bold]View details:[/bold] [yellow]agentoptim evalset get <id>[/yellow]")
+                        console.print(f"  [green]→[/green] [bold]Run evaluation:[/bold] [yellow]agentoptim run create <evalset-id> --interactive[/yellow]")
                     except ImportError:
                         # Fall back to simple ANSI colors
                         print(f"{Fore.CYAN}===== Evaluation Sets ====={Style.RESET_ALL}")
@@ -868,10 +1125,10 @@ def run_cli():
                         if has_next:
                             pagination_text = f"{pagination_text} • Next →"
                             
-                        # Print the header
+                        # Print the header with a more delightful style
                         console = Console()
-                        header = f"[bold cyan]Evaluation Runs[/bold cyan]\n[dim]{pagination_text}[/dim]"
-                        console.print(Panel(header, expand=False))
+                        header = f"[bold cyan]✨ Evaluation Runs ✨[/bold cyan]\n[dim]📊 {pagination_text}[/dim]"
+                        console.print(Panel(header, expand=False, border_style="cyan", title="📋 AgentOptim", title_align="left"))
                         
                         # Create a table with minimal styling that shows full content
                         table = Table(show_header=True, header_style="bold cyan", box=SIMPLE)
@@ -880,29 +1137,54 @@ def run_cli():
                         if len(formatted_eval_runs) > 0:
                             sample_row = formatted_eval_runs[0]
                             for column in sample_row.keys():
-                                # Don't set specific widths to allow full content display
+                                # Enhanced column titles with emojis for delight
                                 if column.lower() == "id":
-                                    table.add_column(column.upper(), style="dim", no_wrap=True)
+                                    table.add_column("🆔 ID", style="dim", no_wrap=True)
                                 elif "evalset" in column.lower():
-                                    table.add_column(column.title(), style="green", overflow="fold")
+                                    table.add_column("📋 EvalSet", style="green", overflow="fold")
                                 elif "model" in column.lower():
-                                    table.add_column(column.title(), style="yellow")
-                                elif "questions" in column.lower() or "count" in column.lower():
-                                    table.add_column(column.title(), style="blue", justify="right")
+                                    table.add_column("🧠 Model", style="yellow")
+                                elif "questions" in column.lower():
+                                    table.add_column("❓ Questions", style="blue", justify="right")
+                                elif "count" in column.lower():
+                                    table.add_column("🔢 Count", style="blue", justify="right")
                                 elif "score" in column.lower():
-                                    table.add_column(column.title(), style="magenta", justify="right")
+                                    table.add_column("📊 Score", style="magenta", justify="right")
                                 elif "date" in column.lower() or "time" in column.lower():
-                                    table.add_column(column.title(), style="cyan")
+                                    table.add_column("📅 Date", style="cyan")
+                                elif "conv_len" in column.lower():
+                                    table.add_column("💬 Length", style="blue", justify="right")
                                 else:
                                     table.add_column(column.title())
                             
                             # Add rows
                             for row in formatted_eval_runs:
-                                # Format certain columns specially
+                                # Format certain columns specially with more delight
                                 formatted_row = []
                                 for col, val in row.items():
                                     if isinstance(val, float) and "score" in col.lower():
-                                        formatted_row.append(f"{val:.1f}%")
+                                        # Format scores with visual indicator based on value
+                                        score = val
+                                        if score >= 90:
+                                            formatted_row.append(f"🔝 {score:.1f}%")
+                                        elif score >= 75:
+                                            formatted_row.append(f"👍 {score:.1f}%")
+                                        elif score >= 50:
+                                            formatted_row.append(f"👌 {score:.1f}%")
+                                        else:
+                                            formatted_row.append(f"👎 {score:.1f}%")
+                                    elif "questions" in col.lower() and isinstance(val, int):
+                                        # Add visual indicator for question count
+                                        if val > 10:
+                                            formatted_row.append(f"🔍 {val}")
+                                        else:
+                                            formatted_row.append(f"{val}")
+                                    elif "conv_len" in col.lower() and isinstance(val, int):
+                                        # Add visual indicator for conversation length
+                                        if val > 5:
+                                            formatted_row.append(f"📜 {val}")
+                                        else:
+                                            formatted_row.append(f"{val}")
                                     else:
                                         formatted_row.append(str(val))
                                 
@@ -911,7 +1193,17 @@ def run_cli():
                             # Print the table
                             console.print(table)
                         else:
-                            console.print("No evaluation runs found.")
+                            # More friendly and helpful empty state message
+                            from rich.panel import Panel
+                            console.print(Panel(
+                                "[yellow]No evaluation runs found yet.[/yellow]\n\n" +
+                                "To create your first evaluation run, try:\n" +
+                                "[green]agentoptim run create <evalset-id> --interactive[/green]\n\n" +
+                                "Not sure which evalset to use?\n" +
+                                "[green]agentoptim evalset list[/green]",
+                                title="✨ Get Started", 
+                                border_style="cyan"
+                            ))
                     except ImportError:
                         # Fall back to simple ANSI colors
                         print(f"{Fore.CYAN}===== Evaluation Runs ====={Style.RESET_ALL}")
@@ -921,13 +1213,52 @@ def run_cli():
                         # Use handle_output with simple table formatting
                         handle_output(formatted_eval_runs, args.format, args.output)
                 
-                # Add pagination footer if not in quiet mode and not outputting to a file
+                # Add pagination footer and tips if not in quiet mode and not outputting to a file
                 if not quiet_mode and not args.output:
-                    print(f"\n{Fore.CYAN}Page {args.page} of {total_pages}{Style.RESET_ALL}")
-                    if has_prev:
-                        print(f"{Fore.BLUE}Use 'agentoptim run list --page {args.page-1}' for previous page{Style.RESET_ALL}")
-                    if has_next:
-                        print(f"{Fore.GREEN}Use 'agentoptim run list --page {args.page+1}' for next page{Style.RESET_ALL}")
+                    try:
+                        # Enhanced pagination footer with rich
+                        from rich.console import Console
+                        from rich.panel import Panel
+                        
+                        console = Console()
+                        
+                        # Navigation buttons
+                        nav_parts = []
+                        if has_prev:
+                            nav_parts.append(f"[blue]← Previous[/blue]: [yellow]agentoptim run list --page {args.page-1}[/yellow]")
+                        nav_parts.append(f"[cyan]Page {args.page} of {total_pages}[/cyan]")
+                        if has_next:
+                            nav_parts.append(f"[green]Next →[/green]: [yellow]agentoptim run list --page {args.page+1}[/yellow]")
+                        
+                        navigation = " | ".join(nav_parts)
+                        
+                        # Action shortcuts
+                        console.print("")
+                        console.print(Panel(navigation, expand=False, border_style="cyan"))
+                        
+                        # Random tip for user delight
+                        console.print("")
+                        tip = get_random_tip()
+                        console.print(Panel(f"[yellow]{tip}[/yellow]",
+                                           title="💡 Pro Tip",
+                                           title_align="left",
+                                           border_style="yellow"))
+                                            
+                        # Action suggestions
+                        console.print("")
+                        console.print("[cyan]Helpful commands:[/cyan]")
+                        console.print(f"  [green]→[/green] [bold]Get details:[/bold] [yellow]agentoptim run get <id>[/yellow]")
+                        console.print(f"  [green]→[/green] [bold]Export results:[/bold] [yellow]agentoptim run export <id> --format html[/yellow]")
+                    except ImportError:
+                        # Fallback to simple ANSI colors
+                        print(f"\n{Fore.CYAN}Page {args.page} of {total_pages}{Style.RESET_ALL}")
+                        if has_prev:
+                            print(f"{Fore.BLUE}Use 'agentoptim run list --page {args.page-1}' for previous page{Style.RESET_ALL}")
+                        if has_next:
+                            print(f"{Fore.GREEN}Use 'agentoptim run list --page {args.page+1}' for next page{Style.RESET_ALL}")
+                        
+                        # Random tip
+                        print(f"\n{Fore.YELLOW}💡 Pro Tip: {get_random_tip()}{Style.RESET_ALL}")
             else:
                 # For other formats, create a structured response with all details
                 response = {
@@ -1465,42 +1796,29 @@ def run_cli():
                             progress_callback=progress_callback
                         ))
                 else:
-                    # Simple spinner for when rich is not available
-                    print(f"{Fore.CYAN}Evaluating conversation...{Style.RESET_ALL}")
-                    animation = "|/-\\"
-                    idx = 0
-                    start_time = time.time()
+                    # Use our fancy spinner for a delightful experience
+                    spinner_type = random.choice(['sparkles', 'dots2', 'stars', 'pulse'])
+                    model_display = args.model or os.environ.get("AGENTOPTIM_JUDGE_MODEL", "default model")
                     
-                    def print_spinner():
-                        nonlocal idx
-                        elapsed = time.time() - start_time
-                        mins, secs = divmod(int(elapsed), 60)
-                        sys.stdout.write(f"\r{Fore.CYAN}Working {animation[idx % len(animation)]} {mins:02d}:{secs:02d} elapsed{Style.RESET_ALL}")
-                        sys.stdout.flush()
-                        idx += 1
-                    
-                    # Run evaluation with a simple spinning cursor
-                    spinner_timer = None
-                    try:
-                        import threading
-                        spinner_timer = threading.Timer(0.1, print_spinner)
-                        spinner_timer.start()
-                        
+                    with FancySpinner(
+                        spinner_type=spinner_type,
+                        text=f"Evaluating with {model_display}",
+                        color=Fore.CYAN
+                    ) as spinner:
                         # Call the actual evaluation
                         run_result = asyncio.run(run_evalset(
                             evalset_id=args.evalset_id,
                             conversation=conversation,
                             judge_model=args.model,
                             max_parallel=args.max_parallel,
-                            omit_reasoning=args.omit_reasoning
+                            omit_reasoning=args.omit_reasoning,
+                            progress_callback=lambda completed, total: spinner.update(
+                                f"Evaluating with {model_display} ({completed}/{total} questions)"
+                            )
                         ))
-                        
-                        # Clear the spinner line
-                        sys.stdout.write("\r" + " " * 50 + "\r")
-                        sys.stdout.flush()
-                    finally:
-                        if spinner_timer:
-                            spinner_timer.cancel()
+                    
+                    # Success message after spinner is done
+                    print(f"{Fore.GREEN}✓ Evaluation complete!{Style.RESET_ALL}")
                 
                 # Check for errors
                 if "error" in run_result:
@@ -3088,12 +3406,55 @@ def install_completion():
         return False
 
 
+def show_welcome():
+    """Display a welcoming message with logo and helpful tip on CLI startup."""
+    # Skip if not a terminal or in quiet mode
+    if not sys.stdout.isatty() or os.environ.get("AGENTOPTIM_QUIET", "0") == "1":
+        return
+        
+    # Only show welcome for main CLI commands, not for subcommands
+    if len(sys.argv) > 1 and sys.argv[1] in ['--help', '--version', '-h', '-v']:
+        print(LOGO)
+        return
+        
+    # For server command, show a more elaborate welcome
+    if len(sys.argv) > 1 and sys.argv[1] == 'server':
+        print(LOGO)
+        print(f"\n{get_time_based_greeting()} Starting up AgentOptim server...\n")
+        print(f"{Fore.CYAN}Tip of the day:{Style.RESET_ALL} {get_random_tip()}\n")
+        return
+        
+    # For commands with no arguments, show the logo
+    if len(sys.argv) <= 1:
+        print(LOGO)
+        return
+        
+    # Don't show welcome for other subcommands to keep them cleaner
+    # But we could add special welcome messages for specific interactive commands later
+    
+
+def format_elapsed_time(elapsed_time):
+    """Format elapsed time in a human-readable way."""
+    if elapsed_time < 0.1:
+        return f"{elapsed_time * 1000:.0f}ms"
+    elif elapsed_time < 1:
+        return f"{elapsed_time * 1000:.0f}ms"
+    elif elapsed_time < 60:
+        return f"{elapsed_time:.2f}s"
+    else:
+        mins, secs = divmod(int(elapsed_time), 60)
+        return f"{mins}m {secs}s"
+
+
 def main():
     """Main entry point for the module."""
     # Handle special "--install-completion" flag before parsing other args
     if len(sys.argv) == 2 and sys.argv[1] == "--install-completion":
         install_completion()
         return
+    
+    # Show welcome message
+    show_welcome()
     
     start_time = time.time()
     show_timer = os.environ.get("AGENTOPTIM_SHOW_TIMER", "0") == "1"
@@ -3105,35 +3466,35 @@ def main():
         # Show execution time if enabled
         if show_timer:
             elapsed_time = time.time() - start_time
-            if elapsed_time < 0.1:
-                time_str = f"{elapsed_time * 1000:.0f}ms"
-            elif elapsed_time < 1:
-                time_str = f"{elapsed_time * 1000:.0f}ms"
-            elif elapsed_time < 60:
-                time_str = f"{elapsed_time:.2f}s"
-            else:
-                mins, secs = divmod(int(elapsed_time), 60)
-                time_str = f"{mins}m {secs}s"
-                
-            # Print execution time in a subtle way
-            print(f"\n{Fore.CYAN}⏱ Command completed in {time_str}{Style.RESET_ALL}", file=sys.stderr)
+            time_str = format_elapsed_time(elapsed_time)
+            
+            # Print execution time with a sparkle for successful commands
+            print(f"\n{Fore.CYAN}✨ Command completed in {time_str}{Style.RESET_ALL}", file=sys.stderr)
+            
+            # Show a random tip occasionally (20% chance) after longer commands
+            if elapsed_time > 2 and random.random() < 0.2:
+                print(f"{Fore.YELLOW}Tip: {get_random_tip()}{Style.RESET_ALL}", file=sys.stderr)
             
     except Exception as e:
         # Show execution time even for errors if enabled
         if show_timer:
             elapsed_time = time.time() - start_time
-            if elapsed_time < 1:
-                time_str = f"{elapsed_time * 1000:.0f}ms"
-            elif elapsed_time < 60:
-                time_str = f"{elapsed_time:.2f}s"
-            else:
-                mins, secs = divmod(int(elapsed_time), 60)
-                time_str = f"{mins}m {secs}s"
+            time_str = format_elapsed_time(elapsed_time)
             
-            print(f"\n{Fore.CYAN}⏱ Command failed after {time_str}{Style.RESET_ALL}", file=sys.stderr)
+            print(f"\n{Fore.RED}⚠️ Command failed after {time_str}{Style.RESET_ALL}", file=sys.stderr)
         
         logger.error(f"Error in AgentOptim CLI: {str(e)}", exc_info=True)
         print(f"{Fore.RED}Error: {str(e)}{Style.RESET_ALL}", file=sys.stderr)
+        
+        # Provide helpful suggestions for common errors
+        error_str = str(e).lower()
+        if "connection" in error_str or "connect" in error_str:
+            print(f"{Fore.YELLOW}Tip: Make sure the AgentOptim server is running with 'agentoptim server'{Style.RESET_ALL}", file=sys.stderr)
+        elif "not found" in error_str and "id" in error_str:
+            print(f"{Fore.YELLOW}Tip: Use 'agentoptim evalset list' to see available evaluation sets{Style.RESET_ALL}", file=sys.stderr)
+        elif "permission" in error_str:
+            print(f"{Fore.YELLOW}Tip: Check file permissions or try running with elevated privileges{Style.RESET_ALL}", file=sys.stderr)
+        
         sys.exit(1)
 
 if __name__ == "__main__":
