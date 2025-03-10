@@ -63,8 +63,8 @@ class ConfidenceConfig(BaseModel):
     
     enabled: bool = Field(default=True, description="Enable or disable verbalized confidence elicitation")
     method: str = Field(
-        default="basic_float", 
-        description="Confidence elicitation method to use"
+        default="combo_exemplars", 
+        description="Confidence elicitation method to use (combo_exemplars, advanced_probability, basic_float, basic_percentage, basic_letter, basic_text, multi_guess)"
     )
     inject_instructions: bool = Field(
         default=True, 

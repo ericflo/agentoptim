@@ -4,6 +4,11 @@ Example demonstrating the use of AgentOptim's verbalized confidence score elicit
 This example shows how to use different confidence elicitation methods to
 get confidence scores from language models, and how to evaluate the quality
 of these scores.
+
+Based on research, the most effective methods are:
+1. combo_exemplars (default): Uses few-shot examples and uncertainty factors
+2. advanced_probability: Instructs model to consider specific uncertainty sources
+3. basic_float: Simpler approach that works well with more capable models
 """
 
 from agentoptim.confidence import (
@@ -82,10 +87,19 @@ def main():
     """
     print("AgentOptim Verbalized Confidence Score Elicitation Example\n")
     
+    # Display information about recommended methods
+    print("RECOMMENDED METHODS BASED ON RESEARCH:")
+    print("1. combo_exemplars (Default) - Uses few-shot examples with probabilities")
+    print("2. advanced_probability - Explicitly considers uncertainty sources")
+    print("3. basic_float - Simple approach for capable models")
+    
     # Try each confidence elicitation method
     for method_name, method in CONFIDENCE_METHODS.items():
         print(f"\n{'-'*50}")
-        print(f"Demonstrating: {method_name}")
+        is_recommended = ""
+        if method_name in ["combo_exemplars", "advanced_probability", "basic_float"]:
+            is_recommended = " [RECOMMENDED]"
+        print(f"Demonstrating: {method_name}{is_recommended}")
         print(f"{'-'*50}")
         
         results = []

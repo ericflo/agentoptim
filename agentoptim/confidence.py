@@ -4,6 +4,22 @@ Confidence score elicitation and evaluation module for AgentOptim.
 This module implements various methods for eliciting confidence scores from
 language models, as well as utilities for extracting, normalizing, and
 evaluating these scores.
+
+Based on research from the LLM Verbalized Uncertainty Quantification project,
+the most effective confidence elicitation methods are:
+
+1. combo_exemplars (default): Uses few-shot examples across the confidence spectrum 
+   and explicitly asks the model to consider uncertainty factors. Research shows 
+   this approach produces the best calibration across different models.
+
+2. advanced_probability: Instructs the model to consider specific uncertainty 
+   sources (prompt ambiguity, task difficulty, knowledge availability) which 
+   improves confidence calibration.
+
+3. basic_float: A simpler approach that works well with more capable models.
+
+For multi-answer scenarios, the multi_guess method can be used to generate
+multiple candidate answers with their associated confidence scores.
 """
 
 import re
