@@ -252,27 +252,22 @@ def handle_output(data: Any, format_type: str, output_file: Optional[str] = None
             from rich.table import Table
             from rich.style import Style
             
-            # Create a responsive table that fits terminal width
-            console = Console()
-            table = Table(show_header=True, header_style="bold cyan", width=min(160, console.width))
+            # Create a table with minimal styling that shows full content
+            from rich.box import SIMPLE
+            console = Console(width=None)  # No width limit to prevent truncation
+            table = Table(show_header=True, header_style="bold cyan", box=SIMPLE)
             
             # Add columns
             if len(data) > 0:
                 sample_row = data[0]
                 for column in sample_row.keys():
-                    # Make ID column wide enough to fully display UUIDs but adaptive to terminal size
+                    # Don't set specific widths to allow full content display
                     if column.lower() == "id":
-                        # Calculate ~30% of terminal width, but at least 36 chars for UUIDs
-                        id_width = max(36, min(40, int(console.width * 0.3)))
-                        table.add_column(column.upper(), style="dim", no_wrap=True, width=id_width)
+                        table.add_column(column.upper(), style="dim", no_wrap=True)
                     elif "description" in column.lower():
-                        # Description gets ~40% of terminal width 
-                        desc_width = max(30, int(console.width * 0.4))
-                        table.add_column(column.title(), style="green", width=desc_width)
+                        table.add_column(column.title(), style="green")
                     elif "name" in column.lower():
-                        # Name gets ~25% of terminal width
-                        name_width = max(25, int(console.width * 0.25))
-                        table.add_column(column.title(), style="yellow", width=name_width)
+                        table.add_column(column.title(), style="yellow")
                     elif "questions" in column.lower() or "count" in column.lower():
                         table.add_column(column.title(), style="blue", justify="right")
                     elif "percentage" in column.lower() or "score" in column.lower():
@@ -299,10 +294,10 @@ def handle_output(data: Any, format_type: str, output_file: Optional[str] = None
                     
                     table.add_row(*formatted_row)
                 
-                # Render the table to a string
-                console = Console(record=True, width=MAX_WIDTH)
-                console.print(table)
-                formatted_data = console.export_text()
+                # Render the table to a string without width constraints
+                export_console = Console(record=True, width=None)  # No width limit to prevent truncation
+                export_console.print(table)
+                formatted_data = export_console.export_text()
             else:
                 formatted_data = "No data available."
         except ImportError:
