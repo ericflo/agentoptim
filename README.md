@@ -131,6 +131,13 @@ Version 2.1.1 adds delightful CLI enhancements that make AgentOptim even more us
 - ⚙️ **Scriptability Improvements** - Quiet mode and machine-readable outputs for automation
 - 🔄 **Latest Run References** - Use 'latest' and 'latest-N' to easily reference recent runs
 - 👋 **Time-based Greetings** - Friendly welcome messages based on time of day
+- 🎭 **Theme Support** - Server startup with beautiful thematic animations (Ocean, Sunset, Forest, Candy)
+- 🧩 **Beautiful Boxes** - Elegant bordered boxes for displaying information and tips
+- 👨‍🏫 **Context-Aware Welcome** - Command-specific welcome messages to guide you through the experience
+- 🧮 **Smart Progress Tracking** - Natural-looking progress animations that feel realistic
+- 🔧 **Helpful Troubleshooting** - Intelligent error suggestions based on command context
+- 🎯 **Interactive Mode Guidance** - Special welcome messages when using interactive features
+- 📑 **Dashboard-like Displays** - Beautiful information displays for complex data
 
 Version 2.1.0 completed our architectural simplification by removing the legacy compatibility layer and delivering a clean, modern API:
 

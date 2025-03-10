@@ -10,3 +10,7 @@ flake8>=6.0.0
 pdoc>=14.0.0
 colorama>=0.4.6
 pyyaml>=6.0
+# Optional but enhances CLI experience
+rich>=13.0.0
+weasyprint>=60.0
+typer>=0.9.0

@@ -21,6 +21,7 @@ import colorama
 from colorama import Fore, Style
 import itertools
 import datetime
+import shutil
 
 # Configure logging first
 from agentoptim.utils import DATA_DIR, ensure_data_directories
@@ -74,10 +75,24 @@ CLI_TIPS = [
     "💡 Try different judge models with --model <model_name>",
     "💡 Stuck? Add --help to any command for guidance",
     "💡 Set up a daily evaluation workflow with cron and agentoptim",
-    "💡 Use /dev/cache to view caching statistics",
+    "💡 Use 'agentoptim dev cache' to view caching statistics",
     "💡 Need scripting? Use --format json --quiet for machine-readable output",
     "💡 Combine runs with csvstack: 'agentoptim r export latest --format csv'",
     "💡 Want to run evaluations faster? Try the --concurrency flag",
+    "💡 Use 'agentoptim run get latest -o report.md' to save results to a file",
+    "💡 Remember eval run IDs with descriptive aliases in your shell",
+    "💡 Try 'agentoptim server --provider openai' to switch to OpenAI models",
+    "💡 Use emojis in your EvalSet names to make them easier to identify at a glance",
+    "💡 Chain evaluations with shell scripts for automated testing",
+    "💡 Set 'AGENTOPTIM_DEBUG=1' for detailed logging when troubleshooting",
+    "💡 Create specialized EvalSets for different aspects of conversation quality",
+    "💡 Try different score visualizations with the --charts flag on exports",
+    "💡 Stay organized by tagging EvalSets with categories in their names",
+    "💡 Use keyboard shortcuts when in interactive conversation mode",
+    "💡 Benchmark different LLMs by changing the --model parameter",
+    "💡 Share evaluation results by exporting to HTML and hosting online",
+    "💡 Use the -q flag for quieter output in automation scripts",
+    "💡 Evaluate conversations from logs by converting them to JSON format",
 ]
 
 # Fancy spinners for loading animations
@@ -89,6 +104,15 @@ SPINNERS = {
     'stars': ['✶', '✸', '✹', '✺', '✹', '✷'],
     'sparkles': ['✨ ', ' ✨', '  ✨', '   ✨', '    ✨', '   ✨', '  ✨', ' ✨'],
     'magic': ['🔮 ', ' 🔮', '  🔮', '   🔮', '    🔮', '   🔮', '  🔮', ' 🔮'],
+    'bounce': ['⠁', '⠂', '⠄', '⠂'],
+    'hearts': ['💖 ', ' 💖', '  💖', '   💖', '    💖', '   💖', '  💖', ' 💖'],
+    'moon': ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'],
+    'clock': ['🕛', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚'],
+    'earth': ['🌍', '🌎', '🌏'],
+    'gradient': ['▓▒░', '▒░▓', '░▓▒', '▓▒░'],
+    'thinking': ['🤔 ', ' 🤔', '  🤔', '   🤔', '    🤔', '   🤔', '  🤔', ' 🤔'],
+    'robot': ['🤖 ', ' 🤖', '  🤖', '   🤖', '    🤖', '   🤖', '  🤖', ' 🤖'],
+    'ideas': ['💡 ', ' 💡', '  💡', '   💡', '    💡', '   💡', '  💡', ' 💡'],
 }
 
 def get_random_tip():
@@ -100,17 +124,140 @@ def get_time_based_greeting():
     hour = datetime.datetime.now().hour
     
     if 5 <= hour < 12:
-        return f"{Fore.YELLOW}Good morning!{Style.RESET_ALL}"
+        return f"{Fore.YELLOW}Good morning!{Style.RESET_ALL} ☀️"
     elif 12 <= hour < 18:
-        return f"{Fore.GREEN}Good afternoon!{Style.RESET_ALL}"
+        return f"{Fore.GREEN}Good afternoon!{Style.RESET_ALL} 🌤️"
     else:
-        return f"{Fore.BLUE}Good evening!{Style.RESET_ALL}"
+        return f"{Fore.BLUE}Good evening!{Style.RESET_ALL} 🌙"
+        
+def get_score_emoji(score):
+    """Return an appropriate emoji based on a score percentage."""
+    if score >= 90:
+        return "🔝"  # Top/excellent
+    elif score >= 75:
+        return "👍"  # Good
+    elif score >= 50:
+        return "👌"  # OK
+    else:
+        return "👎"  # Poor
+        
+def format_box(title, content, style="single", width=None, title_align="center", border_color=Fore.CYAN):
+    """Draw a fancy box around content with a title.
+    
+    Args:
+        title: Box title
+        content: Content to place in box
+        style: Box style ('single', 'double', 'rounded', etc.)
+        width: Box width (auto-detect if None)
+        title_align: Title alignment ('left', 'center', 'right')
+        border_color: Color for the box borders
+        
+    Returns:
+        String with the formatted box
+    """
+    # Detect terminal width if not specified
+    if width is None:
+        width = min(shutil.get_terminal_size((80, 20)).columns - 4, 100)
+    
+    # Box styles
+    styles = {
+        "single": {"tl": "┌", "tr": "┐", "bl": "└", "br": "┘", "h": "─", "v": "│"},
+        "double": {"tl": "╔", "tr": "╗", "bl": "╚", "br": "╝", "h": "═", "v": "║"},
+        "rounded": {"tl": "╭", "tr": "╮", "bl": "╰", "br": "╯", "h": "─", "v": "│"},
+        "bold": {"tl": "┏", "tr": "┓", "bl": "┗", "br": "┛", "h": "━", "v": "┃"},
+        "thick": {"tl": "▛", "tr": "▜", "bl": "▙", "br": "▟", "h": "▀", "v": "▌"}
+    }
+    
+    # Default to single if style not found
+    box = styles.get(style.lower(), styles["single"])
+    
+    # Wrap content to fit within box
+    content_width = width - 4  # Account for borders and padding
+    wrapped_lines = []
+    for line in content.split('\n'):
+        # Handle long lines by wrapping
+        if len(line) > content_width:
+            import textwrap
+            wrapped = textwrap.wrap(line, width=content_width)
+            wrapped_lines.extend(wrapped)
+        else:
+            wrapped_lines.append(line)
+    
+    # Format title based on alignment
+    if title:
+        if title_align == "left":
+            title_line = f" {title} "
+        elif title_align == "right":
+            title_line = f" {title} ".rjust(width - 2)
+        else:  # center
+            title_line = f" {title} ".center(width - 2)
+    else:
+        title_line = box["h"] * (width - 2)
+    
+    # Create the box
+    result = []
+    result.append(f"{border_color}{box['tl']}{title_line}{box['tr']}{Style.RESET_ALL}")
+    
+    # Add content lines with padding
+    for line in wrapped_lines:
+        padded_line = line.ljust(content_width)
+        result.append(f"{border_color}{box['v']}{Style.RESET_ALL} {padded_line} {border_color}{box['v']}{Style.RESET_ALL}")
+    
+    # Close the box
+    result.append(f"{border_color}{box['bl']}{box['h'] * (width - 2)}{box['br']}{Style.RESET_ALL}")
+    
+    return "\n".join(result)
+
+def format_progress_bar(value, total, width=40, color=Fore.GREEN, show_percent=True):
+    """Create a fancy progress bar.
+    
+    Args:
+        value: Current value
+        total: Total value
+        width: Bar width in characters
+        color: Bar color
+        show_percent: Whether to show percentage
+        
+    Returns:
+        Formatted progress bar string
+    """
+    # Ensure value is between 0 and total
+    percent = min(100, max(0, (value / max(1, total)) * 100))
+    
+    # Calculate how many characters to fill
+    fill_width = int((percent / 100) * width)
+    
+    # Create the bar
+    filled = "█" * fill_width
+    empty = "░" * (width - fill_width)
+    bar = f"{color}{filled}{Style.RESET_ALL}{empty}"
+    
+    # Add percentage if requested
+    if show_percent:
+        return f"{bar} {percent:.1f}%"
+    else:
+        return bar
 
 
 class FancySpinner:
-    """A fancy spinner for CLI animations."""
-    def __init__(self, spinner_type='sparkles', text='Working', color=Fore.CYAN):
-        """Initialize spinner with style, text and color."""
+    """A fancy spinner for CLI animations with themes, progress tracking, and more."""
+    def __init__(self, spinner_type=None, text='Working', color=Fore.CYAN, max_width=None, 
+                 show_time=True, show_percent=False, total=None):
+        """Initialize spinner with style, text and color.
+        
+        Args:
+            spinner_type: Style of spinner animation (if None, chooses randomly)
+            text: Text to display next to spinner
+            color: Color of the spinner
+            max_width: Maximum width of display line
+            show_time: Whether to show elapsed time
+            show_percent: Whether to show percentage (requires total)
+            total: Total items for percentage calculation
+        """
+        # Choose a random spinner if none specified
+        if spinner_type is None:
+            spinner_type = random.choice(list(SPINNERS.keys()))
+            
         self.spinner = itertools.cycle(SPINNERS.get(spinner_type, SPINNERS['dots']))
         self.text = text
         self.color = color
@@ -118,6 +265,34 @@ class FancySpinner:
         self.spinner_thread = None
         self.start_time = None
         self.stop_event = threading.Event()
+        self.max_width = max_width or (shutil.get_terminal_size((80, 20)).columns - 5)
+        self.show_time = show_time
+        self.show_percent = show_percent
+        self.total = total
+        self.current = 0
+        self.success_color = Fore.GREEN
+        self.error_color = Fore.RED
+        
+        # Determine if we're in a good terminal for fancy effects
+        self.fancy_terminal = sys.stdout.isatty() and os.environ.get("TERM") not in ["dumb", "unknown"]
+        
+        # Add some theme colors for fun
+        self.themes = {
+            'ocean': {'spinner': Fore.BLUE, 'text': Fore.CYAN, 'time': Fore.GREEN},
+            'sunset': {'spinner': Fore.RED, 'text': Fore.YELLOW, 'time': Fore.MAGENTA},
+            'forest': {'spinner': Fore.GREEN, 'text': Fore.CYAN, 'time': Fore.YELLOW},
+            'candy': {'spinner': Fore.MAGENTA, 'text': Fore.CYAN, 'time': Fore.RED},
+            'mono': {'spinner': Fore.WHITE, 'text': Fore.WHITE, 'time': Fore.WHITE},
+        }
+        
+        # Default theme
+        self.theme = {'spinner': color, 'text': color, 'time': Fore.WHITE}
+
+    def set_theme(self, theme_name):
+        """Set a predefined color theme."""
+        if theme_name in self.themes:
+            self.theme = self.themes[theme_name]
+        return self
 
     def _spin(self):
         """Internal spinner loop function."""
@@ -126,7 +301,34 @@ class FancySpinner:
             mins, secs = divmod(int(elapsed), 60)
             timestr = f"{mins:02d}:{secs:02d}" if mins > 0 else f"{secs}s"
             
-            sys.stdout.write(f"\r{self.color}{next(self.spinner)} {self.text} ({timestr}){Style.RESET_ALL}")
+            # Calculate percentage if needed
+            percent_str = ""
+            if self.show_percent and self.total:
+                percent = min(100, max(0, (self.current / self.total) * 100))
+                percent_str = f" {percent:.1f}%"
+            
+            # Build the spinner text with optional elements
+            spinner_char = next(self.spinner)
+            
+            # Truncate text if needed to fit within terminal
+            display_text = self.text
+            max_text_len = self.max_width - len(spinner_char) - len(timestr) - len(percent_str) - 5
+            if len(display_text) > max_text_len:
+                display_text = display_text[:max_text_len-3] + "..."
+            
+            # Compose the full spinner line
+            line = f"{self.theme['spinner']}{spinner_char}{Style.RESET_ALL} {self.theme['text']}{display_text}{Style.RESET_ALL}"
+            
+            # Add percentage if enabled
+            if self.show_percent and self.total:
+                line += f"{Fore.YELLOW}{percent_str}{Style.RESET_ALL}"
+                
+            # Add time if enabled
+            if self.show_time:
+                line += f" {self.theme['time']}({timestr}){Style.RESET_ALL}"
+                
+            # Write the line and sleep
+            sys.stdout.write(f"\r{line}")
             sys.stdout.flush()
             time.sleep(0.1)
 
@@ -145,8 +347,13 @@ class FancySpinner:
         self.spinner_thread.start()
         return self
 
-    def stop(self, message=None):
-        """Stop the spinner and optionally display a message."""
+    def stop(self, message=None, success=True):
+        """Stop the spinner and optionally display a message.
+        
+        Args:
+            message: Message to display after stopping
+            success: Whether operation was successful (affects color)
+        """
         if not self.running:
             return
             
@@ -155,17 +362,25 @@ class FancySpinner:
             self.spinner_thread.join()
             
         # Clear the spinner line
-        sys.stdout.write("\r" + " " * 100 + "\r")
+        sys.stdout.write("\r" + " " * self.max_width + "\r")
         
         # Show final message if provided
         if message:
             elapsed = time.time() - self.start_time
             mins, secs = divmod(int(elapsed), 60)
             timestr = f"{mins:02d}:{secs:02d}" if mins > 0 else f"{secs}s"
-            sys.stdout.write(f"{message} ({timestr})\n")
+            
+            # Choose color based on success
+            msg_color = self.success_color if success else self.error_color
+            
+            # Add a success/error indicator
+            indicator = "✓" if success else "✗"
+            
+            sys.stdout.write(f"{msg_color}{indicator} {message} ({timestr}){Style.RESET_ALL}\n")
             
         sys.stdout.flush()
         self.running = False
+        return self
         
     def __enter__(self):
         """Support for context manager."""
@@ -174,11 +389,34 @@ class FancySpinner:
         
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Support for context manager exit."""
-        self.stop()
+        # Determine if there was an error
+        success = exc_type is None
+        self.stop(success=success)
         
-    def update(self, text):
-        """Update the spinner text."""
-        self.text = text
+    def update(self, text=None, current=None, color=None):
+        """Update spinner state.
+        
+        Args:
+            text: New text to display
+            current: Current progress (for percentage)
+            color: New color for spinner
+        """
+        if text is not None:
+            self.text = text
+        if current is not None:
+            self.current = current
+        if color is not None:
+            self.color = color
+            self.theme['spinner'] = color
+            self.theme['text'] = color
+        return self
+        
+    def set_progress(self, current, total=None):
+        """Update progress for percentage calculation."""
+        self.current = current
+        if total is not None:
+            self.total = total
+        return self
 
 
 def setup_parser():
@@ -724,74 +962,213 @@ def run_cli():
             port = os.environ.get("AGENTOPTIM_PORT", "40000")
             provider = args.provider
             
+            # Choose a random theme to make it more fun each time
+            themes = ['ocean', 'sunset', 'forest', 'candy']
+            theme = random.choice(themes)
+            
+            # Get date for display
+            current_date = datetime.datetime.now().strftime("%B %d, %Y")
+            
             try:
                 from rich.console import Console
                 from rich.panel import Panel
                 from rich.markdown import Markdown
-                from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+                from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn, TaskProgressColumn
+                from rich.table import Table
+                from rich.live import Live
+                from rich.align import Align
+                from rich.layout import Layout
+                import math
                 
                 console = Console()
                 
-                # Display server info
-                server_info = [
-                    f"[cyan]Judge Model:[/cyan] [yellow]{judge_model}[/yellow]",
-                    f"[cyan]Provider:[/cyan] [yellow]{provider}[/yellow]",
-                    f"[cyan]Port:[/cyan] [yellow]{port}[/yellow]",
+                # Create a fancy layout for server info
+                layout = Layout()
+                layout.split(
+                    Layout(name="header"),
+                    Layout(name="body")
+                )
+                
+                # Fancy header
+                header_text = f"🚀 AgentOptim Server v{VERSION} 🚀"
+                layout["header"].update(
+                    Panel(
+                        Align.center(header_text),
+                        border_style="cyan",
+                        style="bold"
+                    )
+                )
+                
+                # Server info in a pretty table
+                table = Table(show_header=False, box=None)
+                table.add_column("Property", style="cyan")
+                table.add_column("Value", style="yellow")
+                
+                table.add_row("Date", current_date)
+                table.add_row("Judge Model", judge_model)
+                table.add_row("Provider", provider)
+                table.add_row("Port", str(port))
+                table.add_row("Theme", theme.title())
+                
+                # Create a panel for the table
+                layout["body"].update(
+                    Panel(
+                        table,
+                        title="Server Configuration",
+                        border_style="blue",
+                        padding=(1, 2)
+                    )
+                )
+                
+                # Print the fancy layout
+                console.print(layout)
+                
+                # Show a nice animated startup sequence with themed colors
+                color_map = {
+                    'ocean': 'blue',
+                    'sunset': 'red',
+                    'forest': 'green',
+                    'candy': 'magenta'
+                }
+                theme_color = color_map.get(theme, 'cyan')
+                
+                # Define initialization steps with emoji indicators
+                init_steps = [
+                    ("🔧 Initializing server components", 20),
+                    ("🔌 Establishing network connections", 15),
+                    ("🧠 Loading judge model", 30),
+                    ("🔍 Configuring evaluation parameters", 15),
+                    ("🛠️ Preparing MCP tools", 20)
                 ]
                 
-                console.print(Panel("\n".join(server_info), 
-                                    title="🚀 Server Configuration", 
-                                    border_style="cyan",
-                                    title_align="left"))
-                
-                # Show a nice animated startup sequence
                 with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[bold blue]{task.description}"),
-                    BarColumn(complete_style="green"),
+                    SpinnerColumn(style=theme_color),
+                    TextColumn("[bold " + theme_color + "]{task.description}"),
+                    BarColumn(complete_style=theme_color),
+                    TaskProgressColumn(),
                     TimeElapsedColumn(),
+                    console=console,
+                    expand=True
                 ) as progress:
-                    task1 = progress.add_task("[cyan]Initializing server...", total=100)
-                    task2 = progress.add_task("[cyan]Loading judge model...", total=100)
-                    task3 = progress.add_task("[cyan]Preparing MCP tools...", total=100)
+                    # Add all tasks
+                    tasks = []
+                    for desc, weight in init_steps:
+                        task_id = progress.add_task(desc, total=100, completed=0)
+                        tasks.append((task_id, weight))
                     
-                    # Create an animated effect while loading
-                    for i in range(101):
-                        if i < 70:
-                            progress.update(task1, completed=i)
-                        elif i < 90:
-                            progress.update(task1, completed=100)
-                            progress.update(task2, completed=(i-70)*5)
-                        else:
-                            progress.update(task1, completed=100)
-                            progress.update(task2, completed=100)
-                            progress.update(task3, completed=(i-90)*10)
-                        time.sleep(0.01)
+                    # Create an animated effect while loading with realistic pauses
+                    steps = 200
+                    for i in range(steps):
+                        # Update tasks based on their weights and add some randomness
+                        for task_id, weight in tasks:
+                            # Calculate progress based on weight and add some randomness
+                            task_progress = min(100, progress.tasks[task_id].completed + (weight / steps) * 100 * (0.8 + 0.4 * random.random()))
+                            progress.update(task_id, completed=task_progress)
+                            
+                        # Delay between updates (use a non-linear curve to make it look more natural)
+                        time.sleep(0.01 + 0.02 * abs(math.sin(i / 10)))
+                    
+                    # Ensure all tasks complete
+                    for task_id, _ in tasks:
+                        progress.update(task_id, completed=100)
                 
-                console.print(f"[green]✅ Server initialized and ready to evaluate![/green]")
-                console.print(f"[cyan]Listening on port {port} with {judge_model} as judge[/cyan]")
-                console.print("")
+                # Show a success message
+                success_panel = Panel(
+                    f"[bold green]Server initialized and ready to evaluate![/bold green]\n\n" +
+                    f"Listening on port [cyan]{port}[/cyan] with [yellow]{judge_model}[/yellow] as judge",
+                    title="✅ AgentOptim Ready",
+                    border_style="green",
+                    padding=(1, 2)
+                )
+                console.print(success_panel)
+                
+                # Show a random tip
+                tip = get_random_tip()
+                console.print(Panel(
+                    f"[yellow]{tip}[/yellow]",
+                    title="💡 Pro Tip",
+                    title_align="left",
+                    border_style="yellow"
+                ))
                 
             except ImportError:
-                # Fallback to simple spinner
-                with FancySpinner(
-                    spinner_type='sparkles',
-                    text=f"Starting AgentOptim server with {judge_model}",
-                    color=Fore.CYAN
-                ) as spinner:
-                    # Simulate initialization steps
-                    time.sleep(0.5)
-                    spinner.update(f"Initializing server on port {port}")
-                    time.sleep(0.5)
-                    spinner.update(f"Loading judge model {judge_model}")
-                    time.sleep(0.5)
-                    spinner.update(f"Preparing MCP tools")
-                    time.sleep(0.5)
+                # Fallback to our enhanced FancySpinner for systems without rich
+                # Choose spinner based on theme
+                spinner_types = {
+                    'ocean': 'dots2',
+                    'sunset': 'hearts',
+                    'forest': 'stars',
+                    'candy': 'sparkles'
+                }
+                spinner_type = spinner_types.get(theme, None)  # Will use random if None
+                
+                # Theme colors for FancySpinner
+                theme_colors = {
+                    'ocean': Fore.BLUE,
+                    'sunset': Fore.RED,
+                    'forest': Fore.GREEN,
+                    'candy': Fore.MAGENTA
+                }
+                theme_color = theme_colors.get(theme, Fore.CYAN)
+                
+                # Print server info
+                print("\n" + format_box(
+                    f"🚀 AgentOptim Server v{VERSION}",
+                    f"Date: {current_date}\nJudge Model: {judge_model}\nProvider: {provider}\nPort: {port}\nTheme: {theme.title()}",
+                    style="rounded",
+                    border_color=theme_color
+                ))
+                
+                # Create a fancy spinner with theme
+                spinner = FancySpinner(
+                    spinner_type=spinner_type,
+                    text=f"Starting AgentOptim server",
+                    color=theme_color,
+                    show_percent=True,
+                    total=100
+                )
+                spinner.set_theme(theme)
+                spinner.start()
+                
+                # Simulate initialization steps
+                steps = [
+                    ("Initializing server components", 20),
+                    ("Establishing network connections", 15),
+                    ("Loading judge model", 30),
+                    ("Configuring evaluation parameters", 15),
+                    ("Preparing MCP tools", 20)
+                ]
+                
+                progress = 0
+                for desc, weight in steps:
+                    spinner.update(text=desc)
+                    
+                    # Simulate work with mini-steps for smoother animation
+                    mini_steps = 10
+                    for i in range(mini_steps):
+                        # Update progress smoothly
+                        new_progress = progress + (weight * (i+1) / mini_steps)
+                        spinner.set_progress(int(new_progress))
+                        time.sleep(0.1)
+                    
+                    progress += weight
+                
+                # Finish progress animation
+                spinner.set_progress(100)
+                spinner.stop(message=f"Server initialized and ready to evaluate")
                 
                 # Print success message
-                print(f"{Fore.GREEN}✅ Server initialized and ready to evaluate!{Style.RESET_ALL}")
-                print(f"{Fore.CYAN}Listening on port {port} with {judge_model} as judge{Style.RESET_ALL}")
-                print("")
+                print(f"{Fore.GREEN}✅ Server ready on port {port} with {judge_model} as judge{Style.RESET_ALL}")
+                
+                # Show a random tip
+                tip = get_random_tip()
+                print("\n" + format_box(
+                    "💡 Pro Tip",
+                    tip,
+                    style="single",
+                    border_color=Fore.YELLOW,
+                    title_align="left"
+                ))
             
             # Actually start the server
             from agentoptim.server import main as server_main
@@ -3411,26 +3788,108 @@ def show_welcome():
     # Skip if not a terminal or in quiet mode
     if not sys.stdout.isatty() or os.environ.get("AGENTOPTIM_QUIET", "0") == "1":
         return
-        
+    
+    # Get terminal dimensions
+    term_width = shutil.get_terminal_size((80, 20)).columns
+    
     # Only show welcome for main CLI commands, not for subcommands
     if len(sys.argv) > 1 and sys.argv[1] in ['--help', '--version', '-h', '-v']:
         print(LOGO)
         return
-        
-    # For server command, show a more elaborate welcome
+    
+    # For interactive conversation creation mode, show a special welcome
+    if len(sys.argv) > 3 and sys.argv[1] in ['run', 'r'] and sys.argv[2] == 'create' and '--interactive' in sys.argv:
+        print(LOGO)
+        print(format_box(
+            "✨ Interactive Mode", 
+            "You're creating a conversation for evaluation! I'll guide you through the process step by step.",
+            style="rounded", 
+            border_color=Fore.MAGENTA
+        ))
+        return
+    
+    # For server command, show a more elaborate welcome with animation
     if len(sys.argv) > 1 and sys.argv[1] == 'server':
         print(LOGO)
-        print(f"\n{get_time_based_greeting()} Starting up AgentOptim server...\n")
-        print(f"{Fore.CYAN}Tip of the day:{Style.RESET_ALL} {get_random_tip()}\n")
-        return
         
-    # For commands with no arguments, show the logo
+        # Get current date and version info for display
+        current_date = datetime.datetime.now().strftime("%B %d, %Y")
+        
+        # Create a welcoming header
+        greeting = get_time_based_greeting()
+        header = f"\n{greeting} Welcome to AgentOptim v{VERSION}"
+        
+        # Choose a random theme for the welcome message
+        themes = ['ocean', 'sunset', 'forest', 'candy']
+        theme_colors = {
+            'ocean': Fore.BLUE,
+            'sunset': Fore.RED,
+            'forest': Fore.GREEN,
+            'candy': Fore.MAGENTA
+        }
+        theme = random.choice(themes)
+        theme_color = theme_colors.get(theme, Fore.CYAN)
+        
+        # Show a delightful welcome message
+        print(format_box(
+            f"AgentOptim Server {VERSION}", 
+            f"Date: {current_date}\nTheme: {theme.title()}\n\n{greeting}\n\nStarting up your evaluation server with delight!",
+            style="rounded", 
+            border_color=theme_color
+        ))
+        
+        # Show a random tip in a box
+        tip = get_random_tip()
+        print("\n" + format_box(
+            "💡 Pro Tip", 
+            tip,
+            style="single", 
+            border_color=Fore.YELLOW,
+            title_align="left"
+        ))
+        
+        # Add a fun note
+        print(f"\n{Fore.GREEN}Ready to evaluate conversations with precision and joy!{Style.RESET_ALL}")
+        return
+    
+    # For "get" command with "latest" ID, show a fun message
+    if len(sys.argv) > 3 and sys.argv[1] in ['run', 'r'] and sys.argv[2] == 'get' and sys.argv[3] == 'latest':
+        print(f"{Fore.CYAN}🔍 Fetching your latest evaluation result...{Style.RESET_ALL}")
+        return
+    
+    # For list commands, show a mini header
+    if len(sys.argv) > 2 and (
+        (sys.argv[1] in ['evalset', 'es'] and sys.argv[2] == 'list') or
+        (sys.argv[1] in ['run', 'r'] and sys.argv[2] == 'list')
+    ):
+        resource = "EvalSets" if sys.argv[1] in ['evalset', 'es'] else "Evaluation Runs"
+        print(f"{Fore.CYAN}📋 Listing your {resource}...{Style.RESET_ALL}")
+        return
+    
+    # For compare command, show a fun header
+    if len(sys.argv) > 2 and sys.argv[1] in ['run', 'r'] and sys.argv[2] == 'compare':
+        print(f"{Fore.MAGENTA}⚖️  Comparing evaluation runs...{Style.RESET_ALL}")
+        return
+    
+    # For export command, show a different fun header
+    if len(sys.argv) > 2 and sys.argv[1] in ['run', 'r'] and sys.argv[2] == 'export':
+        print(f"{Fore.GREEN}📤 Exporting your evaluation results...{Style.RESET_ALL}")
+        return
+    
+    # For commands with no arguments, show the logo and a menu-like interface
     if len(sys.argv) <= 1:
         print(LOGO)
+        print("\n" + format_box(
+            "🚀 Quick Commands", 
+            f"{Fore.YELLOW}server{Style.RESET_ALL}        Start the MCP server\n" + 
+            f"{Fore.YELLOW}evalset list{Style.RESET_ALL}  List all evaluation sets\n" + 
+            f"{Fore.YELLOW}run list{Style.RESET_ALL}      List all evaluation runs\n" + 
+            f"{Fore.YELLOW}run get latest{Style.RESET_ALL} Get most recent evaluation\n" +
+            f"{Fore.YELLOW}--help{Style.RESET_ALL}        Show full command help",
+            style="rounded", 
+            border_color=Fore.CYAN
+        ))
         return
-        
-    # Don't show welcome for other subcommands to keep them cleaner
-    # But we could add special welcome messages for specific interactive commands later
     
 
 def format_elapsed_time(elapsed_time):
@@ -3446,8 +3905,81 @@ def format_elapsed_time(elapsed_time):
         return f"{mins}m {secs}s"
 
 
+def display_helpful_error(error, command=None):
+    """Display a helpful error message with context-specific suggestions.
+    
+    Args:
+        error: The error that occurred
+        command: The command that was running (if known)
+    """
+    error_str = str(error).lower()
+    
+    # Create a list to store suggestions
+    suggestions = []
+    
+    # Check for common error patterns and provide helpful suggestions
+    if "connection" in error_str or "connect" in error_str or "refused" in error_str:
+        suggestions.append("Make sure the AgentOptim server is running with 'agentoptim server'")
+        suggestions.append("Check if the server port is available (default: 40000)")
+        
+    elif "not found" in error_str and "id" in error_str:
+        suggestions.append("Use 'agentoptim evalset list' to see available evaluation sets")
+        suggestions.append("Try using 'latest' to access the most recent evaluation")
+        
+    elif "permission" in error_str or "access" in error_str:
+        suggestions.append("Check file permissions or try running with elevated privileges")
+        
+    elif "file" in error_str and ("exist" in error_str or "found" in error_str):
+        suggestions.append("Make sure the file path is correct")
+        suggestions.append("Use absolute paths instead of relative paths")
+        
+    elif "api key" in error_str or "authentication" in error_str or "auth" in error_str:
+        suggestions.append("Check your API key environment variables")
+        suggestions.append("For OpenAI: Set OPENAI_API_KEY environment variable")
+        suggestions.append("For Anthropic: Set ANTHROPIC_API_KEY environment variable")
+        
+    elif "timeout" in error_str:
+        suggestions.append("The operation timed out - check your network connection")
+        suggestions.append("Try setting a longer timeout with the --timeout flag")
+        
+    elif "format" in error_str or "json" in error_str:
+        suggestions.append("Make sure your input files are in the correct format")
+        suggestions.append("For conversations, use valid JSON format")
+        
+    elif "memory" in error_str or "resources" in error_str:
+        suggestions.append("The operation requires more memory than is available")
+        suggestions.append("Try evaluating fewer questions at once or use --concurrency 1")
+        
+    # Command-specific suggestions
+    if command == "server":
+        suggestions.append("Check if another process is using the same port")
+        suggestions.append("Try specifying a different port with --port")
+        
+    elif command in ["evalset list", "list"]:
+        suggestions.append("Check if the data directory exists and is readable")
+        
+    elif command in ["run create", "create", "eval"]:
+        suggestions.append("Verify that your evalset ID is correct")
+        suggestions.append("Make sure your conversation JSON is properly formatted")
+        
+    # If we have suggestions, display them in a nice format
+    if suggestions:
+        print(format_box(
+            "💡 Troubleshooting Suggestions", 
+            "\n".join(f"• {suggestion}" for suggestion in suggestions),
+            style="rounded", 
+            border_color=Fore.YELLOW
+        ), file=sys.stderr)
+    else:
+        # Generic suggestion if we couldn't provide specific help
+        print(f"{Fore.YELLOW}Tip: For more help, run 'agentoptim --help' or check the documentation{Style.RESET_ALL}", file=sys.stderr)
+
+
 def main():
     """Main entry point for the module."""
+    # Track command for better error handling
+    command = " ".join(sys.argv[1:3]) if len(sys.argv) > 2 else (sys.argv[1] if len(sys.argv) > 1 else "")
+    
     # Handle special "--install-completion" flag before parsing other args
     if len(sys.argv) == 2 and sys.argv[1] == "--install-completion":
         install_completion()
@@ -3473,27 +4005,35 @@ def main():
             
             # Show a random tip occasionally (20% chance) after longer commands
             if elapsed_time > 2 and random.random() < 0.2:
-                print(f"{Fore.YELLOW}Tip: {get_random_tip()}{Style.RESET_ALL}", file=sys.stderr)
+                tip = get_random_tip()
+                print(format_box(
+                    "🌟 Pro Tip", 
+                    tip,
+                    style="single", 
+                    border_color=Fore.YELLOW,
+                    title_align="left"
+                ), file=sys.stderr)
             
+    except KeyboardInterrupt:
+        # Handle keyboard interrupt gracefully
+        print(f"\n{Fore.YELLOW}Operation canceled by user{Style.RESET_ALL}", file=sys.stderr)
+        sys.exit(130)  # Standard exit code for SIGINT
+        
     except Exception as e:
         # Show execution time even for errors if enabled
         if show_timer:
             elapsed_time = time.time() - start_time
             time_str = format_elapsed_time(elapsed_time)
-            
             print(f"\n{Fore.RED}⚠️ Command failed after {time_str}{Style.RESET_ALL}", file=sys.stderr)
         
+        # Log the error for debugging
         logger.error(f"Error in AgentOptim CLI: {str(e)}", exc_info=True)
-        print(f"{Fore.RED}Error: {str(e)}{Style.RESET_ALL}", file=sys.stderr)
         
-        # Provide helpful suggestions for common errors
-        error_str = str(e).lower()
-        if "connection" in error_str or "connect" in error_str:
-            print(f"{Fore.YELLOW}Tip: Make sure the AgentOptim server is running with 'agentoptim server'{Style.RESET_ALL}", file=sys.stderr)
-        elif "not found" in error_str and "id" in error_str:
-            print(f"{Fore.YELLOW}Tip: Use 'agentoptim evalset list' to see available evaluation sets{Style.RESET_ALL}", file=sys.stderr)
-        elif "permission" in error_str:
-            print(f"{Fore.YELLOW}Tip: Check file permissions or try running with elevated privileges{Style.RESET_ALL}", file=sys.stderr)
+        # Show error message with a sad face emoji
+        print(f"\n{Fore.RED}😞 Error: {str(e)}{Style.RESET_ALL}", file=sys.stderr)
+        
+        # Provide helpful suggestions based on the error
+        display_helpful_error(e, command)
         
         sys.exit(1)
 
