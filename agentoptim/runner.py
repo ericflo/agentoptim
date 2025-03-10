@@ -834,27 +834,27 @@ CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON 
                                 try:
                                     import ast
                                     logger.debug("Attempting to parse as Python literal with ast.literal_eval")
-                                # Try to eval it as a Python literal, then convert to proper JSON
-                                python_dict = ast.literal_eval(content)
-                                
-                                # Convert Python dict to judgment_obj
-                                judgment_obj = {}
-                                if isinstance(python_dict, dict):
-                                    # Convert all keys and values to proper JSON types
-                                    for k, v in python_dict.items():
-                                        if isinstance(v, bool):
-                                            judgment_obj[k] = bool(v)  # Ensure it's JSON boolean
-                                        elif v is None:
-                                            judgment_obj[k] = None
-                                        else:
-                                            judgment_obj[k] = v
+                                    # Try to eval it as a Python literal, then convert to proper JSON
+                                    python_dict = ast.literal_eval(content)
+                                    
+                                    # Convert Python dict to judgment_obj
+                                    judgment_obj = {}
+                                    if isinstance(python_dict, dict):
+                                        # Convert all keys and values to proper JSON types
+                                        for k, v in python_dict.items():
+                                            if isinstance(v, bool):
+                                                judgment_obj[k] = bool(v)  # Ensure it's JSON boolean
+                                            elif v is None:
+                                                judgment_obj[k] = None
+                                            else:
+                                                judgment_obj[k] = v
                                     logger.debug("Successfully parsed with ast.literal_eval")
-                            except Exception as ast_err:
-                                logger.warning(f"ast.literal_eval parsing failed: {str(ast_err)}")
-                                logger.warning(f"All JSON parsing methods failed. Using regex fallback.")
-                                # Re-raise to trigger the regex fallback
-                                raise json.JSONDecodeError("Cannot parse content: " + parse_error, 
-                                                         content, 0)
+                                except Exception as ast_err:
+                                    logger.warning(f"ast.literal_eval parsing failed: {str(ast_err)}")
+                                    logger.warning(f"All JSON parsing methods failed. Using regex fallback.")
+                                    # Re-raise to trigger the regex fallback
+                                    raise json.JSONDecodeError("Cannot parse content: " + parse_error, 
+                                                             content, 0)
                     
                     # Check for judgment field with proper boolean handling
                     if isinstance(judgment_obj, dict) and "judgment" in judgment_obj:
