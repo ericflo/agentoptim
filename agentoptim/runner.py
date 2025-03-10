@@ -8,13 +8,20 @@ import asyncio
 import logging
 import math
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 from pydantic import BaseModel, Field
 import jinja2
 import uuid
 
 from agentoptim.evalset import get_evalset
 from agentoptim.cache import cached, LRUCache
+from agentoptim.confidence import (
+    PromptMethod,
+    CONFIDENCE_METHODS,
+    VALID_ANSWER,
+    NO_ANSWER,
+    INVALID_ANSWER,
+)
 from agentoptim.utils import (
     format_error,
     format_success,
@@ -458,7 +465,8 @@ async def evaluate_question(
     question: str,
     template: str,
     judge_model: Optional[str] = None,  # Changed to None to trigger model auto-detection
-    omit_reasoning: bool = False
+    omit_reasoning: bool = False,
+    confidence_config: Optional[Dict[str, Any]] = None
 ) -> EvalResult:
     """
     Evaluate a single question against a conversation.
@@ -469,6 +477,9 @@ async def evaluate_question(
         conversation: List of conversation messages
         question: The evaluation question
         template: The evaluation template
+        judge_model: Model to use for evaluation
+        omit_reasoning: Whether to omit reasoning in the response
+        confidence_config: Configuration for verbalized confidence elicitation
         judge_model: LLM model to use for evaluation
         omit_reasoning: If True, don't generate or include reasoning in results
     
@@ -511,6 +522,23 @@ async def evaluate_question(
             eval_question=question,
             eval_id=eval_id  # Add the evaluation ID to the context
         )
+        
+        # Apply verbalized confidence elicitation if configured
+        confidence_method = None
+        if confidence_config and confidence_config.get('enabled', False):
+            method_name = confidence_config.get('method', 'basic_float')
+            if method_name in CONFIDENCE_METHODS:
+                confidence_method = CONFIDENCE_METHODS[method_name]
+                
+                # Check if we should inject confidence instructions
+                if confidence_config.get('inject_instructions', True):
+                    logger.info(f"Using verbalized confidence method: {method_name}")
+                    # Modify the prompt to include confidence elicitation
+                    rendered_prompt = confidence_method.generate_prompt({
+                        "question": rendered_prompt,
+                        "num_guesses": confidence_config.get('num_guesses', 1)
+                    })
+                    logger.debug(f"Modified prompt with confidence elicitation instructions")
         
         # Add specific formatting guidance to ensure proper JSON responses
         # This helps all models understand exactly what format we want
@@ -770,28 +798,42 @@ CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON 
                     # Add more logging for debugging
                     logger.debug(f"Sanitized content: {sanitized_content}")
                     
-                    # First try with the sanitized content since it's more likely to work
-                    judgment_obj = None
-                    parse_error = None
-                    
-                    try:
-                        judgment_obj = json.loads(sanitized_content)
-                        logger.debug("Successfully parsed sanitized content as JSON")
-                    except Exception as sanitized_err:
-                        parse_error = str(sanitized_err)
-                        logger.warning(f"Failed to parse sanitized content: {parse_error}")
+                    # If we have a confidence method, try extracting with that first
+                    if confidence_method:
+                        logger.debug("Attempting to extract answer and confidence using confidence method")
+                        answer, extracted_confidence = confidence_method.extract_answer_and_confidence(content)
+                        if answer is not None and extracted_confidence is not None:
+                            # If extraction was successful, verify the response category
+                            category = confidence_method.classify_response(content, answer, extracted_confidence)
+                            if category == VALID_ANSWER:
+                                # Create a synthetic JSON object that can be used to populate the EvalResult
+                                judgment_str = "true" if "yes" in answer.lower() else "false"
+                                synthetic_json = f'{{"judgment": {judgment_str}, "confidence": {extracted_confidence}}}'
+                                judgment_obj = json.loads(synthetic_json)
+                                logger.debug(f"Successfully extracted using confidence method: {judgment_obj}")
+                    else:
+                        # First try with the sanitized content since it's more likely to work
+                        judgment_obj = None
+                        parse_error = None
                         
-                        # If sanitized content failed, fall back to trying original
                         try:
-                            judgment_obj = json.loads(content)
-                            logger.debug("Successfully parsed original content as JSON")
-                        except Exception as original_err:
-                            logger.warning(f"Failed to parse original content: {str(original_err)}")
+                            judgment_obj = json.loads(sanitized_content)
+                            logger.debug("Successfully parsed sanitized content as JSON")
+                        except Exception as sanitized_err:
+                            parse_error = str(sanitized_err)
+                            logger.warning(f"Failed to parse sanitized content: {parse_error}")
                             
-                            # Last resort: try with explicit safe eval for Python dict literals
+                            # If sanitized content failed, fall back to trying original
                             try:
-                                import ast
-                                logger.debug("Attempting to parse as Python literal with ast.literal_eval")
+                                judgment_obj = json.loads(content)
+                                logger.debug("Successfully parsed original content as JSON")
+                            except Exception as original_err:
+                                logger.warning(f"Failed to parse original content: {str(original_err)}")
+                                
+                                # Last resort: try with explicit safe eval for Python dict literals
+                                try:
+                                    import ast
+                                    logger.debug("Attempting to parse as Python literal with ast.literal_eval")
                                 # Try to eval it as a Python literal, then convert to proper JSON
                                 python_dict = ast.literal_eval(content)
                                 
@@ -1135,12 +1177,18 @@ async def run_evalset(
         async def process_question(question):
             nonlocal completed_questions
             async with semaphore:
+                # Get confidence configuration from EvalSet if available
+                confidence_cfg = None
+                if hasattr(evalset, 'confidence_config') and evalset.confidence_config:
+                    confidence_cfg = evalset.confidence_config.model_dump()
+                
                 result = await evaluate_question(
                     conversation=conversation,
                     question=question,
                     template=evalset.template,
                     judge_model=judge_model,
-                    omit_reasoning=omit_reasoning
+                    omit_reasoning=omit_reasoning,
+                    confidence_config=confidence_cfg
                 )
                 # Update progress counter and report progress if callback provided
                 completed_questions += 1

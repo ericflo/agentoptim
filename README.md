@@ -143,12 +143,12 @@ AgentOptim v2.2.0 will focus on implementing advanced verbalized confidence scor
 - [x] **2.7** Implement `multi_guess` method for top-k predictions with probabilities
 
 ### Phase 3: Integration & Evaluation
-- [ ] **3.1** Add confidence elicitation to EvalSet configuration
-- [ ] **3.2** Integrate confidence scores into evaluation results schema
-- [ ] **3.3** Implement Expected Calibration Error (ECE) calculation
-- [ ] **3.4** Create calibration curve calculation utility
-- [ ] **3.5** Design confidence distribution analysis tools
-- [ ] **3.6** Add confidence diversity metrics (distinct values, variance)
+- [x] **3.1** Add confidence elicitation to EvalSet configuration
+- [x] **3.2** Integrate confidence scores into evaluation results schema
+- [x] **3.3** Implement Expected Calibration Error (ECE) calculation
+- [x] **3.4** Create calibration curve calculation utility
+- [x] **3.5** Design confidence distribution analysis tools
+- [x] **3.6** Add confidence diversity metrics (distinct values, variance)
 - [ ] **3.7** Implement MCP Tool for confidence score evaluation
 
 ### Phase 4: Visualization & Reporting

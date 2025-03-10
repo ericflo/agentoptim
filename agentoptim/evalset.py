@@ -58,6 +58,28 @@ Example format:
 """
 
 
+class ConfidenceConfig(BaseModel):
+    """Configuration for verbalized confidence score elicitation."""
+    
+    enabled: bool = Field(default=True, description="Enable or disable verbalized confidence elicitation")
+    method: str = Field(
+        default="basic_float", 
+        description="Confidence elicitation method to use"
+    )
+    inject_instructions: bool = Field(
+        default=True, 
+        description="Whether to inject confidence instructions into the prompt template"
+    )
+    include_examples: bool = Field(
+        default=False, 
+        description="Whether to include examples in the prompt (only for supported methods)"
+    )
+    num_guesses: int = Field(
+        default=1, 
+        description="Number of guesses to request (only for multi_guess method)"
+    )
+
+
 class EvalSet(BaseModel):
     """Model for an EvalSet."""
     
@@ -67,6 +89,10 @@ class EvalSet(BaseModel):
     questions: List[str] = Field(default_factory=list)
     short_description: Optional[str] = None  # Concise summary (6-128 chars)
     long_description: Optional[str] = None  # Detailed explanation (256-1024 chars)
+    confidence_config: Optional[ConfidenceConfig] = Field(
+        default=None,
+        description="Configuration for verbalized confidence score elicitation"
+    )
     
     @field_validator('questions')
     def validate_questions(cls, questions):
