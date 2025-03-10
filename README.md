@@ -149,7 +149,6 @@ AgentOptim v2.2.0 will focus on implementing advanced verbalized confidence scor
 - [x] **3.4** Create calibration curve calculation utility
 - [x] **3.5** Design confidence distribution analysis tools
 - [x] **3.6** Add confidence diversity metrics (distinct values, variance)
-- [ ] **3.7** Implement MCP Tool for confidence score evaluation
 
 ### Phase 4: Visualization & Reporting
 - [ ] **4.1** Add confidence visualization to CLI output
