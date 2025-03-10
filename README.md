@@ -1,8 +1,17 @@
 <div align="center">
 
-# 🔍 AgentOptim v2.1.0
+```ansi
+[36m  █████  ██████  ███████ ███    ██ ████████  ██████  ██████  ████████ ██ ███    ███ [0m
+[36m ██   ██ ██      ██      ████   ██    ██    ██    ██ ██   ██    ██    ██ ████  ████ [0m
+[36m ███████ ██  ███ █████   ██ ██  ██    ██    ██    ██ ██████     ██    ██ ██ ████ ██ [0m
+[36m ██   ██ ██   ██ ██      ██  ██ ██    ██    ██    ██ ██         ██    ██ ██  ██  ██ [0m
+[36m ██   ██  █████  ███████ ██   ████    ██     ██████  ██         ██    ██ ██      ██ [0m
+```
+### 📚 Your Complete Toolkit for AI Conversation Evaluation and Optimization
 
-[![PyPI Version](https://img.shields.io/badge/pypi-v2.1.0-blue)](https://pypi.org/project/agentoptim/)
+# 🔍 AgentOptim v2.1.1 ✨
+
+[![PyPI Version](https://img.shields.io/badge/pypi-v2.1.1-blue)](https://pypi.org/project/agentoptim/)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-brightgreen)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Test Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)](https://github.com/ericflo/agentoptim)
@@ -110,14 +119,18 @@ Version 2.1.1 adds delightful CLI enhancements that make AgentOptim even more us
 - ✨ **Interactive Conversation Creator** - Create conversations to evaluate with an interactive TUI
 - 📊 **Rich Progress Visualization** - Watch evaluation progress with beautiful progress bars
 - 🎨 **Colorful Output with Emojis** - More readable and visually appealing results
+- 🪄 **Enchanting Spinners** - Delightful loading animations with real-time progress updates
+- 🌈 **Contextual Score Indicators** - Visual emoji indicators based on score performance (🔝👍👌👎)
+- 💡 **Random Pro Tips** - Helpful usage tips to discover new features
 - 🔠 **Command Auto-Completion** - Tab completion for all commands and options
-- 🔍 **Command Suggestion System** - Get helpful suggestions when commands are mistyped
-- 📱 **Concise Error Messages** - Clear help when something goes wrong
+- 🔍 **Command Suggestion System** - Helpful suggestions when commands are mistyped
+- 📱 **Intelligent Error Messages** - Clear, context-specific help when something goes wrong
 - 📋 **Export Results to Multiple Formats** - Export evaluations as HTML, Markdown, CSV, JSON, or PDF
-- 📈 **Powerful Comparison Tool** - Compare two evaluation runs side by side with visual indicators
+- 📈 **Powerful Comparison Tool** - Compare evaluation runs side by side with visual indicators
 - ⏱️ **Command Execution Timer** - See how long commands take to run
 - ⚙️ **Scriptability Improvements** - Quiet mode and machine-readable outputs for automation
 - 🔄 **Latest Run References** - Use 'latest' and 'latest-N' to easily reference recent runs
+- 👋 **Time-based Greetings** - Friendly welcome messages based on time of day
 
 Version 2.1.0 completed our architectural simplification by removing the legacy compatibility layer and delivering a clean, modern API:
 
