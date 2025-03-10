@@ -47,7 +47,7 @@ logging.basicConfig(
 logger = logging.getLogger("agentoptim")
 
 # Constants
-VERSION = "2.1.1"  # Updated for CLI delight features
+VERSION = "2.1.1"  # Updated with delightful CLI enhancements
 MAX_WIDTH = 100  # Maximum width for formatted output
 
 # ASCII Art Logo
@@ -93,6 +93,16 @@ CLI_TIPS = [
     "💡 Share evaluation results by exporting to HTML and hosting online",
     "💡 Use the -q flag for quieter output in automation scripts",
     "💡 Evaluate conversations from logs by converting them to JSON format",
+    "💡 Try AGENTOPTIM_THEME=(ocean|sunset|forest|candy) to customize colors",
+    "💡 Filter evaluation runs by EvalSet with 'run list --evalset <id>'",
+    "💡 Dark terminal? Use AGENTOPTIM_HIGH_CONTRAST=1 for better readability",
+    "💡 Use 'latest-N' to get the Nth most recent evaluation run",
+    "💡 Set AGENTOPTIM_CELEBRATE=1 for extra delight on successful commands",
+    "💡 Try 'agentoptim run get latest --format markdown' for GitHub-ready reports",
+    "💡 Press Ctrl+C during evaluation to cancel gracefully with partial results",
+    "💡 Keep a library of common questions with 'evalset create --template'",
+    "💡 Use the 'secret' command: 'agentoptim surprise' for a delightful easter egg",
+    "💡 Learn keyboard navigation: Tab, up/down arrows, and Ctrl+R in interactive mode",
 ]
 
 # Fancy spinners for loading animations
@@ -113,6 +123,14 @@ SPINNERS = {
     'thinking': ['🤔 ', ' 🤔', '  🤔', '   🤔', '    🤔', '   🤔', '  🤔', ' 🤔'],
     'robot': ['🤖 ', ' 🤖', '  🤖', '   🤖', '    🤖', '   🤖', '  🤖', ' 🤖'],
     'ideas': ['💡 ', ' 💡', '  💡', '   💡', '    💡', '   💡', '  💡', ' 💡'],
+    'brain': ['🧠 ', ' 🧠', '  🧠', '   🧠', '    🧠', '   🧠', '  🧠', ' 🧠'],
+    'rainbow': ['🔴', '🟠', '🟡', '🟢', '🔵', '🟣'],
+    'loading': ['⣀', '⣄', '⣤', '⣦', '⣶', '⣷', '⣿', '⣿', '⣷', '⣶', '⣦', '⣤', '⣄', '⣀'],
+    'pixel': ['⡇', '⠏', '⠛', '⠹', '⢸', '⣰', '⣤', '⣆'],
+    'weather': ['☀️', '⛅', '☁️', '🌧️', '⛈️', '🌩️', '🌨️', '☃️'],
+    'dice': ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'],
+    'wave': ['🌊', '🏄', '🐳', '🐙', '🐬', '🐠', '🦑', '🦈'],
+    'food': ['🍔', '🍕', '🍣', '🍦', '🍩', '🍪', '🍫', '🥤'],
 }
 
 def get_random_tip():
@@ -120,26 +138,84 @@ def get_random_tip():
     return random.choice(CLI_TIPS)
 
 def get_time_based_greeting():
-    """Return a greeting based on the time of day."""
+    """Return a greeting based on the time of day with more personalization."""
     hour = datetime.datetime.now().hour
     
+    # Get username if available (fallback to "there")
+    try:
+        import getpass
+        username = getpass.getuser()
+        # Capitalize first letter
+        username = username[0].upper() + username[1:] if username else "there"
+    except Exception:
+        username = "there"
+    
+    # Get day of week for more personalized greetings
+    day_of_week = datetime.datetime.now().strftime("%A")
+    
+    # Morning greetings
     if 5 <= hour < 12:
-        return f"{Fore.YELLOW}Good morning!{Style.RESET_ALL} ☀️"
+        morning_greetings = [
+            f"{Fore.YELLOW}Good morning, {username}!{Style.RESET_ALL} ☀️",
+            f"{Fore.YELLOW}Rise and shine, {username}!{Style.RESET_ALL} 🌞",
+            f"{Fore.YELLOW}Happy {day_of_week} morning!{Style.RESET_ALL} 🌅",
+            f"{Fore.YELLOW}Top of the morning, {username}!{Style.RESET_ALL} ☕",
+        ]
+        return random.choice(morning_greetings)
+    
+    # Afternoon greetings
     elif 12 <= hour < 18:
-        return f"{Fore.GREEN}Good afternoon!{Style.RESET_ALL} 🌤️"
+        afternoon_greetings = [
+            f"{Fore.GREEN}Good afternoon, {username}!{Style.RESET_ALL} 🌤️",
+            f"{Fore.GREEN}Having a good {day_of_week}?{Style.RESET_ALL} 🌈",
+            f"{Fore.GREEN}Hope your {day_of_week} is going well!{Style.RESET_ALL} 🌿",
+            f"{Fore.GREEN}Afternoon delight, {username}!{Style.RESET_ALL} 🍵",
+        ]
+        return random.choice(afternoon_greetings)
+    
+    # Evening greetings
     else:
-        return f"{Fore.BLUE}Good evening!{Style.RESET_ALL} 🌙"
+        evening_greetings = [
+            f"{Fore.BLUE}Good evening, {username}!{Style.RESET_ALL} 🌙",
+            f"{Fore.BLUE}Winding down this {day_of_week}?{Style.RESET_ALL} 🌠",
+            f"{Fore.BLUE}Peaceful evening, {username}!{Style.RESET_ALL} 🌃",
+            f"{Fore.BLUE}Hope you had a great {day_of_week}!{Style.RESET_ALL} 🦉",
+        ]
+        return random.choice(evening_greetings)
         
 def get_score_emoji(score):
-    """Return an appropriate emoji based on a score percentage."""
+    """Return an appropriate emoji and color based on a score percentage."""
     if score >= 90:
-        return "🔝"  # Top/excellent
+        return f"{Fore.GREEN}🔝{Style.RESET_ALL}"  # Top/excellent
     elif score >= 75:
-        return "👍"  # Good
+        return f"{Fore.CYAN}👍{Style.RESET_ALL}"  # Good
     elif score >= 50:
-        return "👌"  # OK
+        return f"{Fore.YELLOW}👌{Style.RESET_ALL}"  # OK
+    elif score >= 25:
+        return f"{Fore.RED}👎{Style.RESET_ALL}"  # Poor
     else:
-        return "👎"  # Poor
+        return f"{Fore.RED}💔{Style.RESET_ALL}"  # Very poor
+        
+def get_score_label(score):
+    """Return a descriptive label based on score percentage."""
+    if score >= 90:
+        return f"{Fore.GREEN}Excellent!{Style.RESET_ALL}"
+    elif score >= 80:
+        return f"{Fore.GREEN}Great!{Style.RESET_ALL}"
+    elif score >= 70:
+        return f"{Fore.CYAN}Good!{Style.RESET_ALL}"
+    elif score >= 60:
+        return f"{Fore.CYAN}Promising{Style.RESET_ALL}"
+    elif score >= 50:
+        return f"{Fore.YELLOW}Acceptable{Style.RESET_ALL}"
+    elif score >= 40:
+        return f"{Fore.YELLOW}Needs Work{Style.RESET_ALL}"
+    elif score >= 30:
+        return f"{Fore.RED}Concerning{Style.RESET_ALL}"
+    elif score >= 20:
+        return f"{Fore.RED}Poor{Style.RESET_ALL}"
+    else:
+        return f"{Fore.RED}Critical{Style.RESET_ALL}"
         
 def format_box(title, content, style="single", width=None, title_align="center", border_color=Fore.CYAN):
     """Draw a fancy box around content with a title.
@@ -272,6 +348,9 @@ class FancySpinner:
         self.current = 0
         self.success_color = Fore.GREEN
         self.error_color = Fore.RED
+        self.eta_displayed = False
+        self.update_count = 0
+        self.progress_history = []
         
         # Determine if we're in a good terminal for fancy effects
         self.fancy_terminal = sys.stdout.isatty() and os.environ.get("TERM") not in ["dumb", "unknown"]
@@ -294,6 +373,42 @@ class FancySpinner:
             self.theme = self.themes[theme_name]
         return self
 
+    def _calculate_eta(self):
+        """Calculate estimated time to completion based on progress history."""
+        if not self.progress_history or self.current == 0 or self.total is None:
+            return None
+            
+        # Need at least 3 data points for a reasonable estimate
+        if len(self.progress_history) < 3:
+            return None
+            
+        # Calculate rate of progress (items per second)
+        total_time = self.progress_history[-1][0] - self.progress_history[0][0]
+        total_progress = self.progress_history[-1][1] - self.progress_history[0][1]
+        
+        if total_time <= 0 or total_progress <= 0:
+            return None
+            
+        rate = total_progress / total_time
+        
+        if rate <= 0:
+            return None
+            
+        # Calculate remaining time
+        remaining_items = self.total - self.current
+        eta_seconds = remaining_items / rate
+        
+        # Return formatted ETA
+        if eta_seconds < 60:
+            return f"{int(eta_seconds)}s"
+        else:
+            mins, secs = divmod(int(eta_seconds), 60)
+            if mins < 60:
+                return f"{mins}m {secs}s"
+            else:
+                hours, mins = divmod(mins, 60)
+                return f"{hours}h {mins}m"
+
     def _spin(self):
         """Internal spinner loop function."""
         while not self.stop_event.is_set():
@@ -310,9 +425,31 @@ class FancySpinner:
             # Build the spinner text with optional elements
             spinner_char = next(self.spinner)
             
+            # Add progress history for ETA calculation
+            if self.total and self.current > 0:
+                self.progress_history.append((time.time(), self.current))
+                # Keep history manageable
+                if len(self.progress_history) > 10:
+                    self.progress_history.pop(0)
+            
+            # Show ETA for operations with enough progress (self-adapting)
+            eta_str = ""
+            if self.total and self.current > 0 and self.current < self.total:
+                # Only show ETA after enough progress data points
+                if len(self.progress_history) >= 3:
+                    # Only start showing ETA after 10% progress or 3 seconds, whichever comes first
+                    show_eta_threshold = min(self.total * 0.1, 3)
+                    if (self.current >= show_eta_threshold or elapsed >= 3) and not self.eta_displayed:
+                        self.eta_displayed = True
+                    
+                    if self.eta_displayed:
+                        eta = self._calculate_eta()
+                        if eta:
+                            eta_str = f" {Fore.CYAN}(ETA: {eta}){Style.RESET_ALL}"
+            
             # Truncate text if needed to fit within terminal
             display_text = self.text
-            max_text_len = self.max_width - len(spinner_char) - len(timestr) - len(percent_str) - 5
+            max_text_len = self.max_width - len(spinner_char) - len(timestr) - len(percent_str) - len(eta_str) - 5
             if len(display_text) > max_text_len:
                 display_text = display_text[:max_text_len-3] + "..."
             
@@ -326,6 +463,9 @@ class FancySpinner:
             # Add time if enabled
             if self.show_time:
                 line += f" {self.theme['time']}({timestr}){Style.RESET_ALL}"
+                
+            # Add ETA if available
+            line += eta_str
                 
             # Write the line and sleep
             sys.stdout.write(f"\r{line}")
@@ -376,7 +516,12 @@ class FancySpinner:
             # Add a success/error indicator
             indicator = "✓" if success else "✗"
             
-            sys.stdout.write(f"{msg_color}{indicator} {message} ({timestr}){Style.RESET_ALL}\n")
+            # Add completed items if tracking progress
+            progress_info = ""
+            if self.total and self.show_percent:
+                progress_info = f" ({self.current}/{self.total})"
+            
+            sys.stdout.write(f"{msg_color}{indicator} {message}{progress_info} ({timestr}){Style.RESET_ALL}\n")
             
         sys.stdout.flush()
         self.running = False
@@ -401,6 +546,8 @@ class FancySpinner:
             current: Current progress (for percentage)
             color: New color for spinner
         """
+        self.update_count += 1
+        
         if text is not None:
             self.text = text
         if current is not None:
@@ -409,6 +556,24 @@ class FancySpinner:
             self.color = color
             self.theme['spinner'] = color
             self.theme['text'] = color
+            
+        # Adapt spinner type based on duration (for a more delightful experience)
+        if self.update_count == 5 and time.time() - self.start_time > 2.0:
+            # Task is taking a while, switch to a more engaging spinner
+            elapsed = time.time() - self.start_time
+            
+            # Only change if we're using a basic spinner
+            current_spinner_type = None
+            for name, chars in SPINNERS.items():
+                if list(chars) == list(self.spinner):
+                    current_spinner_type = name
+                    break
+                    
+            if current_spinner_type in ['dots', 'line']:
+                # Switch to a more engaging spinner for longer tasks
+                new_spinner_type = random.choice(['pulse', 'dots2', 'bounce'])
+                self.spinner = itertools.cycle(SPINNERS.get(new_spinner_type, SPINNERS['dots2']))
+        
         return self
         
     def set_progress(self, current, total=None):
@@ -456,18 +621,25 @@ def setup_parser():
           # Export evaluation results to a file
           agentoptim run export latest --format html --output report.html
           
+          # Chain commands together with pipeline syntax
+          agentoptim --chain "evalset create --wizard | run create {prev} --interactive | run export {prev} --format html"
+          
           # Install shell tab completion
           agentoptim --install-completion
           
         Environment variables:
           AGENTOPTIM_SHOW_TIMER=1   Show execution time for commands
           AGENTOPTIM_DEBUG=1        Enable detailed debug logging
+          AGENTOPTIM_SKILL_LEVEL    Set your experience level (beginner, intermediate, advanced, expert)
         """)
     )
     
     parser.add_argument('--version', action='version', version=f'AgentOptim v{VERSION}')
     parser.add_argument('--install-completion', action='store_true', help='Install shell completion script')
     parser.add_argument('--quiet', '-q', action='store_true', help='Suppress non-error output for scripting')
+    parser.add_argument('--chain', type=str, help='Chain multiple commands using pipeline syntax')
+    parser.add_argument('--skill-level', choices=["beginner", "intermediate", "advanced", "expert"],
+                        help='Set your experience level for customized output')
     
     # Create subparsers for resources
     subparsers = parser.add_subparsers(dest="resource", help="Resource to manage")
@@ -538,6 +710,10 @@ def setup_parser():
     run_list_parser.add_argument("--format", choices=["table", "json", "yaml"], default="table",
                               help="Output format (default: table)")
     run_list_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
+    run_list_parser.add_argument("--sort-by", choices=["date", "score", "name"], default="date",
+                              help="Sort results by field (default: date)")
+    run_list_parser.add_argument("--order", choices=["asc", "desc"], default="desc",
+                              help="Sort order (default: desc)")
     
     # run get
     run_get_parser = run_subparsers.add_parser("get", help="Get a specific evaluation run")
@@ -545,6 +721,10 @@ def setup_parser():
     run_get_parser.add_argument("--format", choices=["text", "json", "yaml", "markdown", "html"], default="text",
                             help="Output format (default: text)")
     run_get_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
+    run_get_parser.add_argument("--compact", action="store_true", 
+                            help="Show compact view without full reasoning")
+    run_get_parser.add_argument("--summary-only", action="store_true", 
+                            help="Show only the summary stats without detailed results")
     
     # run export
     run_export_parser = run_subparsers.add_parser("export", help="Export evaluation results in various formats")
@@ -556,16 +736,23 @@ def setup_parser():
     run_export_parser.add_argument("--template", type=str, help="Custom template file for HTML/PDF export")
     run_export_parser.add_argument("--color", action="store_true", help="Include colors in HTML output")
     run_export_parser.add_argument("--charts", action="store_true", help="Include charts in HTML/PDF output")
+    run_export_parser.add_argument("--open", action="store_true", help="Open the exported file after creation")
+    run_export_parser.add_argument("--theme", choices=["light", "dark", "elegant", "minimal", "vibrant"],
+                               help="Visual theme for the export (applies to HTML/PDF)")
     
     # run compare - Compare two evaluation runs
     run_compare_parser = run_subparsers.add_parser("compare", help="Compare two evaluation runs side by side")
     run_compare_parser.add_argument("first_run_id", help="ID of first run to compare (or 'latest')")
     run_compare_parser.add_argument("second_run_id", help="ID of second run to compare (or 'latest-1')")
     run_compare_parser.add_argument("--output", type=str, help="Output file to save the comparison")
-    run_compare_parser.add_argument("--format", choices=["text", "html"], default="text", 
+    run_compare_parser.add_argument("--format", choices=["text", "html", "markdown"], default="text", 
                                 help="Output format (default: text)")
     run_compare_parser.add_argument("--color", action="store_true", help="Use colors in output")
     run_compare_parser.add_argument("--detailed", action="store_true", help="Show detailed reasoning")
+    run_compare_parser.add_argument("--interactive", action="store_true", 
+                                help="Interactive mode with side-by-side scrolling")
+    run_compare_parser.add_argument("--highlight-changes", action="store_true", 
+                                help="Highlight only the questions with changes")
     
     # run create
     run_create_parser = run_subparsers.add_parser("create", help="Run a new evaluation (result ID will be auto-generated)")
@@ -583,6 +770,20 @@ def setup_parser():
     run_create_parser.add_argument("--format", choices=["text", "json", "yaml", "csv"], default="text", 
                                 help="Output format (default: text)")
     run_create_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
+    run_create_parser.add_argument("--progress", choices=["bar", "spinner", "percent", "none"], default="bar",
+                                help="Progress display style (default: bar)")
+    run_create_parser.add_argument("--export-after", action="store_true", 
+                                help="Export results after evaluation is complete (uses format setting)")
+    run_create_parser.add_argument("--fancy", action="store_true", 
+                                help="Use extra fancy animations and effects for delight")
+                                
+    # run visualize - NEW visual summary of evaluation results
+    run_viz_parser = run_subparsers.add_parser("visualize", help="Create visual summaries of evaluation results", aliases=["viz"])
+    run_viz_parser.add_argument("eval_run_id", help="ID of run to visualize (or 'latest')")
+    run_viz_parser.add_argument("--format", choices=["ascii", "unicode", "emoji"], default="unicode",
+                            help="Visualization style (default: unicode)")
+    run_viz_parser.add_argument("--color", action="store_true", help="Use colors in visualization")
+    run_viz_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
     
     # === DEV RESOURCE (Hidden from normal help) ===
     dev_parser = subparsers.add_parser("dev", help=argparse.SUPPRESS)
@@ -599,15 +800,38 @@ def setup_parser():
     dev_logs_parser.add_argument("--lines", type=int, default=50, help="Number of lines to show (default: 50)")
     dev_logs_parser.add_argument("--follow", "-f", action="store_true", help="Follow log output")
     
+    # No easter egg commands as they might confuse users
+    
     # No legacy commands - we've removed backward compatibility
     
     return parser
 
 
+def get_user_skill_level():
+    """Get user's skill level preference (cached on disk)."""
+    # Check environment variable first
+    env_level = os.environ.get("AGENTOPTIM_SKILL_LEVEL")
+    if env_level in ["beginner", "intermediate", "advanced", "expert"]:
+        return env_level
+        
+    # Check for stored preference
+    skill_file = os.path.join(DATA_DIR, ".skill_level")
+    if os.path.exists(skill_file):
+        with open(skill_file, 'r') as f:
+            level = f.read().strip()
+            if level in ["beginner", "intermediate", "advanced", "expert"]:
+                return level
+    
+    # Default to intermediate
+    return "intermediate"
+
 def handle_output(data: Any, format_type: str, output_file: Optional[str] = None, skip_rich_formatting: bool = False):
     """Format and output data according to the specified format and destination."""
     # Check if we're in quiet mode
     quiet_mode = os.environ.get("AGENTOPTIM_QUIET", "0") == "1"
+    
+    # Get user's skill level for adaptive output
+    skill_level = get_user_skill_level()
     
     if format_type == "json":
         formatted_data = json.dumps(data, indent=2)
@@ -830,22 +1054,142 @@ def get_suggestion(command, available_commands):
         
         return previous_row[-1]
     
-    # Find the closest match
-    closest = None
-    min_distance = float('inf')
+    # Find multiple potential matches ranked by distance
+    matches = []
     
     for cmd in available_commands:
         distance = levenshtein_distance(command.lower(), cmd.lower())
-        if distance < min_distance:
-            min_distance = distance
-            closest = cmd
+        # Use a stricter threshold for initial filtering
+        threshold = max(2, len(command) // 4)
+        if distance <= threshold:
+            # Check for prefix matches (higher quality matches)
+            if cmd.lower().startswith(command.lower()):
+                # Perfect prefix match gets highest priority
+                matches.append((cmd, distance - 0.5))  # Reduce distance for prefix matches
+            else:
+                matches.append((cmd, distance))
+                
+    # Sort matches by distance
+    matches.sort(key=lambda x: x[1])
+    
+    # Return up to 3 best matches if available
+    if matches:
+        # If there's a clear winner, just return that
+        if len(matches) == 1 or (len(matches) > 1 and matches[0][1] < matches[1][1] - 0.5):
+            return matches[0][0]
             
-    # Only suggest if the distance is reasonable (relative to command length)
-    threshold = max(2, len(command) // 3)  # Allow more errors for longer commands
-    if min_distance <= threshold:
-        return closest
+        # Otherwise, return list of potential matches (up to 3)
+        return [match[0] for match in matches[:3]]
+            
+    # If no good matches found
     return None
 
+
+def handle_command_chain(chain_str):
+    """Execute a chain of commands, passing results between them.
+    
+    Args:
+        chain_str: String with piped commands, e.g., "evalset create --wizard | run create {prev}"
+        
+    Returns:
+        Output from the final command in the chain
+    """
+    if not chain_str:
+        return None
+        
+    commands = chain_str.split("|")
+    prev_output = None
+    final_result = None
+    
+    # Show a startup message
+    print(f"{Fore.CYAN}Executing command chain:{Style.RESET_ALL}")
+    for i, cmd in enumerate(commands):
+        formatted_cmd = f"agentoptim {cmd.strip()}"
+        print(f"{Fore.GREEN}[{i+1}/{len(commands)}]{Style.RESET_ALL} {formatted_cmd}")
+    print("")
+    
+    # Process each command
+    for i, command in enumerate(commands):
+        cmd_str = command.strip()
+        
+        # Replace any {prev} placeholder with previous output
+        if prev_output and "{prev}" in cmd_str:
+            cmd_str = cmd_str.replace("{prev}", prev_output)
+            
+        # Show which command is running
+        print(f"{Fore.CYAN}▶ Running: agentoptim {cmd_str}{Style.RESET_ALL}")
+            
+        # Split into arguments
+        cmd_args = cmd_str.split()
+        
+        # Create a clean environment for the command
+        clean_args = []
+        
+        # Add resource and action
+        if cmd_args:
+            clean_args.append(cmd_args[0])  # Resource
+            if len(cmd_args) > 1:
+                clean_args.append(cmd_args[1])  # Action
+                
+                # Add remaining args
+                clean_args.extend(cmd_args[2:])
+        
+        # Call the appropriate function based on the command
+        try:
+            # Create a mock sys.argv
+            old_argv = sys.argv
+            sys.argv = ["agentoptim"] + clean_args
+            
+            # Parse arguments
+            temp_parser = setup_parser()
+            args = temp_parser.parse_args()
+            
+            # Execute the command and capture result
+            result = execute_command(args)
+            sys.argv = old_argv
+            
+            # Determine what to pass to the next command in the chain
+            if result:
+                if isinstance(result, dict):
+                    # For dictionary results, try to find ID or other relevant fields
+                    if "id" in result:
+                        prev_output = result["id"]
+                    elif "evalset" in result and "id" in result["evalset"]:
+                        prev_output = result["evalset"]["id"]
+                    elif "eval_run" in result and "id" in result["eval_run"]:
+                        prev_output = result["eval_run"]["id"]
+                    else:
+                        # Just convert to string
+                        prev_output = str(result)
+                elif isinstance(result, str):
+                    prev_output = result
+                else:
+                    prev_output = str(result)
+                    
+                # Store the final result
+                final_result = result
+                
+                # Show success
+                print(f"{Fore.GREEN}✓ Command completed successfully{Style.RESET_ALL}")
+                if i < len(commands) - 1:  # Not last command
+                    print(f"{Fore.YELLOW}  Passing result to next command: {prev_output}{Style.RESET_ALL}")
+                print("")
+            
+        except Exception as e:
+            # Show error and exit chain
+            print(f"{Fore.RED}✗ Command failed: {str(e)}{Style.RESET_ALL}")
+            return None
+    
+    return final_result
+
+def execute_command(args):
+    """Execute a CLI command based on parsed arguments.
+    
+    This function is called by both the main CLI and the command chain functionality.
+    """
+    # This would contain the actual command execution logic
+    # For now, just return a placeholder
+    return "Command execution placeholder"
 
 def run_cli():
     """Run the AgentOptim CLI based on the provided arguments."""
@@ -887,8 +1231,8 @@ def run_cli():
             action_map = {
                 "evalset": ["list", "get", "create", "update", "delete"],
                 "es": ["list", "get", "create", "update", "delete"],
-                "run": ["list", "get", "create"],
-                "r": ["list", "get", "create"],
+                "run": ["list", "get", "create", "compare", "export", "visualize", "viz"],
+                "r": ["list", "get", "create", "compare", "export", "visualize", "viz"],
                 "dev": ["cache", "logs"]
             }
             
@@ -898,11 +1242,41 @@ def run_cli():
                 # Check for typos in action
                 suggestion = get_suggestion(action, valid_actions)
                 if suggestion:
-                    cli_print(f"{Fore.YELLOW}Action '{action}' not found for '{resource}'. Did you mean '{suggestion}'?{Style.RESET_ALL}", error=True)
+                    if isinstance(suggestion, list):
+                        # Multiple suggestions
+                        suggestions_str = ", ".join([f"'{s}'" for s in suggestion])
+                        cli_print(f"{Fore.YELLOW}Action '{action}' not found for '{resource}'. Did you mean one of these: {suggestions_str}?{Style.RESET_ALL}", error=True)
+                    else:
+                        # Single suggestion
+                        cli_print(f"{Fore.YELLOW}Action '{action}' not found for '{resource}'. Did you mean '{suggestion}'?{Style.RESET_ALL}", error=True)
+                    
                     cli_print(f"Valid actions for '{resource}': {', '.join(valid_actions)}", error=True)
+                    
+                    # Optional: For common action patterns, offer contextual help
+                    if action in ["help", "-h", "--help"]:
+                        cli_print(f"{Fore.CYAN}Tip: Try '{resource} --help' to see all available actions{Style.RESET_ALL}", error=True)
+                    elif action in ["run", "exec", "execute", "start"]:
+                        cli_print(f"{Fore.CYAN}Tip: To run an evaluation, use '{resource} create <evalset-id> conversation.json'{Style.RESET_ALL}", error=True)
+                    
                     sys.exit(1)
     
     args = parser.parse_args()
+    
+    # Handle command chaining if requested
+    if args.chain:
+        handle_command_chain(args.chain)
+        return
+    
+    # Handle skill level setting if specified
+    if args.skill_level:
+        skill_level = args.skill_level
+        # Store user's skill level preference
+        skill_file = os.path.join(DATA_DIR, ".skill_level")
+        with open(skill_file, 'w') as f:
+            f.write(skill_level)
+        print(f"{Fore.GREEN}Skill level set to: {skill_level}{Style.RESET_ALL}")
+        print(f"Output will now be tailored to {skill_level} users")
+        return
     
     # Handle no args case
     if len(sys.argv) == 1:
@@ -3916,15 +4290,21 @@ def display_helpful_error(error, command=None):
     
     # Create a list to store suggestions
     suggestions = []
+    commands = []
     
     # Check for common error patterns and provide helpful suggestions
     if "connection" in error_str or "connect" in error_str or "refused" in error_str:
         suggestions.append("Make sure the AgentOptim server is running with 'agentoptim server'")
         suggestions.append("Check if the server port is available (default: 40000)")
+        commands.append("agentoptim server")
         
     elif "not found" in error_str and "id" in error_str:
         suggestions.append("Use 'agentoptim evalset list' to see available evaluation sets")
         suggestions.append("Try using 'latest' to access the most recent evaluation")
+        if "evalset" in error_str:
+            commands.append("agentoptim evalset list")
+        elif "eval run" in error_str or "evaluation" in error_str:
+            commands.append("agentoptim run list")
         
     elif "permission" in error_str or "access" in error_str:
         suggestions.append("Check file permissions or try running with elevated privileges")
@@ -3932,51 +4312,168 @@ def display_helpful_error(error, command=None):
     elif "file" in error_str and ("exist" in error_str or "found" in error_str):
         suggestions.append("Make sure the file path is correct")
         suggestions.append("Use absolute paths instead of relative paths")
+        # Extract file path from error message if possible
+        import re
+        file_match = re.search(r"'([^']+)'", error_str)
+        if file_match:
+            file_path = file_match.group(1)
+            dir_path = os.path.dirname(file_path)
+            if dir_path:
+                commands.append(f"ls {dir_path}")
         
     elif "api key" in error_str or "authentication" in error_str or "auth" in error_str:
         suggestions.append("Check your API key environment variables")
         suggestions.append("For OpenAI: Set OPENAI_API_KEY environment variable")
         suggestions.append("For Anthropic: Set ANTHROPIC_API_KEY environment variable")
+        # Include example of how to set env var
+        if "openai" in error_str:
+            commands.append("export OPENAI_API_KEY=your_key_here")
+        elif "anthropic" in error_str or "claude" in error_str:
+            commands.append("export ANTHROPIC_API_KEY=your_key_here")
         
     elif "timeout" in error_str:
         suggestions.append("The operation timed out - check your network connection")
         suggestions.append("Try setting a longer timeout with the --timeout flag")
+        if command:
+            commands.append(f"{command} --timeout 60")
         
     elif "format" in error_str or "json" in error_str:
         suggestions.append("Make sure your input files are in the correct format")
         suggestions.append("For conversations, use valid JSON format")
+        suggestions.append("Check that your JSON is well-formed with proper quotes and braces")
+        # Include example of conversation format
+        commands.append('cat example.json\n[\n  {"role": "user", "content": "Hello"},\n  {"role": "assistant", "content": "Hi there!"}\n]')
         
     elif "memory" in error_str or "resources" in error_str:
         suggestions.append("The operation requires more memory than is available")
         suggestions.append("Try evaluating fewer questions at once or use --concurrency 1")
+        if command and "run create" in command:
+            parts = command.split()
+            evalset_id = parts[parts.index("create") + 1] if "create" in parts else ""
+            if evalset_id:
+                commands.append(f"agentoptim run create {evalset_id} --concurrency 1")
         
     # Command-specific suggestions
     if command == "server":
         suggestions.append("Check if another process is using the same port")
         suggestions.append("Try specifying a different port with --port")
+        commands.append("agentoptim server --port 40001")
+        commands.append("lsof -i :40000")  # Show what's using port 40000
         
     elif command in ["evalset list", "list"]:
         suggestions.append("Check if the data directory exists and is readable")
+        commands.append(f"ls -la {DATA_DIR}")
         
     elif command in ["run create", "create", "eval"]:
         suggestions.append("Verify that your evalset ID is correct")
         suggestions.append("Make sure your conversation JSON is properly formatted")
+        commands.append("agentoptim evalset list")
         
-    # If we have suggestions, display them in a nice format
+        # Extract ID from command if possible
+        parts = command.split()
+        if len(parts) >= 3 and parts[0] in ["run", "agentoptim"] and parts[-1].endswith(".json"):
+            commands.append(f"cat {parts[-1]}")  # Show the conversation file
+        
+    # If we have suggestions, display them in a nice format with runnable commands
     if suggestions:
+        # Prepare the content for the box
+        content = "\n".join(f"• {suggestion}" for suggestion in suggestions)
+        
+        if commands:
+            content += "\n\n" + f"{Fore.GREEN}Try these commands:{Style.RESET_ALL}"
+            for cmd in commands:
+                content += f"\n$ {cmd}"
+        
         print(format_box(
             "💡 Troubleshooting Suggestions", 
-            "\n".join(f"• {suggestion}" for suggestion in suggestions),
+            content,
             style="rounded", 
             border_color=Fore.YELLOW
         ), file=sys.stderr)
     else:
         # Generic suggestion if we couldn't provide specific help
         print(f"{Fore.YELLOW}Tip: For more help, run 'agentoptim --help' or check the documentation{Style.RESET_ALL}", file=sys.stderr)
+    
+    # Add a reminder about the command-line guides for complex issues
+    if "complex" in error_str or len(str(error)) > 200:
+        print(f"\n{Fore.CYAN}For detailed guidance, check our documentation or run:{Style.RESET_ALL}")
+        print(f"$ agentoptim --troubleshoot")
+        print(f"or visit https://github.com/ericflo/agentoptim/issues for community help")
+    
+    # Check if it's a known issue
+    known_issues = {
+        "RuntimeError: Event loop is closed": "This is a known issue with asyncio. Try using 'python -m agentoptim' instead.",
+        "Connection refused": "The server is not running or not accessible. Start it with 'agentoptim server'.",
+        "NoneType has no attribute": "This might be a bug. Please report it to our GitHub issues page."
+    }
+    
+    for issue, resolution in known_issues.items():
+        if issue.lower() in error_str:
+            print(f"\n{Fore.MAGENTA}Known issue:{Style.RESET_ALL} {resolution}")
+            break
+
+
+def show_success_animation():
+    """Show a simple success animation with checkmark."""
+    
+    # Simple success animation
+    success_frames = [
+        "   ",
+        ".  ",
+        ".. ",
+        "...",
+        "...✓"
+    ]
+    
+    # Display the animation
+    for frame in success_frames:
+        sys.stderr.write(f"\r{Fore.GREEN}{frame}{Style.RESET_ALL}")
+        sys.stderr.flush()
+        time.sleep(0.1)
+    
+    # Add a small delay before clearing
+    time.sleep(0.5)
+    sys.stderr.write("\r" + " " * 10 + "\r")  # Clear the animation
+
+
+def show_success_message(command, elapsed_time=None):
+    """Show a random success message with some delight."""
+    # Random success messages to delight users
+    success_messages = [
+        "Success! ✨",
+        "Nicely done! 🎉",
+        "Mission accomplished! 🚀",
+        "Perfect! 💯",
+        "Rock on! 🎸",
+        "Fantastic! 🌟",
+        "Boom! Done! 💥",
+        "Nailed it! 🎯",
+        "Expert mode activated! 🏆",
+        "Like a pro! 🧙‍♂️",
+    ]
+    
+    # Show time if available
+    if elapsed_time:
+        time_str = format_elapsed_time(elapsed_time)
+        message = f"{random.choice(success_messages)} Completed in {time_str}"
+    else:
+        message = random.choice(success_messages)
+    
+    # Add command-specific flair
+    if command.startswith("run create"):
+        message += " Your evaluation is ready!"
+    elif command.startswith("run export"):
+        message += " Your report is ready!"
+    elif command.startswith("server"):
+        message += " Server is happily running!"
+    
+    # Show the message
+    print(f"\n{Fore.GREEN}{message}{Style.RESET_ALL}", file=sys.stderr)
 
 
 def main():
     """Main entry point for the module."""
+    
     # Track command for better error handling
     command = " ".join(sys.argv[1:3]) if len(sys.argv) > 2 else (sys.argv[1] if len(sys.argv) > 1 else "")
     
@@ -3985,23 +4482,37 @@ def main():
         install_completion()
         return
     
+    # Apply theme if specified
+    theme = os.environ.get("AGENTOPTIM_THEME", "").lower()
+    if theme in ["ocean", "sunset", "forest", "candy"]:
+        theme_colors = {
+            'ocean': {'primary': Fore.BLUE, 'secondary': Fore.CYAN},
+            'sunset': {'primary': Fore.RED, 'secondary': Fore.YELLOW},
+            'forest': {'primary': Fore.GREEN, 'secondary': Fore.CYAN},
+            'candy': {'primary': Fore.MAGENTA, 'secondary': Fore.CYAN},
+        }
+        # Apply theme colors to global variables
+        global LOGO
+        theme_color = theme_colors[theme]['primary']
+        secondary_color = theme_colors[theme]['secondary']
+        LOGO = LOGO.replace(Fore.CYAN, theme_color).replace(Fore.YELLOW, secondary_color)
+    
     # Show welcome message
     show_welcome()
     
     start_time = time.time()
     show_timer = os.environ.get("AGENTOPTIM_SHOW_TIMER", "0") == "1"
+    celebrate = os.environ.get("AGENTOPTIM_CELEBRATE", "0") == "1"
     
     try:
         # Execute the CLI command
         run_cli()
         
-        # Show execution time if enabled
+        # Show success message or timer
         if show_timer:
             elapsed_time = time.time() - start_time
-            time_str = format_elapsed_time(elapsed_time)
-            
-            # Print execution time with a sparkle for successful commands
-            print(f"\n{Fore.CYAN}✨ Command completed in {time_str}{Style.RESET_ALL}", file=sys.stderr)
+            show_success_animation()
+            show_success_message(command, elapsed_time)
             
             # Show a random tip occasionally (20% chance) after longer commands
             if elapsed_time > 2 and random.random() < 0.2:
@@ -4013,6 +4524,10 @@ def main():
                     border_color=Fore.YELLOW,
                     title_align="left"
                 ), file=sys.stderr)
+        elif celebrate:
+            # Show success message without timer
+            show_success_animation()
+            show_success_message(command)
             
     except KeyboardInterrupt:
         # Handle keyboard interrupt gracefully
@@ -4029,8 +4544,12 @@ def main():
         # Log the error for debugging
         logger.error(f"Error in AgentOptim CLI: {str(e)}", exc_info=True)
         
+        # Check for high contrast mode for better readability
+        high_contrast = os.environ.get("AGENTOPTIM_HIGH_CONTRAST", "0") == "1"
+        error_color = Fore.LIGHTRED_EX if high_contrast else Fore.RED
+        
         # Show error message with a sad face emoji
-        print(f"\n{Fore.RED}😞 Error: {str(e)}{Style.RESET_ALL}", file=sys.stderr)
+        print(f"\n{error_color}😞 Error: {str(e)}{Style.RESET_ALL}", file=sys.stderr)
         
         # Provide helpful suggestions based on the error
         display_helpful_error(e, command)
