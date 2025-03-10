@@ -231,7 +231,7 @@ def setup_parser():
     return parser
 
 
-def handle_output(data: Any, format_type: str, output_file: Optional[str] = None):
+def handle_output(data: Any, format_type: str, output_file: Optional[str] = None, skip_rich_formatting: bool = False):
     """Format and output data according to the specified format and destination."""
     # Check if we're in quiet mode
     quiet_mode = os.environ.get("AGENTOPTIM_QUIET", "0") == "1"
@@ -245,7 +245,7 @@ def handle_output(data: Any, format_type: str, output_file: Optional[str] = None
         import pandas as pd
         df = pd.DataFrame(data)
         formatted_data = df.to_csv(index=False)
-    elif format_type == "table" and isinstance(data, list):
+    elif format_type == "table" and isinstance(data, list) and not skip_rich_formatting:
         # Try to use rich tables if available
         try:
             from rich.console import Console
@@ -265,9 +265,9 @@ def handle_output(data: Any, format_type: str, output_file: Optional[str] = None
                     if column.lower() == "id":
                         table.add_column(column.upper(), style="dim", no_wrap=True)
                     elif "description" in column.lower():
-                        table.add_column(column.title(), style="green")
+                        table.add_column(column.title(), style="green", overflow="fold")
                     elif "name" in column.lower():
-                        table.add_column(column.title(), style="yellow")
+                        table.add_column(column.title(), style="yellow", overflow="fold")
                     elif "questions" in column.lower() or "count" in column.lower():
                         table.add_column(column.title(), style="blue", justify="right")
                     elif "percentage" in column.lower() or "score" in column.lower():
@@ -589,31 +589,76 @@ def run_cli():
                         "questions": len(evalset_data["questions"])
                     })
                 
+                # Sort the evalsets by name for better readability
+                formatted_result.sort(key=lambda x: x["name"].lower())
+                
                 # Add a pretty header if not in quiet mode and using table format
                 quiet_mode = os.environ.get("AGENTOPTIM_QUIET", "0") == "1"
                 if not quiet_mode and args.format == "table":
                     try:
-                        # Try to use rich for a prettier header
+                        # Try to use rich for a prettier header and table
                         from rich.console import Console
                         from rich.panel import Panel
-                        console = Console()
+                        from rich.table import Table
+                        from rich.box import SIMPLE
                         
+                        # Print the header
+                        console = Console()
                         header = f"[bold cyan]Evaluation Sets[/bold cyan]\n[dim]{len(formatted_result)} sets available[/dim]"
                         console.print(Panel(header, expand=False))
+                        
+                        # Create a table with minimal styling that shows full content
+                        table = Table(show_header=True, header_style="bold cyan", box=SIMPLE)
+                        
+                        # Add columns
+                        if len(formatted_result) > 0:
+                            sample_row = formatted_result[0]
+                            for column in sample_row.keys():
+                                # Don't set specific widths to allow full content display
+                                if column.lower() == "id":
+                                    table.add_column(column.upper(), style="dim", no_wrap=True)
+                                elif "description" in column.lower():
+                                    table.add_column(column.title(), style="green", overflow="fold")
+                                elif "name" in column.lower():
+                                    table.add_column(column.title(), style="yellow", overflow="fold")
+                                elif "questions" in column.lower() or "count" in column.lower():
+                                    table.add_column(column.title(), style="blue", justify="right")
+                                else:
+                                    table.add_column(column.title())
+                            
+                            # Add rows
+                            for row in formatted_result:
+                                # Format certain columns specially
+                                formatted_row = []
+                                for col, val in row.items():
+                                    formatted_row.append(str(val))
+                                
+                                table.add_row(*formatted_row)
+                            
+                            # Print the table
+                            console.print(table)
+                        else:
+                            console.print("No evaluation sets found.")
+                        
+                        # Add helpful tips
+                        print("")
+                        print(f"{Fore.CYAN}Tip:{Style.RESET_ALL} Use {Fore.GREEN}agentoptim evalset get <id>{Style.RESET_ALL} to view details of a specific evaluation set")
+                        print(f"{Fore.CYAN}Tip:{Style.RESET_ALL} Use {Fore.GREEN}agentoptim run create <evalset-id> --interactive{Style.RESET_ALL} to run an evaluation")
                     except ImportError:
                         # Fall back to simple ANSI colors
                         print(f"{Fore.CYAN}===== Evaluation Sets ====={Style.RESET_ALL}")
                         print(f"{len(formatted_result)} sets available\n")
-                
-                # Sort the evalsets by name for better readability
-                formatted_result.sort(key=lambda x: x["name"].lower())
-                
-                handle_output(formatted_result, args.format, args.output)
-                
-                # Add a helpful footer for table format
-                if not quiet_mode and args.format == "table" and not args.output:
-                    print(f"\n{Fore.CYAN}Tip:{Style.RESET_ALL} Use {Fore.GREEN}agentoptim evalset get <id>{Style.RESET_ALL} to view details of a specific evaluation set")
-                    print(f"{Fore.CYAN}Tip:{Style.RESET_ALL} Use {Fore.GREEN}agentoptim run create <evalset-id> --interactive{Style.RESET_ALL} to run an evaluation")
+                        
+                        # Use handle_output in this case
+                        handle_output(formatted_result, args.format, args.output)
+                        
+                        # Add helpful tips
+                        print("")
+                        print(f"{Fore.CYAN}Tip:{Style.RESET_ALL} Use {Fore.GREEN}agentoptim evalset get <id>{Style.RESET_ALL} to view details of a specific evaluation set")
+                        print(f"{Fore.CYAN}Tip:{Style.RESET_ALL} Use {Fore.GREEN}agentoptim run create <evalset-id> --interactive{Style.RESET_ALL} to run an evaluation")
+                else:
+                    # For other formats, use handle_output
+                    handle_output(formatted_result, args.format, args.output)
             else:
                 handle_output(result, args.format, args.output)
         
@@ -810,10 +855,11 @@ def run_cli():
                 quiet_mode = os.environ.get("AGENTOPTIM_QUIET", "0") == "1"
                 if not quiet_mode:
                     try:
-                        # Try to use rich for a prettier header
+                        # Try to use rich for a prettier header and table
                         from rich.console import Console
                         from rich.panel import Panel
-                        console = Console()
+                        from rich.table import Table
+                        from rich.box import SIMPLE
                         
                         # Create pagination indicator
                         pagination_text = f"Page {args.page} of {total_pages} • {total_count} total runs"
@@ -822,16 +868,58 @@ def run_cli():
                         if has_next:
                             pagination_text = f"{pagination_text} • Next →"
                             
+                        # Print the header
+                        console = Console()
                         header = f"[bold cyan]Evaluation Runs[/bold cyan]\n[dim]{pagination_text}[/dim]"
                         console.print(Panel(header, expand=False))
+                        
+                        # Create a table with minimal styling that shows full content
+                        table = Table(show_header=True, header_style="bold cyan", box=SIMPLE)
+                        
+                        # Add columns
+                        if len(formatted_eval_runs) > 0:
+                            sample_row = formatted_eval_runs[0]
+                            for column in sample_row.keys():
+                                # Don't set specific widths to allow full content display
+                                if column.lower() == "id":
+                                    table.add_column(column.upper(), style="dim", no_wrap=True)
+                                elif "evalset" in column.lower():
+                                    table.add_column(column.title(), style="green", overflow="fold")
+                                elif "model" in column.lower():
+                                    table.add_column(column.title(), style="yellow")
+                                elif "questions" in column.lower() or "count" in column.lower():
+                                    table.add_column(column.title(), style="blue", justify="right")
+                                elif "score" in column.lower():
+                                    table.add_column(column.title(), style="magenta", justify="right")
+                                elif "date" in column.lower() or "time" in column.lower():
+                                    table.add_column(column.title(), style="cyan")
+                                else:
+                                    table.add_column(column.title())
+                            
+                            # Add rows
+                            for row in formatted_eval_runs:
+                                # Format certain columns specially
+                                formatted_row = []
+                                for col, val in row.items():
+                                    if isinstance(val, float) and "score" in col.lower():
+                                        formatted_row.append(f"{val:.1f}%")
+                                    else:
+                                        formatted_row.append(str(val))
+                                
+                                table.add_row(*formatted_row)
+                            
+                            # Print the table
+                            console.print(table)
+                        else:
+                            console.print("No evaluation runs found.")
                     except ImportError:
                         # Fall back to simple ANSI colors
                         print(f"{Fore.CYAN}===== Evaluation Runs ====={Style.RESET_ALL}")
                         pagination_text = f"Page {args.page} of {total_pages} • {total_count} total runs"
                         print(f"{pagination_text}\n")
-                
-                # Output the formatted table
-                handle_output(formatted_eval_runs, args.format, args.output)
+                        
+                        # Use handle_output with simple table formatting
+                        handle_output(formatted_eval_runs, args.format, args.output)
                 
                 # Add pagination footer if not in quiet mode and not outputting to a file
                 if not quiet_mode and not args.output:
