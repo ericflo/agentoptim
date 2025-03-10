@@ -522,7 +522,7 @@ The following environment variables can be used to configure AgentOptim:
 
 1. **System Templates**: As of v2.0, templates are system-defined and standardized for all EvalSets.
 2. **JSON Response Format**: The evaluation uses a structured JSON format for all responses.
-3. **Confidence Scoring**: Confidence scores range from 0.0 to 1.0, with higher values indicating greater confidence.
+3. **Confidence Scoring**: Confidence scores range from 0.0 to 1.0, with higher values indicating greater confidence. See the [Confidence Elicitation Guide](CONFIDENCE_ELICITATION.md) and [Confidence Visualization Guide](CONFIDENCE_VISUALIZATION.md) for details.
 4. **Parallel Processing**: The tool uses asyncio for parallel processing of evaluation questions.
 5. **Error Handling**: Comprehensive error handling with detailed diagnostic information is provided.
 6. **API Compatibility**: Works with any OpenAI-compatible API endpoint, including local LLM servers and cloud providers.

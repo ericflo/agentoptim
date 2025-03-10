@@ -328,7 +328,7 @@ async def test_run_evalset_omit_reasoning():
     # Create a mock evaluate_question function
     original_evaluate_question = agentoptim.runner.evaluate_question
     
-    async def mock_evaluate_question(conversation, question, template, judge_model, omit_reasoning=False):
+    async def mock_evaluate_question(conversation, question, template, judge_model, omit_reasoning=False, confidence_config=None):
         # Return different results based on omit_reasoning
         if omit_reasoning:
             # No reasoning when omitted
@@ -499,7 +499,7 @@ async def test_run_evalset_max_parallel_limits():
         "calls": 0
     }
     
-    async def mock_evaluate_question(conversation, question, template, judge_model, omit_reasoning=False):
+    async def mock_evaluate_question(conversation, question, template, judge_model, omit_reasoning=False, confidence_config=None):
         # Increment tracking variables
         execution_tracker["current"] += 1
         execution_tracker["calls"] += 1
@@ -627,7 +627,7 @@ async def test_run_evalset_invalid_max_parallel():
     # Create a mock evaluate_question function
     original_evaluate_question = agentoptim.runner.evaluate_question
     
-    async def mock_evaluate_question(conversation, question, template, judge_model, omit_reasoning=False):
+    async def mock_evaluate_question(conversation, question, template, judge_model, omit_reasoning=False, confidence_config=None):
         return EvalResult(
             question=question,
             judgment=True,
@@ -781,7 +781,7 @@ async def test_run_evalset_with_partial_failures():
     # Create a mock evaluate_question function that fails for specific questions
     original_evaluate_question = agentoptim.runner.evaluate_question
     
-    async def mock_evaluate_question(conversation, question, template, judge_model, omit_reasoning=False):
+    async def mock_evaluate_question(conversation, question, template, judge_model, omit_reasoning=False, confidence_config=None):
         if "fail" in question:
             return EvalResult(
                 question=question,

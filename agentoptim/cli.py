@@ -767,6 +767,12 @@ def setup_parser():
                                 help="Maximum parallel evaluations (default: 3)")
     run_create_parser.add_argument("--brief", action="store_true", dest="omit_reasoning",
                                 help="Omit detailed reasoning from results")
+    # Confidence is always enabled, this flag just allows customizing the method
+    run_create_parser.add_argument("--confidence-method", 
+                                choices=["basic_percentage", "basic_float", "basic_letter", "basic_text", 
+                                         "advanced_probability", "combo_exemplars", "multi_guess"],
+                                default="combo_exemplars",
+                                help="Method for confidence score elicitation (default: combo_exemplars)")
     run_create_parser.add_argument("--format", choices=["text", "json", "yaml", "csv"], default="text", 
                                 help="Output format (default: text)")
     run_create_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
@@ -777,13 +783,20 @@ def setup_parser():
     run_create_parser.add_argument("--fancy", action="store_true", 
                                 help="Use extra fancy animations and effects for delight")
                                 
-    # run visualize - NEW visual summary of evaluation results
+    # run visualize - visual summary of evaluation results with confidence visualization
     run_viz_parser = run_subparsers.add_parser("visualize", help="Create visual summaries of evaluation results", aliases=["viz"])
     run_viz_parser.add_argument("eval_run_id", help="ID of run to visualize (or 'latest')")
     run_viz_parser.add_argument("--format", choices=["ascii", "unicode", "emoji"], default="unicode",
                             help="Visualization style (default: unicode)")
     run_viz_parser.add_argument("--color", action="store_true", help="Use colors in visualization")
     run_viz_parser.add_argument("--output", type=str, help="Output file (default: stdout)")
+    run_viz_parser.add_argument("--type", choices=["histogram", "calibration", "distribution", "summary"], default="summary",
+                            help="Type of visualization to create (default: summary)")
+    run_viz_parser.add_argument("--save-image", type=str, help="Save visualization as an image file (for histogram, calibration)")
+    run_viz_parser.add_argument("--compare", help="ID of another run to compare with (for calibration)")
+    run_viz_parser.add_argument("--bins", type=int, default=10, help="Number of bins for histogram (default: 10)")
+    run_viz_parser.add_argument("--export-format", choices=["json", "csv", "html", "markdown"], 
+                            help="Export confidence data in selected format")
     
     # === DEV RESOURCE (Hidden from normal help) ===
     dev_parser = subparsers.add_parser("dev", help=argparse.SUPPRESS)
@@ -2029,9 +2042,15 @@ def run_cli():
                 
                 handle_output(response, args.format, args.output)
         
-        elif args.action in ["get", "export"]:
+        elif args.action in ["get", "export", "visualize", "viz"]:
             # Import run retrieval functions
             from agentoptim.evalrun import get_eval_run, get_formatted_eval_run, list_eval_runs
+            
+            # Import visualization functions if needed
+            if args.action in ["visualize", "viz"]:
+                from agentoptim.visualization import (format_confidence_cli, generate_confidence_histogram,
+                                                    plot_calibration_curve, plot_multi_model_calibration,
+                                                    export_confidence_data)
             
             # Check if user wants the latest run
             if args.eval_run_id.lower() == 'latest':
@@ -2287,6 +2306,573 @@ def run_cli():
                         logger.warning(f"Failed to open comparison in browser: {str(e)}")
             
             # Enhanced export command with more format options
+            elif args.action in ["visualize", "viz"]:
+                # Handle visualization command
+                # Extract confidence scores and judgments from the eval run
+                confidence_scores = []
+                judgments = []
+                for result in eval_run.results:
+                    if "confidence" in result and result["confidence"] is not None:
+                        confidence_scores.append(result["confidence"])
+                        judgments.append(result["judgment"])
+                
+                # Validate that we have confidence scores
+                if not confidence_scores:
+                    print(f"{Fore.RED}Error: No confidence scores found in evaluation run{Style.RESET_ALL}", file=sys.stderr)
+                    print(f"{Fore.YELLOW}Hint: Make sure this evaluation was run with confidence elicitation enabled{Style.RESET_ALL}", file=sys.stderr)
+                    sys.exit(1)
+                
+                # Choose visualization type
+                viz_type = args.type
+                
+                # Handle export-format if provided
+                if args.export_format:
+                    try:
+                        from agentoptim.visualization import export_confidence_data
+                        
+                        # Prepare the data for export
+                        export_path = args.output or f"confidence_data_{eval_run.id}.{args.export_format}"
+                        
+                        # Export the data
+                        exported_data = export_confidence_data(
+                            {"eval_run": eval_run},
+                            output_format=args.export_format,
+                            output_path=export_path
+                        )
+                        
+                        print(f"{Fore.GREEN}✓ Exported confidence data to {export_path} in {args.export_format} format{Style.RESET_ALL}")
+                        
+                        # Try to open the file if it's a viewable format
+                        if args.export_format in ["html", "markdown"]:
+                            try:
+                                if sys.platform == "darwin":  # macOS
+                                    subprocess.run(["open", export_path], check=False)
+                                elif sys.platform == "win32":  # Windows
+                                    os.startfile(export_path)
+                                elif sys.platform.startswith("linux"):  # Linux
+                                    subprocess.run(["xdg-open", export_path], check=False)
+                            except Exception as e:
+                                logger.warning(f"Failed to open exported file: {str(e)}")
+                                
+                    except ImportError as e:
+                        print(f"{Fore.RED}Error: Required packages missing for export: {str(e)}{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}Install with: pip install pandas{Style.RESET_ALL}")
+                        sys.exit(1)
+                    except Exception as e:
+                        print(f"{Fore.RED}Error exporting confidence data: {str(e)}{Style.RESET_ALL}")
+                        sys.exit(1)
+                
+                # Continue with visualization type
+                if viz_type == "histogram":
+                    # Create a histogram of confidence scores
+                    try:
+                        title = f"Confidence Distribution: {eval_run.evalset_name}"
+                        fig = generate_confidence_histogram(
+                            confidence_scores, 
+                            output_path=args.save_image,
+                            title=title,
+                            bins=args.bins,
+                            show_stats=True
+                        )
+                        
+                        # Generate ASCII histogram for terminal display
+                        if args.format == "ascii" or args.format == "unicode":
+                            # Create a simple text-based histogram
+                            bins = args.bins
+                            hist, bin_edges = np.histogram(confidence_scores, bins=bins, range=(0, 1))
+                            max_count = max(hist)
+                            width = 50  # Width of the histogram bars
+                            
+                            # Print header
+                            print(f"\n{Fore.CYAN}Confidence Score Distribution{Style.RESET_ALL}")
+                            print(f"Total samples: {len(confidence_scores)}")
+                            print(f"Mean: {np.mean(confidence_scores):.2f}  Median: {np.median(confidence_scores):.2f}  Std Dev: {np.std(confidence_scores):.2f}")
+                            print("")
+                            
+                            # Print histogram
+                            for i in range(bins):
+                                # Calculate bin range label
+                                bin_start = bin_edges[i]
+                                bin_end = bin_edges[i+1]
+                                bin_label = f"{bin_start:.1f}-{bin_end:.1f}"
+                                
+                                # Calculate bar width
+                                bar_width = int((hist[i] / max_count) * width) if max_count > 0 else 0
+                                
+                                # Choose character based on format
+                                if args.format == "unicode":
+                                    bar_char = "█"
+                                else:
+                                    bar_char = "#"
+                                
+                                # Format with color if requested
+                                if args.color:
+                                    # Gradient color based on bin position
+                                    colors = [Fore.BLUE, Fore.CYAN, Fore.GREEN, Fore.YELLOW, Fore.RED]
+                                    color_idx = min(int(i / bins * len(colors)), len(colors) - 1)
+                                    color = colors[color_idx]
+                                    bar = f"{color}{bar_char * bar_width}{Style.RESET_ALL}"
+                                else:
+                                    bar = bar_char * bar_width
+                                
+                                # Print the bar with count
+                                print(f"{bin_label:8} |{bar} {hist[i]}")
+                        
+                        # Save to file if requested
+                        if args.output:
+                            # Save detailed results as text
+                            with open(args.output, "w") as f:
+                                f.write(f"Confidence Score Distribution\n")
+                                f.write(f"Evaluation: {eval_run.evalset_name}\n")
+                                f.write(f"Date: {eval_run.timestamp}\n\n")
+                                f.write(f"Total samples: {len(confidence_scores)}\n")
+                                f.write(f"Mean: {np.mean(confidence_scores):.4f}\n")
+                                f.write(f"Median: {np.median(confidence_scores):.4f}\n")
+                                f.write(f"Std Dev: {np.std(confidence_scores):.4f}\n")
+                                f.write(f"Min: {min(confidence_scores):.4f}\n")
+                                f.write(f"Max: {max(confidence_scores):.4f}\n\n")
+                                
+                                # Add histogram data
+                                f.write("Histogram Data:\n")
+                                for i in range(bins):
+                                    bin_start = bin_edges[i]
+                                    bin_end = bin_edges[i+1]
+                                    f.write(f"{bin_start:.2f}-{bin_end:.2f}: {hist[i]}\n")
+                            
+                            print(f"{Fore.GREEN}✓ Saved histogram data to {args.output}{Style.RESET_ALL}")
+                        
+                        # If matplotlib figure was created and save_image is specified
+                        if fig is not None and args.save_image:
+                            print(f"{Fore.GREEN}✓ Saved histogram image to {args.save_image}{Style.RESET_ALL}")
+                            # Try to open the image file
+                            try:
+                                if sys.platform == "darwin":  # macOS
+                                    subprocess.run(["open", args.save_image], check=False)
+                                elif sys.platform == "win32":  # Windows
+                                    os.startfile(args.save_image)
+                                elif sys.platform.startswith("linux"):  # Linux
+                                    subprocess.run(["xdg-open", args.save_image], check=False)
+                            except Exception as e:
+                                logger.warning(f"Failed to open image file: {str(e)}")
+                        
+                    except ImportError:
+                        print(f"{Fore.RED}Error: Histogram visualization requires matplotlib and numpy{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}Install with: pip install matplotlib numpy{Style.RESET_ALL}")
+                        sys.exit(1)
+                    except Exception as e:
+                        print(f"{Fore.RED}Error generating histogram: {str(e)}{Style.RESET_ALL}")
+                        sys.exit(1)
+                
+                elif viz_type == "calibration":
+                    # Create a calibration curve
+                    try:
+                        # Check if we should compare with another run
+                        if args.compare:
+                            # Get the comparison run
+                            comparison_run_id = args.compare
+                            if comparison_run_id.lower() == 'latest':
+                                # Skip the current run to get the next most recent
+                                recent_runs, _ = list_eval_runs(page=1, page_size=2)
+                                if len(recent_runs) < 2:
+                                    print(f"{Fore.RED}Error: Not enough evaluation runs for comparison{Style.RESET_ALL}")
+                                    sys.exit(1)
+                                # Use the second most recent run (if current is most recent)
+                                if recent_runs[0]["id"] == eval_run.id and len(recent_runs) > 1:
+                                    comparison_run_id = recent_runs[1]["id"]
+                                else:
+                                    comparison_run_id = recent_runs[0]["id"]
+                            
+                            # Get the comparison run
+                            comparison_run = get_eval_run(comparison_run_id)
+                            if comparison_run is None:
+                                print(f"{Fore.RED}Error: Comparison run with ID '{comparison_run_id}' not found{Style.RESET_ALL}")
+                                sys.exit(1)
+                            
+                            # Extract confidence scores and judgments from comparison run
+                            comparison_confidence = []
+                            comparison_judgments = []
+                            for result in comparison_run.results:
+                                if "confidence" in result and result["confidence"] is not None:
+                                    comparison_confidence.append(result["confidence"])
+                                    comparison_judgments.append(result["judgment"])
+                            
+                            # Create a multi-model calibration plot
+                            model_data = {
+                                eval_run.judge_model or "Run A": (confidence_scores, judgments),
+                                comparison_run.judge_model or "Run B": (comparison_confidence, comparison_judgments)
+                            }
+                            
+                            title = f"Calibration Comparison: {eval_run.evalset_name}"
+                            fig = plot_multi_model_calibration(
+                                model_data,
+                                output_path=args.save_image,
+                                title=title,
+                                num_bins=args.bins
+                            )
+                            
+                            # Create text-based comparison for terminal display
+                            from agentoptim.confidence import calculate_ece
+                            print(f"\n{Fore.CYAN}Calibration Comparison{Style.RESET_ALL}")
+                            print(f"EvalSet: {eval_run.evalset_name}")
+                            print("")
+                            print(f"{'Model':<20} {'ECE':<10} {'Mean Confidence':<15} {'Samples':<10}")
+                            print(f"{'-' * 55}")
+                            
+                            # Run A stats
+                            ece_a = calculate_ece(confidence_scores, judgments)
+                            mean_conf_a = np.mean(confidence_scores)
+                            print(f"{eval_run.judge_model or 'Run A':<20} {ece_a:.4f}{'  (better)' if ece_a < calculate_ece(comparison_confidence, comparison_judgments) else '':10} {mean_conf_a:.4f}{' ':10} {len(confidence_scores):<10}")
+                            
+                            # Run B stats
+                            ece_b = calculate_ece(comparison_confidence, comparison_judgments)
+                            mean_conf_b = np.mean(comparison_confidence)
+                            print(f"{comparison_run.judge_model or 'Run B':<20} {ece_b:.4f}{'  (better)' if ece_b < ece_a else '':10} {mean_conf_b:.4f}{' ':10} {len(comparison_confidence):<10}")
+                            
+                        else:
+                            # Single run calibration curve
+                            title = f"Calibration Curve: {eval_run.evalset_name}"
+                            fig = plot_calibration_curve(
+                                confidence_scores,
+                                judgments,
+                                output_path=args.save_image,
+                                title=title,
+                                num_bins=args.bins,
+                                show_ece=True
+                            )
+                            
+                            # Calculate and display Expected Calibration Error (ECE)
+                            from agentoptim.confidence import calculate_ece, calculate_calibration_curve
+                            ece = calculate_ece(confidence_scores, judgments)
+                            bin_edges, bin_accs, bin_confs, bin_counts = calculate_calibration_curve(
+                                confidence_scores, judgments, args.bins
+                            )
+                            
+                            # Display text-based calibration info
+                            print(f"\n{Fore.CYAN}Calibration Analysis: {eval_run.evalset_name}{Style.RESET_ALL}")
+                            print(f"Judge Model: {eval_run.judge_model}")
+                            print(f"Expected Calibration Error (ECE): {ece:.4f}")
+                            print(f"Mean Confidence: {np.mean(confidence_scores):.4f}")
+                            print(f"Accuracy: {np.mean(judgments):.4f}")
+                            print("")
+                            
+                            # Display calibration data in table format
+                            print(f"{'Bin Range':<15} {'Confidence':<12} {'Accuracy':<12} {'Samples':<10} {'Gap':<10}")
+                            print(f"{'-' * 59}")
+                            for i in range(len(bin_confs)):
+                                if np.isnan(bin_confs[i]) or np.isnan(bin_accs[i]):
+                                    continue
+                                bin_start = bin_edges[i]
+                                bin_end = bin_edges[i+1]
+                                bin_range = f"{bin_start:.2f}-{bin_end:.2f}"
+                                gap = bin_accs[i] - bin_confs[i]
+                                
+                                # Format with color indicators for gap
+                                gap_str = f"{gap:.4f}"
+                                if args.color:
+                                    if abs(gap) < 0.05:
+                                        gap_str = f"{Fore.GREEN}{gap:.4f}{Style.RESET_ALL}"
+                                    elif abs(gap) < 0.1:
+                                        gap_str = f"{Fore.YELLOW}{gap:.4f}{Style.RESET_ALL}"
+                                    else:
+                                        gap_str = f"{Fore.RED}{gap:.4f}{Style.RESET_ALL}"
+                                
+                                print(f"{bin_range:<15} {bin_confs[i]:.4f}{'  ':5} {bin_accs[i]:.4f}{'  ':5} {bin_counts[i]:<10} {gap_str}")
+                        
+                        # Save to file if requested
+                        if args.output:
+                            # Generate detailed calibration report
+                            with open(args.output, "w") as f:
+                                f.write(f"Calibration Analysis\n")
+                                f.write(f"Evaluation: {eval_run.evalset_name}\n")
+                                f.write(f"Date: {eval_run.timestamp}\n")
+                                f.write(f"Judge Model: {eval_run.judge_model}\n\n")
+                                
+                                if args.compare:
+                                    # Comparison report
+                                    f.write(f"Calibration Comparison\n")
+                                    f.write(f"Run A: {eval_run.id} ({eval_run.judge_model})\n")
+                                    f.write(f"Run B: {comparison_run.id} ({comparison_run.judge_model})\n\n")
+                                    
+                                    ece_a = calculate_ece(confidence_scores, judgments)
+                                    ece_b = calculate_ece(comparison_confidence, comparison_judgments)
+                                    
+                                    f.write(f"ECE (Run A): {ece_a:.6f}\n")
+                                    f.write(f"ECE (Run B): {ece_b:.6f}\n")
+                                    f.write(f"Better calibration: {'Run A' if ece_a < ece_b else 'Run B'}\n\n")
+                                    
+                                    f.write(f"Mean confidence (Run A): {np.mean(confidence_scores):.6f}\n")
+                                    f.write(f"Mean confidence (Run B): {np.mean(comparison_confidence):.6f}\n")
+                                else:
+                                    # Single run report
+                                    from agentoptim.confidence import calculate_ece
+                                    ece = calculate_ece(confidence_scores, judgments)
+                                    f.write(f"Expected Calibration Error (ECE): {ece:.6f}\n")
+                                    f.write(f"Mean Confidence: {np.mean(confidence_scores):.6f}\n")
+                                    f.write(f"Accuracy: {np.mean(judgments):.6f}\n\n")
+                                    
+                                    # Add detailed calibration data
+                                    f.write("Calibration Data:\n")
+                                    f.write(f"{'Bin Range':<15} {'Confidence':<12} {'Accuracy':<12} {'Samples':<10} {'Gap':<10}\n")
+                                    f.write(f"{'-' * 59}\n")
+                                    for i in range(len(bin_confs)):
+                                        if np.isnan(bin_confs[i]) or np.isnan(bin_accs[i]):
+                                            continue
+                                        bin_start = bin_edges[i]
+                                        bin_end = bin_edges[i+1]
+                                        bin_range = f"{bin_start:.2f}-{bin_end:.2f}"
+                                        gap = bin_accs[i] - bin_confs[i]
+                                        f.write(f"{bin_range:<15} {bin_confs[i]:.6f}{'  ':5} {bin_accs[i]:.6f}{'  ':5} {bin_counts[i]:<10} {gap:.6f}\n")
+                            
+                            print(f"{Fore.GREEN}✓ Saved calibration data to {args.output}{Style.RESET_ALL}")
+                        
+                        # If matplotlib figure was created and save_image is specified
+                        if fig is not None and args.save_image:
+                            print(f"{Fore.GREEN}✓ Saved calibration image to {args.save_image}{Style.RESET_ALL}")
+                            # Try to open the image file
+                            try:
+                                if sys.platform == "darwin":  # macOS
+                                    subprocess.run(["open", args.save_image], check=False)
+                                elif sys.platform == "win32":  # Windows
+                                    os.startfile(args.save_image)
+                                elif sys.platform.startswith("linux"):  # Linux
+                                    subprocess.run(["xdg-open", args.save_image], check=False)
+                            except Exception as e:
+                                logger.warning(f"Failed to open image file: {str(e)}")
+                    
+                    except ImportError:
+                        print(f"{Fore.RED}Error: Calibration visualization requires matplotlib and numpy{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}Install with: pip install matplotlib numpy{Style.RESET_ALL}")
+                        sys.exit(1)
+                    except Exception as e:
+                        print(f"{Fore.RED}Error generating calibration curve: {str(e)}{Style.RESET_ALL}")
+                        sys.exit(1)
+                
+                elif viz_type == "distribution":
+                    # Generate a table of confidence scores by question
+                    try:
+                        # Get the results with confidence and judgments
+                        results_with_confidence = []
+                        for i, result in enumerate(eval_run.results):
+                            if "confidence" in result and result["confidence"] is not None:
+                                results_with_confidence.append({
+                                    "question": result.get("question", f"Question {i+1}"),
+                                    "judgment": result.get("judgment"),
+                                    "confidence": result.get("confidence"),
+                                    "confidence_method": result.get("confidence_method", "unknown")
+                                })
+                        
+                        # Sort by confidence score (highest to lowest)
+                        results_with_confidence.sort(key=lambda x: x["confidence"], reverse=True)
+                        
+                        # Display the distribution table
+                        print(f"\n{Fore.CYAN}Confidence Score Distribution by Question{Style.RESET_ALL}")
+                        print(f"EvalSet: {eval_run.evalset_name}")
+                        print(f"Judge Model: {eval_run.judge_model}")
+                        print("")
+                        
+                        # Table header
+                        print(f"{'Question':<50} {'Judgment':<10} {'Confidence':<15}")
+                        print(f"{'-' * 75}")
+                        
+                        # Table rows with confidence visualization
+                        for result in results_with_confidence:
+                            # Format confidence with color coding
+                            if args.color:
+                                confidence_str = format_confidence_cli(result["confidence"], result["judgment"])
+                            else:
+                                judgment_str = "Yes" if result["judgment"] else "No"
+                                confidence_str = f"{result['confidence']:.1%}"
+                            
+                            # Truncate question if too long
+                            question = result["question"]
+                            if len(question) > 47:
+                                question = question[:44] + "..."
+                            
+                            print(f"{question:<50} {judgment_str:<10} {confidence_str}")
+                        
+                        # Print summary statistics
+                        print("")
+                        print(f"Total questions with confidence: {len(results_with_confidence)}")
+                        print(f"Mean confidence: {np.mean([r['confidence'] for r in results_with_confidence]):.2f}")
+                        print(f"Median confidence: {np.median([r['confidence'] for r in results_with_confidence]):.2f}")
+                        
+                        # Save to file if requested
+                        if args.output:
+                            # Export as CSV, JSON, or text based on file extension
+                            extension = os.path.splitext(args.output)[1].lower()
+                            
+                            if extension == '.csv':
+                                import csv
+                                with open(args.output, 'w', newline='') as f:
+                                    writer = csv.writer(f)
+                                    writer.writerow(['Question', 'Judgment', 'Confidence', 'Confidence Method'])
+                                    for result in results_with_confidence:
+                                        writer.writerow([
+                                            result['question'],
+                                            'Yes' if result['judgment'] else 'No',
+                                            result['confidence'],
+                                            result['confidence_method']
+                                        ])
+                            elif extension == '.json':
+                                with open(args.output, 'w') as f:
+                                    json.dump({
+                                        "eval_run_id": eval_run.id,
+                                        "evalset_name": eval_run.evalset_name,
+                                        "timestamp": str(eval_run.timestamp),
+                                        "judge_model": eval_run.judge_model,
+                                        "results": results_with_confidence
+                                    }, f, indent=2)
+                            else:
+                                # Plain text format
+                                with open(args.output, 'w') as f:
+                                    f.write(f"Confidence Score Distribution by Question\n")
+                                    f.write(f"EvalSet: {eval_run.evalset_name}\n")
+                                    f.write(f"Judge Model: {eval_run.judge_model}\n")
+                                    f.write(f"Date: {eval_run.timestamp}\n\n")
+                                    
+                                    f.write(f"{'Question':<50} {'Judgment':<10} {'Confidence':<15}\n")
+                                    f.write(f"{'-' * 75}\n")
+                                    for result in results_with_confidence:
+                                        judgment_str = "Yes" if result["judgment"] else "No"
+                                        confidence_str = f"{result['confidence']:.1%}"
+                                        f.write(f"{result['question']:<50} {judgment_str:<10} {confidence_str}\n")
+                                    
+                                    f.write(f"\nTotal questions with confidence: {len(results_with_confidence)}\n")
+                                    f.write(f"Mean confidence: {np.mean([r['confidence'] for r in results_with_confidence]):.4f}\n")
+                                    f.write(f"Median confidence: {np.median([r['confidence'] for r in results_with_confidence]):.4f}\n")
+                            
+                            print(f"{Fore.GREEN}✓ Saved confidence distribution to {args.output}{Style.RESET_ALL}")
+                    
+                    except Exception as e:
+                        print(f"{Fore.RED}Error generating confidence distribution: {str(e)}{Style.RESET_ALL}")
+                        sys.exit(1)
+                
+                elif viz_type == "summary":
+                    # Generate a summary of all confidence metrics
+                    try:
+                        from agentoptim.confidence import calculate_ece
+                        
+                        # Extract the evaluation summary
+                        summary = eval_run.summary or {}
+                        
+                        # Calculate basic confidence metrics if not in summary
+                        mean_confidence = summary.get("mean_confidence", np.mean(confidence_scores) if confidence_scores else None)
+                        mean_yes_confidence = summary.get("mean_yes_confidence")
+                        mean_no_confidence = summary.get("mean_no_confidence")
+                        
+                        # Calculate calibration metrics
+                        ece = calculate_ece(confidence_scores, judgments)
+                        
+                        # Display summary report
+                        print(f"\n{Fore.CYAN}Confidence Summary: {eval_run.evalset_name}{Style.RESET_ALL}")
+                        print(f"Judge Model: {eval_run.judge_model}")
+                        print(f"Date: {eval_run.timestamp}")
+                        print("")
+                        
+                        # Confidence statistics
+                        print(f"{Fore.YELLOW}Confidence Statistics{Style.RESET_ALL}")
+                        print(f"Mean confidence:     {mean_confidence:.4f}")
+                        if mean_yes_confidence is not None:
+                            print(f"Mean yes confidence:  {mean_yes_confidence:.4f}")
+                        if mean_no_confidence is not None:
+                            print(f"Mean no confidence:   {mean_no_confidence:.4f}")
+                        print(f"Confidence variance: {np.var(confidence_scores):.4f}")
+                        print(f"Confidence range:    {min(confidence_scores):.2f} - {max(confidence_scores):.2f}")
+                        print("")
+                        
+                        # Calibration metrics
+                        print(f"{Fore.YELLOW}Calibration Metrics{Style.RESET_ALL}")
+                        print(f"Expected Calibration Error (ECE): {ece:.4f}")
+                        print(f"Accuracy: {np.mean(judgments):.4f}")
+                        
+                        # Confidence-accuracy gap
+                        gap = np.mean(judgments) - mean_confidence
+                        gap_text = f"{gap:.4f}"
+                        if args.color:
+                            if abs(gap) < 0.05:
+                                gap_text = f"{Fore.GREEN}{gap:.4f}{Style.RESET_ALL}"
+                            elif abs(gap) < 0.1:
+                                gap_text = f"{Fore.YELLOW}{gap:.4f}{Style.RESET_ALL}"
+                            else:
+                                gap_text = f"{Fore.RED}{gap:.4f}{Style.RESET_ALL}"
+                        print(f"Confidence-accuracy gap: {gap_text}")
+                        print("")
+                        
+                        # Distribution metrics
+                        print(f"{Fore.YELLOW}Distribution Metrics{Style.RESET_ALL}")
+                        print(f"Distinct confidence values: {len(set([round(c, 2) for c in confidence_scores]))}")
+                        
+                        # Count confidence buckets
+                        buckets = {
+                            "very low (0.0-0.2)": 0,
+                            "low (0.2-0.4)": 0,
+                            "medium (0.4-0.6)": 0,
+                            "high (0.6-0.8)": 0,
+                            "very high (0.8-1.0)": 0
+                        }
+                        
+                        for conf in confidence_scores:
+                            if conf < 0.2:
+                                buckets["very low (0.0-0.2)"] += 1
+                            elif conf < 0.4:
+                                buckets["low (0.2-0.4)"] += 1
+                            elif conf < 0.6:
+                                buckets["medium (0.4-0.6)"] += 1
+                            elif conf < 0.8:
+                                buckets["high (0.6-0.8)"] += 1
+                            else:
+                                buckets["very high (0.8-1.0)"] += 1
+                        
+                        # Display confidence bucket distribution
+                        for bucket, count in buckets.items():
+                            percentage = (count / len(confidence_scores)) * 100 if confidence_scores else 0
+                            print(f"{bucket}: {count} ({percentage:.1f}%)")
+                        
+                        # Save to file if requested
+                        if args.output:
+                            with open(args.output, 'w') as f:
+                                f.write(f"Confidence Summary: {eval_run.evalset_name}\n")
+                                f.write(f"Judge Model: {eval_run.judge_model}\n")
+                                f.write(f"Date: {eval_run.timestamp}\n")
+                                f.write(f"Evaluation ID: {eval_run.id}\n\n")
+                                
+                                # Confidence statistics
+                                f.write(f"CONFIDENCE STATISTICS\n")
+                                f.write(f"Mean confidence:     {mean_confidence:.6f}\n")
+                                if mean_yes_confidence is not None:
+                                    f.write(f"Mean yes confidence:  {mean_yes_confidence:.6f}\n")
+                                if mean_no_confidence is not None:
+                                    f.write(f"Mean no confidence:   {mean_no_confidence:.6f}\n")
+                                f.write(f"Confidence variance: {np.var(confidence_scores):.6f}\n")
+                                f.write(f"Confidence range:    {min(confidence_scores):.6f} - {max(confidence_scores):.6f}\n\n")
+                                
+                                # Calibration metrics
+                                f.write(f"CALIBRATION METRICS\n")
+                                f.write(f"Expected Calibration Error (ECE): {ece:.6f}\n")
+                                f.write(f"Accuracy: {np.mean(judgments):.6f}\n")
+                                f.write(f"Confidence-accuracy gap: {gap:.6f}\n\n")
+                                
+                                # Distribution metrics
+                                f.write(f"DISTRIBUTION METRICS\n")
+                                f.write(f"Distinct confidence values: {len(set([round(c, 2) for c in confidence_scores]))}\n\n")
+                                
+                                # Confidence buckets
+                                f.write(f"CONFIDENCE DISTRIBUTION\n")
+                                for bucket, count in buckets.items():
+                                    percentage = (count / len(confidence_scores)) * 100 if confidence_scores else 0
+                                    f.write(f"{bucket}: {count} ({percentage:.2f}%)\n")
+                                
+                                # Add raw data
+                                f.write(f"\nRAW CONFIDENCE DATA\n")
+                                for i, (conf, jud) in enumerate(zip(confidence_scores, judgments)):
+                                    f.write(f"{i+1}: {conf:.6f} (Judgment: {'Yes' if jud else 'No'})\n")
+                            
+                            print(f"{Fore.GREEN}✓ Saved confidence summary to {args.output}{Style.RESET_ALL}")
+                    
+                    except Exception as e:
+                        print(f"{Fore.RED}Error generating confidence summary: {str(e)}{Style.RESET_ALL}")
+                        sys.exit(1)
+            
             elif args.action == "export":
                 # Validate output file is specified
                 if not args.output:
@@ -2537,6 +3123,14 @@ def run_cli():
                         def progress_callback(completed, total):
                             progress.update(task, completed=completed)
                             
+                        # Configure confidence - always enabled with specified method
+                        confidence_config = {
+                            "enabled": True,
+                            "method": args.confidence_method,
+                            "instructions": f"Also provide your confidence in your judgment on a scale from 0 to 1.",
+                            "inject_instructions": True
+                        }
+                        
                         # Run the evaluation with progress tracking
                         run_result = asyncio.run(run_evalset(
                             evalset_id=args.evalset_id,
@@ -2544,7 +3138,8 @@ def run_cli():
                             judge_model=args.model,
                             max_parallel=args.max_parallel,
                             omit_reasoning=args.omit_reasoning,
-                            progress_callback=progress_callback
+                            progress_callback=progress_callback,
+                            confidence_config=confidence_config
                         ))
                 else:
                     # Use our fancy spinner for a delightful experience
@@ -2556,6 +3151,14 @@ def run_cli():
                         text=f"Evaluating with {model_display}",
                         color=Fore.CYAN
                     ) as spinner:
+                        # Configure confidence - always enabled with specified method
+                        confidence_config = {
+                            "enabled": True,
+                            "method": args.confidence_method,
+                            "instructions": f"Also provide your confidence in your judgment on a scale from 0 to 1.",
+                            "inject_instructions": True
+                        }
+                            
                         # Call the actual evaluation
                         run_result = asyncio.run(run_evalset(
                             evalset_id=args.evalset_id,
@@ -2563,6 +3166,7 @@ def run_cli():
                             judge_model=args.model,
                             max_parallel=args.max_parallel,
                             omit_reasoning=args.omit_reasoning,
+                            confidence_config=confidence_config,
                             progress_callback=lambda completed, total: spinner.update(
                                 f"Evaluating with {model_display} ({completed}/{total} questions)"
                             )

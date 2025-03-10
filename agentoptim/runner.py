@@ -8,6 +8,8 @@ import asyncio
 import logging
 import math
 import re
+import ast
+import traceback
 from typing import Any, Dict, List, Optional, Union, Tuple
 from pydantic import BaseModel, Field
 import jinja2
@@ -203,14 +205,43 @@ async def call_llm_api(
             }
             schema["required"].append("reasoning")
         
-        # Create payload with json_schema format
-        payload["response_format"] = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "judgment_response",
-                "schema": schema
+        # Add JSON schema format based on provider and model compatibility
+        api_base = get_api_base()
+        is_openai = "openai.com" in api_base
+        
+        # Get the model from the payload
+        model_name = payload.get("model", "")
+        
+        if is_openai:
+            # For OpenAI models
+            if model_name and any(supported in model_name for supported in ["gpt-4-turbo", "gpt-4o", "gpt-4-turbo-preview", "gpt-4o-mini"]):
+                # Newer models support the updated schema format
+                payload["response_format"] = {"type": "json_object"}
+                
+                # Add strong instructions for including reasoning
+                payload["messages"][0]["content"] += "\n\nVery important: You MUST include both 'reasoning' and 'confidence' fields in your response."
+            else:
+                # Other models may need the full schema
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "judgment_response",
+                        "schema": schema
+                    }
+                }
+                
+                # Increase max_tokens to ensure full responses
+                if "max_tokens" not in payload or payload["max_tokens"] < 2048:
+                    payload["max_tokens"] = 2048
+        else:
+            # For non-OpenAI models, still include the schema but in a more compatible way
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "judgment_response",
+                    "schema": schema
+                }
             }
-        }
         
         if logit_bias:
             payload["logit_bias"] = logit_bias
@@ -378,7 +409,6 @@ async def call_llm_api(
                     fixed_content = model_content.replace("false", "false")  # This is a no-op but marks it as handled
                     logger.info("Trying to fix unquoted 'false' in model response")
                     # Parse the model's output as Python code and convert to JSON
-                    import ast
                     # Replace all true/false literals with True/False
                     python_fixed = model_content.replace("true", "True").replace("false", "False")
                     try:
@@ -427,7 +457,6 @@ async def call_llm_api(
             logger.error(f"Error calling LLM API: {error_type}: {error_message}")
             
             # Get traceback for more debugging information
-            import traceback
             tb_str = traceback.format_exc()
             logger.error(f"Traceback: {tb_str}")
             
@@ -620,59 +649,80 @@ EXAMPLE RESPONSE FORMAT:
 
 IMPORTANT: Output ONLY this JSON object. Do not include any explanations, comments, or text before or after the JSON. Your entire response should be valid JSON."""
             
-        # Use shorter prompts for long conversations
-        if len(rendered_prompt) > 2000:
-            # Shorten if necessary
-            logger.info("Prompt is very long, shortening for better compatibility")
+        # Check if prompt is very long
+        PROMPT_LENGTH_WARNING_THRESHOLD = 5000
+        OPENAI_LENGTH_LIMIT = 10000  # OpenAI models typically have token limits
+        
+        # Get API provider info
+        api_base = get_api_base()
+        is_openai = "openai.com" in api_base
+        
+        # Handle long prompts based on provider
+        if len(rendered_prompt) > PROMPT_LENGTH_WARNING_THRESHOLD:
+            # Log warning about long prompt
+            logger.warning(f"Prompt is very long ({len(rendered_prompt)} chars) which may affect model performance")
             
-            # Base prompt structure that's common for both with/without reasoning
-            shortened_base = f"""Please evaluate the following question about the SPECIFIC conversation provided below:
-
-### BEGIN CONVERSATION ###
-{formatted_conversation}
-### END CONVERSATION ###
-
-QUESTION: {question}
-
-IMPORTANT: Analyze ONLY the conversation provided between the ### BEGIN CONVERSATION ### and ### END CONVERSATION ### markers. Do not reference any other conversations or prior knowledge.
-
-You MUST provide your evaluation in JSON format with """
-            
-            if omit_reasoning:
-                rendered_prompt = shortened_base + """EXACTLY TWO REQUIRED FIELDS - NO MORE, NO LESS:
-
-1. "judgment": true for Yes, false for No (must be JSON boolean literal: true/false)
-2. "confidence": Number from 0.0 to 1.0 showing your confidence level
-
-Your response must be EXACTLY in this format with NOTHING before or after:
-
-{
-  "judgment": true,
-  "confidence": 0.88
-}
-
-CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON OBJECT. Your entire response must be ONLY the JSON object with NO additional text."""
-            else:
-                rendered_prompt = shortened_base + """EXACTLY THREE REQUIRED FIELDS - NO MORE, NO LESS:
-
-1. "reasoning": A detailed explanation of your reasoning (3-5 sentences), quoting specific parts of the conversation
-2. "judgment": true for Yes, false for No (must be JSON boolean literal: true/false)
-3. "confidence": Number from 0.0 to 1.0 showing your confidence level
-
-Your response must be EXACTLY in this format with NOTHING before or after:
-
-{
-  "reasoning": "The assistant's response directly addresses the user's question by providing specific instructions. The assistant says 'To reset your password, go to settings and click on the Reset button.' This information is clear, accurate, and would enable the user to successfully complete their task without further assistance.",
-  "judgment": true,
-  "confidence": 0.88
-}
-
-CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON OBJECT. Your entire response must be ONLY the JSON object with NO additional text."""
+            # For OpenAI models, if extremely long prompt, apply additional formatting to reduce length
+            if is_openai and len(rendered_prompt) > OPENAI_LENGTH_LIMIT:
+                logger.warning(f"Prompt exceeds OpenAI recommended length limit, applying additional formatting")
+                
+                # Truncate conversation if needed (keep first and last few messages to preserve context)
+                if "### BEGIN CONVERSATION ###" in rendered_prompt and "### END CONVERSATION ###" in rendered_prompt:
+                    start_idx = rendered_prompt.find("### BEGIN CONVERSATION ###")
+                    end_idx = rendered_prompt.find("### END CONVERSATION ###")
+                    
+                    # Only modify if we found both markers
+                    if start_idx >= 0 and end_idx > start_idx:
+                        conversation_text = rendered_prompt[start_idx + 25:end_idx].strip()
+                        
+                        # Split into messages and keep important ones
+                        messages = conversation_text.split("\n\n")
+                        if len(messages) > 4:  # Only truncate if there are enough messages
+                            # Keep first user message, last user message, and response to last user
+                            preserved_messages = []
+                            
+                            # Add first 2 messages (usually system + first user)
+                            preserved_messages.extend(messages[:2])
+                            
+                            # Add "[...conversation truncated...]" marker
+                            preserved_messages.append("[...conversation truncated for length...]")
+                            
+                            # Add last 2-3 messages (usually last user question + assistant response)
+                            preserved_messages.extend(messages[-2:])
+                            
+                            # Replace conversation section
+                            truncated_convo = "\n\n".join(preserved_messages)
+                            new_prompt = (rendered_prompt[:start_idx + 25] + "\n\n" + 
+                                         truncated_convo + "\n\n" + 
+                                         rendered_prompt[end_idx:])
+                            
+                            rendered_prompt = new_prompt
+                            logger.info("Truncated conversation to preserve prompt length limits")
             
         # Create system prompt without f-string issues
         system_content = "You are an expert evaluation assistant that provides detailed, thoughtful judgments in VALID JSON FORMAT ONLY. "
         system_content += f"Your evaluation ID is {eval_id}. "
         system_content += "You analyze ONLY the specific conversation provided to you in each request, not referring to any other conversations or knowledge.\n\n"
+        
+        # Add provider-specific instructions
+        api_base = get_api_base()
+        if "openai.com" in api_base:
+            # Check if we're using newer OpenAI models
+            # Just detect based on judge_model since that's already in scope
+            is_newer_model = judge_model and any(supported in judge_model for supported in 
+                                ["gpt-4-turbo", "gpt-4o", "gpt-4-turbo-preview", "gpt-4o-mini"])
+            
+            if is_newer_model:
+                system_content += "IMPORTANT: Your response MUST be properly formatted JSON with these fields:\n"
+                system_content += "1. 'judgment': a boolean (true/false) answering the question\n"
+                system_content += "2. 'reasoning': a detailed explanation of your judgment (3-5 sentences)\n"
+                system_content += "3. 'confidence': a number between 0.0 and 1.0 indicating your confidence\n\n"
+                system_content += "Example format:\n"
+                system_content += '{\n  "judgment": true,\n  "reasoning": "The assistant\'s response directly addresses...",\n  "confidence": 0.85\n}\n\n'
+                system_content += "DO NOT include any additional text, markdown, or comments - return ONLY the JSON object."
+            
+            # Add additional explanation regardless of model version
+            system_content += "\n\nIMPORTANT: You MUST include a detailed 'reasoning' field in your response."
         system_content += "You MUST ONLY evaluate the exact conversation provided between the ### BEGIN CONVERSATION ### and ### END CONVERSATION ### markers. "
         system_content += "Do not reference details from outside this specific conversation or make assumptions based on other knowledge.\n\n"
         
@@ -795,8 +845,20 @@ CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON 
                                           .replace("None", "null")
                                           .replace("'", '"'))  # Replace single quotes with double quotes
                     
+                    # For OpenAI models, sometimes extract JSON from markdown code blocks
+                    if "```json" in content:
+                        logger.debug("Detected markdown JSON block in response")
+                        # Extract JSON between code blocks
+                        json_blocks = re.findall(r'```(?:json)?\s*([\s\S]*?)```', content)
+                        if json_blocks:
+                            logger.debug(f"Extracted JSON block: {json_blocks[0]}")
+                            sanitized_content = json_blocks[0].strip()
+                    
                     # Add more logging for debugging
                     logger.debug(f"Sanitized content: {sanitized_content}")
+                    
+                    # Initialize judgment_obj to prevent variable access issues
+                    judgment_obj = None
                     
                     # If we have a confidence method, try extracting with that first
                     if confidence_method:
@@ -811,9 +873,10 @@ CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON 
                                 synthetic_json = f'{{"judgment": {judgment_str}, "confidence": {extracted_confidence}}}'
                                 judgment_obj = json.loads(synthetic_json)
                                 logger.debug(f"Successfully extracted using confidence method: {judgment_obj}")
-                    else:
+                    
+                    # If confidence method didn't work or wasn't used, try parsing as JSON
+                    if judgment_obj is None:
                         # First try with the sanitized content since it's more likely to work
-                        judgment_obj = None
                         parse_error = None
                         
                         try:
@@ -832,7 +895,6 @@ CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON 
                                 
                                 # Last resort: try with explicit safe eval for Python dict literals
                                 try:
-                                    import ast
                                     logger.debug("Attempting to parse as Python literal with ast.literal_eval")
                                     # Try to eval it as a Python literal, then convert to proper JSON
                                     python_dict = ast.literal_eval(content)
@@ -885,9 +947,34 @@ CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON 
                         elif "reasoning" in judgment_obj and isinstance(judgment_obj["reasoning"], str):
                             reasoning = judgment_obj["reasoning"]
                         else:
-                            # If reasoning is missing but not intentionally omitted, provide a default explanation
-                            logger.warning("Reasoning missing from model response. Using default reasoning")
-                            reasoning = "No reasoning provided by evaluation model"
+                            # Check for other fields that might contain reasoning
+                            possible_reasoning_fields = [
+                                "rationale", "explanation", "justification", "analysis", 
+                                "reason", "thoughts", "thinking", "explanation"
+                            ]
+                            
+                            # Try to extract reasoning from various fields
+                            for field in possible_reasoning_fields:
+                                if field in judgment_obj and isinstance(judgment_obj[field], str) and len(judgment_obj[field]) > 10:
+                                    reasoning = judgment_obj[field]
+                                    logger.info(f"Using '{field}' field as reasoning")
+                                    break
+                            
+                            # Check if reasoning might be in content outside JSON structure
+                            if not reasoning and len(content) > len(sanitized_content) + 50:
+                                # Look for text patterns that might indicate reasoning
+                                reasoning_pattern = r'(?:reasoning|rationale|explanation|analysis):\s*(.*?)(?:\n\n|\Z)'
+                                reasoning_matches = re.search(reasoning_pattern, content, re.IGNORECASE)
+                                if reasoning_matches:
+                                    potential_reasoning = reasoning_matches.group(1).strip()
+                                    if len(potential_reasoning) > 20:  # Reasonable length for reasoning
+                                        reasoning = potential_reasoning
+                                        logger.info("Extracted reasoning from text outside JSON")
+                            
+                            # If still no reasoning, provide a default explanation
+                            if not reasoning:
+                                logger.warning("Reasoning missing from model response. Using default reasoning")
+                                reasoning = "No reasoning provided by evaluation model"
                         
                         try:
                             # Handle boolean judgment value directly
@@ -919,15 +1006,51 @@ CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON 
                     elif isinstance(judgment_obj, (int, float)):
                         judgment = bool(judgment_obj)
                     else:
-                        # Default to text analysis if JSON doesn't have expected structure
+                        # Default to more balanced text analysis if JSON doesn't have expected structure
                         lower_content = content.lower()
-                        judgment = ("yes" in lower_content or 
-                                   "true" in lower_content or 
-                                   "1" in lower_content or 
-                                   "correct" in lower_content)
+                        
+                        # Count instances of positive and negative indicators
+                        positive_terms = ["yes", "true", "correct", "accurate", "appropriate", "good", "helpful"]
+                        negative_terms = ["no", "false", "incorrect", "inaccurate", "inappropriate", "bad", "unhelpful"]
+                        
+                        # Count occurrences
+                        positive_count = sum(lower_content.count(term) for term in positive_terms)
+                        negative_count = sum(lower_content.count(term) for term in negative_terms)
+                        
+                        if positive_count > negative_count:
+                            judgment = True
+                            logger.info(f"Text analysis found more positive ({positive_count}) than negative ({negative_count}) indicators")
+                        elif negative_count > positive_count:
+                            judgment = False
+                            logger.info(f"Text analysis found more negative ({negative_count}) than positive ({positive_count}) indicators")
+                        else:
+                            # If tied, check for more specific context
+                            judgment_indicators = ["judgment", "evaluation", "assessment", "verdict", "conclusion"]
+                            for indicator in judgment_indicators:
+                                # Look for patterns like "judgment: yes" or "verdict: true"
+                                idx = lower_content.find(indicator)
+                                if idx >= 0:
+                                    # Check the 20 characters following the indicator
+                                    following_text = lower_content[idx:idx+20+len(indicator)]
+                                    if any(term in following_text for term in positive_terms):
+                                        judgment = True
+                                        logger.info(f"Found positive judgment indicator near '{indicator}'")
+                                        break
+                                    elif any(term in following_text for term in negative_terms):
+                                        judgment = False
+                                        logger.info(f"Found negative judgment indicator near '{indicator}'")
+                                        break
+                            else:
+                                # Default to False if completely ambiguous
+                                judgment = False
+                                logger.warning("Could not determine judgment from text, defaulting to False")
                 except json.JSONDecodeError:
                     # Try to parse using regex patterns if JSON parsing fails
                     logger.info("JSON parsing failed, attempting to extract judgment using regex patterns")
+                    
+                    # Initialize judgment and confidence for regex extraction
+                    judgment = None
+                    confidence = None
                     
                     # First try to extract judgment using regex
                     for pattern in judgment_patterns:
@@ -1009,6 +1132,19 @@ CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON 
                            "true" in lower_content or 
                            "1" in lower_content or 
                            "correct" in lower_content)
+                
+                # Try to extract confidence as fallback
+                confidence = None
+                for pattern in confidence_patterns:
+                    match = pattern.search(content)
+                    if match:
+                        try:
+                            conf_str = match.group("confidence")
+                            confidence = min(max(float(conf_str), 0.0), 1.0)  # Clamp to 0-1
+                            logger.info(f"Found fallback confidence '{confidence}' via regex pattern")
+                            break
+                        except ValueError:
+                            pass
             
             # Use verbalized confidence directly from the model
             # This is more consistent across different providers and models
@@ -1120,7 +1256,8 @@ async def run_evalset(
     judge_model: Optional[str] = None,  # Changed to None to trigger model auto-detection
     max_parallel: int = 3,
     omit_reasoning: bool = False,
-    progress_callback: Optional[callable] = None
+    progress_callback: Optional[callable] = None,
+    confidence_config: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Run an EvalSet evaluation on a conversation.
@@ -1132,6 +1269,7 @@ async def run_evalset(
         max_parallel: Maximum number of parallel evaluations
         omit_reasoning: If True, don't generate or include reasoning in results
         progress_callback: Optional callback function for progress updates, called with (completed, total)
+        confidence_config: Optional configuration for confidence score elicitation
     
     Returns:
         Dictionary with evaluation results
@@ -1177,9 +1315,10 @@ async def run_evalset(
         async def process_question(question):
             nonlocal completed_questions
             async with semaphore:
-                # Get confidence configuration from EvalSet if available
-                confidence_cfg = None
-                if hasattr(evalset, 'confidence_config') and evalset.confidence_config:
+                # Get confidence configuration from params or EvalSet if available
+                confidence_cfg = confidence_config
+                # If no confidence config passed, check EvalSet
+                if confidence_cfg is None and hasattr(evalset, 'confidence_config') and evalset.confidence_config:
                     confidence_cfg = evalset.confidence_config.model_dump()
                 
                 result = await evaluate_question(

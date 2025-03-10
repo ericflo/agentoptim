@@ -5,6 +5,31 @@ All notable changes to AgentOptim will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2025-09-15
+
+### Added
+- Comprehensive confidence elicitation and visualization system:
+  - Seven confidence elicitation methods (percentage, float, letter, text, probability, exemplars, multi-guess)
+  - CLI visualization command: `agentoptim run visualize` with multiple output formats
+  - Matplotlib-based visualization functions for confidence histograms and calibration curves
+  - Model comparison visualizations for calibration analysis
+  - Expected Calibration Error (ECE) calculation and display
+  - Confidence score extraction and normalization utilities
+  - Terminal-based visualizations with ASCII/Unicode art and color coding
+  - Export to various formats (CSV, JSON, HTML, Markdown)
+- New module: `visualization.py` with charting and display functions
+- Two new documentation files:
+  - `CONFIDENCE_ELICITATION.md`: Guide to eliciting confidence scores from LLMs
+  - `CONFIDENCE_VISUALIZATION.md`: Guide to visualizing and analyzing confidence data
+- New example: `confidence_visualization.py` demonstrating all visualization features
+
+### Changed
+- Enhanced runner.py to collect and analyze confidence scores
+- Updated EvalSet schema to support confidence elicitation configuration
+- Improved CLI with new visualization options and parameters
+- Enhanced evaluation reports to include confidence metrics
+- Updated documentation to cover confidence elicitation best practices
+
 ## [2.1.1] - 2025-08-03
 
 ### Added

@@ -151,19 +151,19 @@ AgentOptim v2.2.0 will focus on implementing advanced verbalized confidence scor
 - [x] **3.6** Add confidence diversity metrics (distinct values, variance)
 
 ### Phase 4: Visualization & Reporting
-- [ ] **4.1** Add confidence visualization to CLI output
-- [ ] **4.2** Implement calibration curve plotting
-- [ ] **4.3** Create confidence distribution histogram generation
-- [ ] **4.4** Add confidence metrics to evaluation reports
-- [ ] **4.5** Support confidence data in export formats (CSV, JSON, HTML)
-- [ ] **4.6** Design calibration comparison view for multiple models
+- [x] **4.1** Add confidence visualization to CLI output
+- [x] **4.2** Implement calibration curve plotting
+- [x] **4.3** Create confidence distribution histogram generation
+- [x] **4.4** Add confidence metrics to evaluation reports
+- [x] **4.5** Support confidence data in export formats (CSV, JSON, HTML)
+- [x] **4.6** Design calibration comparison view for multiple models
 
 ### Phase 5: Documentation & Examples
-- [ ] **5.1** Write confidence elicitation API documentation
-- [ ] **5.2** Create tutorial with examples of different elicitation methods
-- [ ] **5.3** Add example scripts for confidence evaluation
-- [ ] **5.4** Document best practices for confidence score elicitation
-- [ ] **5.5** Update API reference with confidence-related features
+- [x] **5.1** Write confidence elicitation API documentation
+- [x] **5.2** Create tutorial with examples of different elicitation methods
+- [x] **5.3** Add example scripts for confidence evaluation
+- [x] **5.4** Document best practices for confidence score elicitation
+- [x] **5.5** Update API reference with confidence-related features
 
 Version 2.1.0 completed our architectural simplification by removing the legacy compatibility layer and delivering a clean, modern API:
 
