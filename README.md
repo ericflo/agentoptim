@@ -316,11 +316,11 @@ Version 2.2.0 introduces a revolutionary new tool to the MCP and CLI: a self-opt
    - [ ] **7.6** Document self-optimization capabilities
 
 8. **Testing and Quality Assurance** 🔄
-   - [ ] **8.1** Write unit tests for core components
+   - [x] **8.1** Write unit tests for core components
    - [ ] **8.2** Create integration tests for end-to-end functionality
    - [ ] **8.3** Implement performance benchmarks
    - [ ] **8.4** Test with various LLM providers
-   - [ ] **8.5** Verify error handling for edge cases
+   - [x] **8.5** Verify error handling for edge cases
    - [ ] **8.6** Create test suite for self-optimization functionality
 
 9. **Release Preparation** 🔄
