@@ -20,29 +20,23 @@ from agentoptim.utils import (
 from agentoptim.evalset import get_evalset
 from agentoptim.runner import run_evalset
 from agentoptim.cache import LRUCache, cached
+from agentoptim.constants import (
+    MAX_SYSOPT_RUNS,
+    MAX_CANDIDATES,
+    MAX_SYSTEM_MESSAGE_LENGTH,
+    DEFAULT_NUM_CANDIDATES,
+    DEFAULT_GENERATOR_MODEL,
+    DIVERSITY_LEVELS,
+    DEFAULT_DOMAINS
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Constants
+# Constants for directories
 SYSOPT_DIR = os.path.join(DATA_DIR, "sysopt")
 META_PROMPTS_DIR = os.path.join(SYSOPT_DIR, "meta_prompts")
 RESULTS_DIR = os.path.join(SYSOPT_DIR, "results")
-
-# Maximum number of system message optimization runs to store
-MAX_SYSOPT_RUNS = 500
-
-# Maximum number of candidate system messages per optimization
-MAX_CANDIDATES = 20
-
-# Maximum length for system messages
-MAX_SYSTEM_MESSAGE_LENGTH = 10000
-
-# Default number of candidates to generate
-DEFAULT_NUM_CANDIDATES = 5
-
-# Default LLM for system message generation (should handle structured output well)
-DEFAULT_GENERATOR_MODEL = "gpt-4o-mini"
 
 # Cache for optimization results to improve performance
 SYSOPT_CACHE = LRUCache(capacity=100, ttl=3600)
@@ -105,6 +99,13 @@ class SystemMessageGenerator(BaseModel):
         """Validate the meta prompt isn't too long."""
         if len(v) > MAX_SYSTEM_MESSAGE_LENGTH:
             raise ValueError(f"Meta prompt length exceeds maximum ({len(v)} > {MAX_SYSTEM_MESSAGE_LENGTH})")
+        return v
+        
+    @validator('domain')
+    def validate_domain(cls, v):
+        """Validate the domain is recognized."""
+        if v and v not in DEFAULT_DOMAINS:
+            logger.warning(f"Domain '{v}' is not in the list of recognized domains: {DEFAULT_DOMAINS}")
         return v
 
 class OptimizationRun(BaseModel):
@@ -417,6 +418,23 @@ async def optimize_system_messages(
         # Validate num_candidates
         if not isinstance(num_candidates, int) or num_candidates < 1 or num_candidates > MAX_CANDIDATES:
             return format_error(f"num_candidates must be between 1 and {MAX_CANDIDATES}")
+            
+        # Validate diversity_level
+        if diversity_level not in DIVERSITY_LEVELS:
+            logger.warning(f"Invalid diversity_level '{diversity_level}', using 'medium' instead")
+            diversity_level = "medium"
+            
+        # Validate base_system_message length if provided
+        if base_system_message and len(base_system_message) > MAX_SYSTEM_MESSAGE_LENGTH:
+            return format_error(f"base_system_message length exceeds maximum ({len(base_system_message)} > {MAX_SYSTEM_MESSAGE_LENGTH})")
+            
+        # Validate additional_instructions length if provided
+        if additional_instructions and len(additional_instructions) > 1000:
+            return format_error(f"additional_instructions length exceeds maximum ({len(additional_instructions)} > 1000)")
+            
+        # Validate max_parallel
+        if not isinstance(max_parallel, int) or max_parallel < 1:
+            return format_error(f"max_parallel must be a positive integer, got {max_parallel}")
         
         # Load generator
         generators = get_all_meta_prompts()
