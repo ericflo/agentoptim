@@ -251,6 +251,86 @@ This tool allows you to:
 - Track evaluation history over time
 </details>
 
+# 🚀 AgentOptim v2.2.0 Development Roadmap
+
+## New Feature: Self-Optimizing System Message Tool
+
+Version 2.2.0 introduces a revolutionary new tool to the MCP and CLI: a self-optimizing system message generator that automatically creates, evaluates, and ranks system messages for optimal performance on any given user query.
+
+### 📋 Implementation Plan
+
+1. **Core System Message Generator** 🔄
+   - [ ] **1.1** Design core data model for `optimize_system_messages_tool`
+   - [ ] **1.2** Create system message generation pipeline using meta-prompt
+   - [ ] **1.3** Implement diversity controls for candidate generation
+   - [ ] **1.4** Add support for user-provided base system message as starting point
+   - [ ] **1.5** Develop templating system for domain-specific optimization
+   - [ ] **1.6** Create generator quality metrics
+
+2. **Self-Optimization Mechanism** 🔄
+   - [ ] **2.1** Design internal feedback loop for meta-prompt improvement
+   - [ ] **2.2** Implement versioned storage for generator system messages
+   - [ ] **2.3** Create performance tracking for generator versions
+   - [ ] **2.4** Add automatic optimization trigger based on performance thresholds
+   - [ ] **2.5** Implement domain-specific generator specialization
+   - [ ] **2.6** Add manual trigger for forced self-optimization
+
+3. **Evaluation Integration** 🔄
+   - [ ] **3.1** Connect to existing evaluation system using EvalSets
+   - [ ] **3.2** Implement parallel processing for candidate evaluation
+   - [ ] **3.3** Create detailed scoring and ranking algorithm
+   - [ ] **3.4** Add per-criterion performance breakdown
+   - [ ] **3.5** Implement weighted scoring based on criteria importance
+   - [ ] **3.6** Develop confidence metrics for optimization quality
+
+4. **MCP Tool Implementation** 🔄
+   - [ ] **4.1** Create MCP endpoint in server.py
+   - [ ] **4.2** Design comprehensive parameter validation
+   - [ ] **4.3** Implement error handling with actionable feedback
+   - [ ] **4.4** Add progress tracking and callback mechanism
+   - [ ] **4.5** Create result formatting with multi-level detail
+   - [ ] **4.6** Integrate with persistent storage system
+
+5. **CLI Integration** 🔄
+   - [ ] **5.1** Add `optimize` command to CLI
+   - [ ] **5.2** Implement interactive wizard for optimization goals
+   - [ ] **5.3** Create rich progress visualization
+   - [ ] **5.4** Add export options (JSON, CSV, Markdown)
+   - [ ] **5.5** Implement comparison visualization between candidates
+   - [ ] **5.6** Add self-optimization command and options
+
+6. **Storage and Retrieval** 🔄
+   - [ ] **6.1** Design optimization run storage format
+   - [ ] **6.2** Implement persistent storage for optimization results
+   - [ ] **6.3** Add retrieval functionality by ID
+   - [ ] **6.4** Create list function with filtering options
+   - [ ] **6.5** Support pagination for large result sets
+   - [ ] **6.6** Add comparison functionality between optimization runs
+
+7. **Documentation and Examples** 🔄
+   - [ ] **7.1** Create API documentation for the tool
+   - [ ] **7.2** Update architecture documentation
+   - [ ] **7.3** Write tutorial for system message optimization
+   - [ ] **7.4** Create example scripts demonstrating various use cases
+   - [ ] **7.5** Add visualization examples for optimization results
+   - [ ] **7.6** Document self-optimization capabilities
+
+8. **Testing and Quality Assurance** 🔄
+   - [ ] **8.1** Write unit tests for core components
+   - [ ] **8.2** Create integration tests for end-to-end functionality
+   - [ ] **8.3** Implement performance benchmarks
+   - [ ] **8.4** Test with various LLM providers
+   - [ ] **8.5** Verify error handling for edge cases
+   - [ ] **8.6** Create test suite for self-optimization functionality
+
+9. **Release Preparation** 🔄
+   - [ ] **9.1** Conduct final code review
+   - [ ] **9.2** Update version numbers
+   - [ ] **9.3** Finalize documentation
+   - [ ] **9.4** Create release package
+   - [ ] **9.5** Update PyPI package
+   - [ ] **9.6** Announce release
+
 ## 📚 Documentation Roadmap
 
 We're expanding our documentation to make AgentOptim more accessible and powerful. Here's our roadmap:
