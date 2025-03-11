@@ -57,7 +57,8 @@ def handle_optimize_command(args):
         if asyncio._get_running_loop() is not None:
             # We're already in an async context
             task = sysopt_cli.handle_optimize(args)
-            return asyncio.get_event_loop().run_until_complete(task)
+            result = asyncio.get_event_loop().run_until_complete(task)
+            return result
         else:
             # We need to create a new event loop
             return asyncio.run(sysopt_cli.handle_optimize(args))

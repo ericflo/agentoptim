@@ -218,7 +218,26 @@ def format_optimization_result(result, format_type="text", quiet=False):
         return json.dumps(result, indent=2)
     
     elif format_type == "markdown":
-        return result.get("formatted_message", "No formatted message available")
+        # Generate a markdown formatted result
+        md = "# System Message Optimization Results\n\n"
+        md += f"**ID:** {result.get('id', 'N/A')}\n"
+        md += f"**EvalSet:** {result.get('evalset_name', 'N/A')}\n"
+        md += f"**User Query:** {result.get('user_message', 'N/A')}\n\n"
+        
+        md += f"## Best System Message (Score: {result.get('best_score', 0):.1f}%)\n\n"
+        md += f"```\n{result.get('best_system_message', 'N/A')}\n```\n\n"
+        
+        md += "## All Candidates\n\n"
+        for i, candidate in enumerate(result.get('candidates', [])):
+            md += f"### Candidate {i+1} (Score: {candidate.get('score', 0):.1f}%)\n\n"
+            md += f"```\n{candidate.get('content', 'N/A')}\n```\n\n"
+            
+            md += "#### Criterion Scores\n\n"
+            for criterion, score in candidate.get('criterion_scores', {}).items():
+                md += f"- {criterion}: {score:.1f}%\n"
+            md += "\n"
+        
+        return md
     
     elif format_type == "html":
         html = f"""

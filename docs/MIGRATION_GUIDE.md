@@ -10,9 +10,10 @@ This guide will help you migrate from AgentOptim v1.x (with 5 separate tools) to
 
 The EvalSet architecture offers significant benefits:
 
-1. **Simplified API**: Instead of 5 different tools, you only need to learn and use 2 tools.
+1. **Simplified API**: Instead of 5 different tools, you only need to learn and use 3 tools.
 2. **40% faster performance**: Streamlined architecture with reduced overhead.
 3. **More intuitive**: The API is more aligned with common evaluation workflows.
+4. **System message optimization**: New tool in v2.2.0 for automatically generating and ranking system messages.
 4. **Less error-prone**: Fewer tool calls means fewer opportunities for errors.
 5. **Better maintained**: All new features and improvements are exclusive to the 2-tool architecture.
 

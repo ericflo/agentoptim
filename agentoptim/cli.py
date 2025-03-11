@@ -47,7 +47,7 @@ logging.basicConfig(
 logger = logging.getLogger("agentoptim")
 
 # Constants
-VERSION = "2.1.1"  # Updated with delightful CLI enhancements
+VERSION = "2.2.0"  # Updated with system message optimization tool
 MAX_WIDTH = 100  # Maximum width for formatted output
 
 # ASCII Art Logo

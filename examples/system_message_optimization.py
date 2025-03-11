@@ -1,117 +1,117 @@
 """
-Example of using the system message optimization tool.
+Example demonstrating the system message optimization functionality in AgentOptim v2.2.0.
 
-This example demonstrates how to:
-1. Create an EvalSet for response quality
-2. Optimize system messages for a user query 
-3. Retrieve and review the optimization results
-4. Compare different optimized system messages
+This example shows:
+1. Creating an EvalSet for judging system message performance
+2. Using the system message optimization tool to generate candidates
+3. Examining the optimization results and performance breakdown
+4. Using the optimized system message in a conversation
+
+To run this example:
+1. Make sure you have AgentOptim v2.2.0+ installed
+2. Start the AgentOptim server with: agentoptim server
+3. Run this script with: python system_message_optimization.py
 """
 
 import asyncio
 import json
-from agentoptim import manage_evalset_tool, optimize_system_messages_tool
+from pprint import pprint
+
+from agentoptim.server import manage_evalset_tool, optimize_system_messages_tool
+
 
 async def main():
-    print("🚀 System Message Optimization Example")
-    print("=" * 80)
-    print()
-    
-    # Create an EvalSet for general response quality
-    print("Creating EvalSet for response quality evaluation...")
-    evalset_result = await manage_evalset_tool(
-        action="create",
-        name="Response Quality Evaluation",
-        questions=[
-            "Does the response directly address the user's question?",
-            "Is the response clear and easy to understand?",
-            "Is the response complete, providing all necessary information?",
-            "Is the response accurate and factually correct?",
-            "Is the tone of the response appropriate for the query?",
-            "Would the response likely satisfy the user's needs?",
-            "Does the response avoid unnecessary information?",
-            "Does the response have a logical structure and flow?",
-            "Is the response free of problematic biases?",
-            "Does the response strike a good balance between brevity and completeness?"
-        ],
-        short_description="Comprehensive response quality evaluation criteria",
-        long_description="This EvalSet provides comprehensive evaluation criteria for assessing the quality of AI responses. It measures clarity, completeness, accuracy, helpfulness, and appropriateness of tone. Use it to evaluate and optimize system messages for improved user experience and satisfaction." + " " * 50
-    )
-    
-    # Get the EvalSet ID
-    evalset_id = evalset_result["evalset"]["id"]
-    print(f"Created EvalSet with ID: {evalset_id}")
-    print()
-    
-    # Define a user question to optimize for
-    user_message = "What are the key components of a balanced diet, and how should I adjust my eating habits to improve my overall health?"
-    print(f"User message: {user_message}")
-    print()
-    
-    # Run system message optimization
-    print("Optimizing system messages...")
-    optimization_result = await optimize_system_messages_tool(
-        action="optimize",
-        user_message=user_message,
-        evalset_id=evalset_id,
-        num_candidates=3,  # Generate 3 candidates for this example
-        diversity_level="high",
-        additional_instructions="Focus on creating system messages that help the assistant provide actionable, science-based nutrition advice without overwhelming the user with too much information."
-    )
-    
-    # Get the optimization run ID
-    optimization_run_id = optimization_result["id"]
-    print(f"Optimization completed with ID: {optimization_run_id}")
-    print()
-    
-    # Print the best system message
-    print("🏆 Best System Message:")
-    print("-" * 80)
-    print(optimization_result["best_system_message"])
-    print("-" * 80)
-    print(f"Score: {optimization_result['best_score']}%")
-    print()
-    
-    # Retrieve the optimization run
-    print("Retrieving optimization details...")
-    optimization_details = await optimize_system_messages_tool(
-        action="get",
-        optimization_run_id=optimization_run_id
-    )
-    
-    # Print all candidate scores
-    print("\nAll Candidate Scores:")
-    candidates = optimization_details["optimization_run"]["candidates"]
-    for i, candidate in enumerate(candidates, 1):
-        print(f"Candidate {i}: {candidate['score']}%")
-    
-    # Now run another optimization with a different user message
-    print("\n" + "=" * 80)
-    print("Running another optimization for a different query...")
-    
-    user_message_2 = "How do I troubleshoot a slow internet connection?"
-    optimization_result_2 = await optimize_system_messages_tool(
-        action="optimize",
-        user_message=user_message_2,
-        evalset_id=evalset_id,
-        num_candidates=3
-    )
-    
-    print(f"Second optimization completed with ID: {optimization_result_2['id']}")
-    
-    # List all optimization runs
-    print("\nListing all optimization runs:")
-    all_runs = await optimize_system_messages_tool(
-        action="list",
-        page=1,
-        page_size=10
-    )
-    
-    print(f"Found {all_runs['pagination']['total_count']} optimization runs:")
-    for run in all_runs["optimization_runs"]:
-        print(f"- {run['id']}: {run['user_message'][:40]}...")
-    
-    print("\n✅ Example completed!")
+    """Demonstrate using the system message optimization functionality."""
+    try:
+        print("\n=== 1. Creating an EvalSet for System Message Evaluation ===\n")
+        
+        # Create an evaluation set specifically for judging system messages
+        evalset_result = await manage_evalset_tool(
+            action="create",
+            name="System Message Quality Evaluation",
+            questions=[
+                "Does the system message result in a response that directly addresses the user's query?",
+                "Does the system message help produce a concise response without unnecessary information?",
+                "Does the system message maintain an appropriate tone for this type of query?",
+                "Does the system message guide the model to provide accurate information?",
+                "Does the system message avoid introducing bias or unnecessary limitations?"
+            ],
+            short_description="System message quality evaluation",
+            long_description="This EvalSet measures how well a system message guides an AI to generate helpful, accurate, concise, and appropriate responses to user queries. It evaluates directness, conciseness, tone, accuracy, and lack of bias."
+        )
+        
+        # Extract the EvalSet ID
+        evalset_id = evalset_result["evalset"]["id"]
+        print(f"Created EvalSet with ID: {evalset_id}")
+        
+        print("\n=== 2. Optimizing System Messages for a User Query ===\n")
+        
+        # Define the user query we want to optimize for
+        user_query = "I'm having trouble setting up two-factor authentication on my account. Can you help me?"
+        
+        print(f"Optimizing system messages for query: '{user_query}'")
+        
+        # Run the optimization process
+        optimization_result = await optimize_system_messages_tool(
+            action="optimize",
+            user_query=user_query,
+            num_candidates=3,  # Generate 3 candidate system messages
+            evalset_id=evalset_id,
+            domain="customer_support",  # Specialize for customer support
+            base_system_message="You are a helpful assistant."  # Optional starting point
+        )
+        
+        # Extract the run ID for later reference
+        optimization_run_id = optimization_result["id"]
+        print(f"Optimization completed with run ID: {optimization_run_id}")
+        
+        print("\n=== 3. Examining Optimization Results ===\n")
+        
+        # Get the top candidate
+        top_candidate = optimization_result["candidates"][0]
+        
+        print("Best System Message:")
+        print("-" * 80)
+        print(top_candidate["system_message"])
+        print("-" * 80)
+        
+        print("\nPerformance Breakdown:")
+        for criterion, score in top_candidate["performance"]["criterion_scores"].items():
+            print(f"- {criterion}: {score:.2f}")
+        
+        print(f"\nOverall Score: {top_candidate['performance']['overall_score']:.2f}")
+        print(f"Confidence: {top_candidate['performance']['confidence']:.2f}")
+        
+        print("\n=== 4. Retrieving Past Optimization Results ===\n")
+        
+        # Retrieve the optimization run we just created
+        retrieved_result = await optimize_system_messages_tool(
+            action="get",
+            optimization_run_id=optimization_run_id
+        )
+        
+        print(f"Retrieved optimization run with ID: {retrieved_result['id']}")
+        print(f"Created at: {retrieved_result['created_at']}")
+        print(f"Number of candidates: {len(retrieved_result['candidates'])}")
+        
+        print("\n=== 5. Listing All Optimization Runs ===\n")
+        
+        # List all optimization runs
+        list_result = await optimize_system_messages_tool(
+            action="list",
+            page=1,
+            page_size=10
+        )
+        
+        print(f"Found {list_result['total']} optimization runs")
+        for run in list_result["optimization_runs"]:
+            print(f"- {run['id']}: '{run['user_query']}' ({run['created_at']})")
+        
+        print("\nSystem Message Optimization Example Complete!")
+
+    except Exception as e:
+        print(f"Error: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

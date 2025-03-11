@@ -10,7 +10,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="agentoptim",
-    version="2.1.1",  # Updated for CLI delight enhancements
+    version="2.2.0",  # Updated for system message optimization feature
     author="Eric Florenzano",
     author_email="",
     description="MCP tools for data-driven prompt optimization and evaluation",

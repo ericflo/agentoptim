@@ -1,5 +1,5 @@
 """
-Example showing the evaluation storage and retrieval functionality in AgentOptim v2.1.1.
+Example showing the evaluation storage and retrieval functionality in AgentOptim v2.2.0.
 
 This example demonstrates:
 1. Creating an EvalSet with evaluation criteria
@@ -9,7 +9,7 @@ This example demonstrates:
 5. Comparing results from multiple evaluations
 
 To run this example:
-1. Make sure you have AgentOptim v2.1.1+ installed
+1. Make sure you have AgentOptim v2.2.0+ installed
 2. Start the AgentOptim server with: agentoptim server
 3. Run this script with: python evaluation_storage_example.py
 """

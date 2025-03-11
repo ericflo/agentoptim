@@ -54,11 +54,12 @@ async def test_handle_optimize_command():
         
         # Create a mock loop
         mock_loop = MagicMock()
+        mock_loop.run_until_complete.return_value = 0  # This is what's returned from the function
         mock_get_loop.return_value = mock_loop
         
         # Create a mock sysopt_cli module
         mock_sysopt_cli = MagicMock()
-        mock_sysopt_cli.handle_optimize = MagicMock(return_value=0)
+        mock_sysopt_cli.handle_optimize = MagicMock()  # Just a coroutine mock
         
         # Configure the mocks
         mock_import.return_value = mock_sysopt_cli
@@ -88,6 +89,7 @@ async def test_handle_optimize_command():
         
         # Test when we're not in an async context
         mock_get_running_loop.return_value = None
+        mock_run.return_value = 0  # Set the return value for asyncio.run
         
         # Call handle_optimize_command
         result = handle_optimize_command(mock_args)
