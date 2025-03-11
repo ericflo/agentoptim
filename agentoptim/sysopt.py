@@ -18,7 +18,7 @@ from agentoptim.utils import (
     ValidationError,
 )
 from agentoptim.evalset import get_evalset
-from agentoptim.runner import run_evalset
+from agentoptim.runner import run_evalset, call_llm_api
 from agentoptim.cache import LRUCache, cached
 from agentoptim.constants import (
     MAX_SYSOPT_RUNS,
@@ -40,6 +40,9 @@ RESULTS_DIR = os.path.join(SYSOPT_DIR, "results")
 
 # Cache for optimization results to improve performance
 SYSOPT_CACHE = LRUCache(capacity=100, ttl=3600)
+
+# Cache for generated system messages to avoid duplicate generation
+GENERATOR_CACHE = LRUCache(capacity=50, ttl=1800)
 
 # Ensure required directories exist
 def ensure_sysopt_directories():
@@ -155,6 +158,10 @@ The system messages you generate should:
 5. Vary in different dimensions (style, focus, approach) to provide diverse candidates
 6. Each be between 50-300 words for optimal effectiveness
 
+{diversity_instructions}
+
+{base_system_message_instructions}
+
 For each system message, provide:
 1. The complete system message text
 2. A brief explanation of how this system message would help optimize the AI's response
@@ -223,6 +230,246 @@ def get_all_meta_prompts() -> Dict[str, SystemMessageGenerator]:
                 logger.error(f"Error loading generator from {filename}: {str(e)}")
     
     return generators
+
+# Generate system message candidates
+async def generate_system_messages(
+    user_message: str,
+    num_candidates: int,
+    generator: SystemMessageGenerator,
+    diversity_level: str = "medium",
+    base_system_message: Optional[str] = None,
+    generator_model: Optional[str] = None,
+    additional_instructions: str = ""
+) -> List[SystemMessageCandidate]:
+    """Generate candidate system messages based on a user query.
+    
+    Args:
+        user_message: The user message to generate system messages for
+        num_candidates: Number of system messages to generate
+        generator: The generator to use
+        diversity_level: Level of diversity (low, medium, high)
+        base_system_message: Optional starting system message to build upon
+        generator_model: LLM model to use for generation
+        additional_instructions: Additional instructions for the generator
+        
+    Returns:
+        List of SystemMessageCandidate objects
+    """
+    logger.info(f"Generating {num_candidates} system messages with diversity level: {diversity_level}")
+    
+    # Create a cache key for this generation request
+    cache_key = (user_message, num_candidates, generator.id, generator.version, diversity_level, 
+                base_system_message, additional_instructions)
+    
+    # Check if we have cached results
+    cached_result = GENERATOR_CACHE.get(cache_key)
+    if cached_result is not None:
+        logger.info(f"Using cached system message candidates for {user_message[:30]}...")
+        return cached_result
+    
+    try:
+        # Prepare diversity instructions based on level
+        diversity_instructions = ""
+        if diversity_level == "low":
+            diversity_instructions = """
+            Prioritize consistency and refinement over diversity. The system messages should have 
+            similar approaches, but with small, targeted variations to find the optimal version.
+            Focus on polish and refinement rather than radical differences.
+            """
+        elif diversity_level == "medium":
+            diversity_instructions = """
+            Balance consistency with reasonable diversity. Generate system messages that explore 
+            different approaches while remaining effective. Include some variation in tone, style, 
+            and focus areas.
+            """
+        elif diversity_level == "high":
+            diversity_instructions = """
+            Maximize diversity across all dimensions. Generate system messages with substantially 
+            different approaches, tones, styles, focuses, and strategies. Include varied lengths, 
+            levels of detail, and instruction styles. Ensure each system message represents a 
+            distinctly different approach to the same user query.
+            """
+        
+        # Prepare base system message instructions
+        base_system_message_instructions = ""
+        if base_system_message:
+            base_system_message_instructions = f"""
+            Use the following system message as a starting point or inspiration for some 
+            of your generated system messages, but feel free to modify it or create entirely 
+            different approaches:
+            
+            BASE SYSTEM MESSAGE:
+            {base_system_message}
+            """
+        
+        # Format the meta prompt
+        meta_prompt = generator.meta_prompt.format(
+            user_message=user_message,
+            num_candidates=num_candidates,
+            diversity_instructions=diversity_instructions,
+            base_system_message_instructions=base_system_message_instructions,
+            additional_instructions=additional_instructions
+        )
+        
+        # Create system and user messages for the LLM call
+        messages = [
+            {"role": "system", "content": meta_prompt},
+            {"role": "user", "content": f"Generate {num_candidates} diverse system messages for this user query: {user_message}"}
+        ]
+        
+        # Call the LLM to generate system messages
+        logger.info(f"Calling LLM to generate system messages with model: {generator_model}")
+        response = await call_llm_api(messages=messages, model=generator_model)
+        
+        # Check for errors
+        if "error" in response:
+            error_msg = response["error"]
+            logger.error(f"Error generating system messages: {error_msg}")
+            return []
+        
+        # Parse the response
+        candidates = []
+        try:
+            # Extract the content from the response
+            choice = response["choices"][0] if "choices" in response and response["choices"] else None
+            if not choice:
+                logger.error("No choices in API response")
+                return []
+            
+            content = ""
+            if "message" in choice and "content" in choice["message"]:
+                content = choice["message"]["content"]
+            elif "text" in choice:
+                content = choice["text"]
+            else:
+                logger.error("No content in API response")
+                return []
+            
+            # Extract JSON from the response content
+            # First try to extract JSON block if it's wrapped in ```json ... ``` or similar
+            json_matches = re.findall(r'```(?:json)?\s*([\s\S]*?)```', content)
+            
+            # If we found JSON blocks, use the longest one
+            if json_matches:
+                json_content = max(json_matches, key=len)
+            else:
+                # Otherwise use the whole content
+                json_content = content
+            
+            # Parse the JSON
+            try:
+                data = json.loads(json_content)
+                
+                # Handle both array and object formats
+                if isinstance(data, list):
+                    # It's already a list of candidates
+                    candidate_list = data
+                elif isinstance(data, dict) and "candidates" in data:
+                    # It's an object with a candidates field
+                    candidate_list = data["candidates"]
+                elif isinstance(data, dict) and "system_message" in data:
+                    # It's a single candidate
+                    candidate_list = [data]
+                else:
+                    # Unknown format, try to extract any system messages
+                    candidate_list = []
+                    # Look for anything that might be a system message in the data
+                    for key, value in data.items():
+                        if isinstance(value, str) and len(value) > 20:
+                            candidate_list.append({"system_message": value})
+                
+                # Create SystemMessageCandidate objects
+                for i, candidate_data in enumerate(candidate_list[:num_candidates]):
+                    if isinstance(candidate_data, dict) and "system_message" in candidate_data:
+                        system_message = candidate_data["system_message"]
+                        explanation = candidate_data.get("explanation", "No explanation provided")
+                        
+                        if system_message and isinstance(system_message, str):
+                            candidates.append(SystemMessageCandidate(
+                                content=system_message,
+                                generation_metadata={
+                                    "generator_id": generator.id,
+                                    "generator_version": generator.version,
+                                    "explanation": explanation,
+                                    "diversity_level": diversity_level,
+                                    "generation_index": i
+                                }
+                            ))
+            
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON from response: {e}")
+                logger.debug(f"Content that failed to parse: {json_content}")
+                
+                # Fall back to regex extraction of system messages
+                # Look for system messages using regex patterns
+                system_messages = re.findall(r'"system_message"\s*:\s*"([^"]+)"', json_content.replace('\\"', '__ESCAPED_QUOTE__'))
+                
+                # Replace back the escaped quotes
+                system_messages = [sm.replace('__ESCAPED_QUOTE__', '"') for sm in system_messages]
+                
+                # If we found some system messages, use them
+                if system_messages:
+                    for i, system_message in enumerate(system_messages[:num_candidates]):
+                        candidates.append(SystemMessageCandidate(
+                            content=system_message,
+                            generation_metadata={
+                                "generator_id": generator.id,
+                                "generator_version": generator.version,
+                                "explanation": "Extracted from response using regex",
+                                "diversity_level": diversity_level,
+                                "generation_index": i
+                            }
+                        ))
+                else:
+                    # Last resort: Split by sections that might be system messages
+                    sections = re.split(r'\n\s*\d+\.\s*|\n\s*System Message \d+:\s*|\n\s*Candidate \d+:\s*', content)
+                    filtered_sections = [s.strip() for s in sections if len(s.strip()) > 50]
+                    
+                    for i, section in enumerate(filtered_sections[:num_candidates]):
+                        candidates.append(SystemMessageCandidate(
+                            content=section,
+                            generation_metadata={
+                                "generator_id": generator.id,
+                                "generator_version": generator.version,
+                                "explanation": "Extracted from response using section splitting",
+                                "diversity_level": diversity_level,
+                                "generation_index": i
+                            }
+                        ))
+        
+        except Exception as e:
+            logger.error(f"Error parsing system message candidates: {str(e)}")
+        
+        # If we didn't get enough candidates, generate some fallback ones
+        if len(candidates) < num_candidates:
+            logger.warning(f"Generated only {len(candidates)} candidates, adding fallback candidates")
+            
+            # How many more we need
+            remaining = num_candidates - len(candidates)
+            
+            # Add fallback candidates
+            for i in range(remaining):
+                index = len(candidates) + i
+                candidates.append(SystemMessageCandidate(
+                    content=f"You are a helpful assistant tasked with responding to questions about {user_message[:30]}... Provide accurate, concise, and clear information. Be helpful, precise, and ensure your answers are directly relevant to the query.",
+                    generation_metadata={
+                        "generator_id": generator.id,
+                        "generator_version": generator.version,
+                        "explanation": "Fallback system message due to generation error",
+                        "diversity_level": diversity_level,
+                        "generation_index": index,
+                        "is_fallback": True
+                    }
+                ))
+        
+        # Store in cache for future use
+        GENERATOR_CACHE.put(cache_key, candidates)
+        
+        return candidates
+    
+    except Exception as e:
+        logger.error(f"Error generating system messages: {str(e)}")
+        return []
 
 # Helper function to save a generator
 def save_generator(generator: SystemMessageGenerator) -> bool:
@@ -359,6 +606,56 @@ def list_optimization_runs(
         logger.error(f"Error listing optimization runs: {str(e)}")
         return format_error(f"Error listing optimization runs: {str(e)}")
 
+# Evaluate a system message with an EvalSet
+async def evaluate_system_message(
+    system_message: str,
+    user_message: str,
+    evalset_id: str,
+    judge_model: Optional[str] = None,
+    max_parallel: int = 3,
+    evaluation_timeout: Optional[int] = None
+) -> Dict[str, Any]:
+    """Evaluate a system message with a specific user message using an EvalSet.
+    
+    Args:
+        system_message: The system message to evaluate
+        user_message: The user message to test with
+        evalset_id: The EvalSet ID to use for evaluation
+        judge_model: Optional model to use for judging
+        max_parallel: Maximum number of parallel evaluations
+        evaluation_timeout: Optional timeout in seconds
+        
+    Returns:
+        Dictionary with evaluation results
+    """
+    logger.info(f"Evaluating system message with EvalSet: {evalset_id}")
+    
+    try:
+        # Create conversation with system and user messages
+        conversation = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message}
+        ]
+        
+        # Run evaluation on this conversation
+        result = await run_evalset(
+            evalset_id=evalset_id,
+            conversation=conversation,
+            judge_model=judge_model,
+            max_parallel=max_parallel
+        )
+        
+        # Check for errors
+        if "error" in result:
+            logger.error(f"Error evaluating system message: {result['error']}")
+            return {"error": result["error"]}
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error evaluating system message: {str(e)}")
+        return {"error": str(e)}
+
 # Main optimization function
 async def optimize_system_messages(
     user_message: str,
@@ -446,31 +743,73 @@ async def optimize_system_messages(
         current_step += 1
         update_progress(current_step, total_steps, "Generating system message candidates...")
         
-        # TODO: Implement actual system message generation using the generator
-        # For now, create dummy candidates for the skeleton implementation
-        candidates = []
-        for i in range(num_candidates):
-            candidates.append(SystemMessageCandidate(
-                content=f"You are a helpful assistant that excels at {i+1} tasks related to {user_message[:20]}...",
-                generation_metadata={
-                    "generator_id": generator.id,
-                    "generator_version": generator.version,
-                    "diversity_level": diversity_level,
-                    "generation_index": i
-                }
-            ))
+        # Generate system message candidates
+        candidates = await generate_system_messages(
+            user_message=user_message,
+            num_candidates=num_candidates,
+            generator=generator,
+            diversity_level=diversity_level,
+            base_system_message=base_system_message,
+            generator_model=generator_model,
+            additional_instructions=additional_instructions
+        )
+        
+        if not candidates:
+            logger.error("Failed to generate any system message candidates")
+            return format_error("Failed to generate system message candidates")
+        
+        logger.info(f"Generated {len(candidates)} system message candidates")
         
         # Step 2: Evaluate all candidates
         current_step += 1
         update_progress(current_step, total_steps, "Evaluating system message candidates...")
         
-        # TODO: Implement actual evaluation of candidates
-        # For now, assign random scores for the skeleton implementation
-        import random
-        for i, candidate in enumerate(candidates):
-            candidate.score = random.uniform(60, 95)
-            for j, question in enumerate(evalset.questions):
-                candidate.criterion_scores[f"Question {j+1}"] = random.uniform(0, 1) * 100
+        # Create semaphore for parallel evaluation
+        semaphore = asyncio.Semaphore(max_parallel)
+        total_candidates = len(candidates)
+        completed_evals = 0
+        
+        # Define function to evaluate a single candidate with the semaphore
+        async def evaluate_candidate(i, candidate):
+            nonlocal completed_evals
+            
+            async with semaphore:
+                # Evaluate the candidate
+                evaluation_result = await evaluate_system_message(
+                    system_message=candidate.content,
+                    user_message=user_message,
+                    evalset_id=evalset_id,
+                    judge_model=generator_model,
+                    max_parallel=max_parallel
+                )
+                
+                # Extract overall score and per-question scores
+                if "error" not in evaluation_result:
+                    # Set overall score
+                    candidate.score = evaluation_result.get("summary", {}).get("yes_percentage", 0)
+                    
+                    # Set per-criterion scores
+                    results = evaluation_result.get("results", [])
+                    for j, result in enumerate(results):
+                        question_text = result.get("question", f"Question {j+1}")
+                        judgment = result.get("judgment", False)
+                        score = 100 if judgment else 0
+                        candidate.criterion_scores[question_text] = score
+                else:
+                    logger.error(f"Error evaluating candidate {i+1}: {evaluation_result['error']}")
+                    candidate.score = 0
+                
+                # Update progress
+                completed_evals += 1
+                if progress_callback:
+                    sub_progress = f"Evaluated {completed_evals}/{total_candidates} candidates"
+                    progress_callback(current_step + (completed_evals / total_candidates), total_steps, sub_progress)
+                
+                return candidate
+        
+        # Run all evaluations in parallel with rate limiting
+        evaluation_tasks = [evaluate_candidate(i, candidate) for i, candidate in enumerate(candidates)]
+        await asyncio.gather(*evaluation_tasks)
         
         # Step 3: Rank and select the best candidate
         current_step += 1
