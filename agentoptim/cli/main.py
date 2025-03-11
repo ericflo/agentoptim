@@ -106,12 +106,7 @@ def main():
         if hasattr(args, 'func'):
             # Execute the command
             func = args.func
-            if asyncio.iscoroutinefunction(func):
-                # Run async functions
-                asyncio.run(func(args))
-            else:
-                # Run regular functions
-                func(args)
+            result = func(args)
             
             # Show success message or timer
             if show_timer:

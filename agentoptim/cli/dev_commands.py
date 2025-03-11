@@ -97,7 +97,15 @@ def handle_cache_command(args):
     """Handle the cache command."""
     try:
         # Import relevant modules
-        from agentoptim.cache import get_evalset_cache_stats, get_api_cache_stats, clear_all_caches
+        from agentoptim.cache import get_evalset_cache_stats
+        from agentoptim.runner import get_api_cache_stats
+        
+        # Define a function to clear all caches
+        def clear_all_caches():
+            from agentoptim.cache import evalset_cache, resource_cache
+            evalset_cache.clear()
+            resource_cache.clear()
+            return True
         
         # Clear caches if requested
         if args.clear:
