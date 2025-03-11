@@ -308,10 +308,10 @@ Version 2.2.0 introduces a revolutionary new tool to the MCP and CLI: a self-opt
    - [ ] **6.6** Add comparison functionality between optimization runs
 
 7. **Documentation and Examples** 🔄
-   - [ ] **7.1** Create API documentation for the tool
+   - [x] **7.1** Create API documentation for the tool
    - [ ] **7.2** Update architecture documentation
    - [ ] **7.3** Write tutorial for system message optimization
-   - [ ] **7.4** Create example scripts demonstrating various use cases
+   - [x] **7.4** Create example scripts demonstrating various use cases
    - [ ] **7.5** Add visualization examples for optimization results
    - [ ] **7.6** Document self-optimization capabilities
 
