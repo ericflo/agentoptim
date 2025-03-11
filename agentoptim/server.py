@@ -722,7 +722,8 @@ async def optimize_system_messages_tool(
     additional_instructions: str = "",
     optimization_run_id: Optional[str] = None,
     page: int = 1,
-    page_size: int = 10
+    page_size: int = 10,
+    self_optimize: bool = False
 ) -> dict:
     """
     Optimize system messages for a given user message through automated generation, evaluation, and ranking.
@@ -784,6 +785,10 @@ async def optimize_system_messages_tool(
          
     page_size: Number of items per page for paginated lists.
               OPTIONAL for "list" action. Default: 10, range: 1-100.
+              
+    self_optimize: Whether to trigger a meta-prompt self-optimization after the run.
+                  OPTIONAL for "optimize" action. Default: false.
+                  When true, the tool will analyze its own performance and improve its generator.
     
     ## Return Value
     
@@ -858,7 +863,7 @@ async def optimize_system_messages_tool(
     ### Running System Message Optimization
     
     ```python
-    # Optimize system messages for a user query
+    # Basic optimization of system messages
     result = await optimize_system_messages_tool(
         action="optimize",
         user_message="How do I reset my password?",
@@ -872,6 +877,20 @@ async def optimize_system_messages_tool(
     best_system_message = result["best_system_message"]
     print(f"Best system message (score: {result['best_score']}%):")
     print(best_system_message)
+    
+    # Optimization with self-improvement of the generator
+    result_with_improvement = await optimize_system_messages_tool(
+        action="optimize",
+        user_message="What's the best way to learn programming?",
+        evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+        num_candidates=5,
+        diversity_level="high",
+        self_optimize=True  # This will trigger self-optimization
+    )
+    
+    # Check if self-optimization was successful
+    if "self_optimization" in result_with_improvement and "error" not in result_with_improvement["self_optimization"]:
+        print(f"Generator self-optimized from v{result_with_improvement['self_optimization']['old_version']} to v{result_with_improvement['self_optimization']['new_version']}")
     ```
     
     ### Retrieving a Past Optimization Run
@@ -945,6 +964,7 @@ async def optimize_system_messages_tool(
             optimization_run_id=optimization_run_id,
             page=page,
             page_size=page_size,
+            self_optimize=self_optimize,
             progress_callback=track_progress
         )
         

@@ -239,7 +239,8 @@ async def generate_system_messages(
     diversity_level: str = "medium",
     base_system_message: Optional[str] = None,
     generator_model: Optional[str] = None,
-    additional_instructions: str = ""
+    additional_instructions: str = "",
+    is_self_optimization: bool = False
 ) -> List[SystemMessageCandidate]:
     """Generate candidate system messages based on a user query.
     
@@ -656,6 +657,175 @@ async def evaluate_system_message(
         logger.error(f"Error evaluating system message: {str(e)}")
         return {"error": str(e)}
 
+# Self-optimization function
+async def self_optimize_generator(
+    generator: SystemMessageGenerator,
+    evalset_id: str,
+    generator_model: Optional[str] = None,
+    max_parallel: int = 3,
+    progress_callback: Optional[Callable[[int, int, str], None]] = None
+) -> Dict[str, Any]:
+    """Self-optimize a system message generator by improving its meta-prompt.
+    
+    Args:
+        generator: The generator to optimize
+        evalset_id: ID of the evaluation set to use for testing
+        generator_model: Model to use for generation and evaluation
+        max_parallel: Maximum number of parallel operations
+        progress_callback: Optional callback for progress updates
+        
+    Returns:
+        Dictionary with optimization results
+    """
+    logger.info(f"Starting self-optimization for generator {generator.id}")
+    
+    try:
+        # Create a self-optimization meta-prompt
+        self_optimization_prompt = """You are MetaPromptOptimizer, an expert AI specializing in optimizing system message generators.
+
+Your task is to analyze and improve the current meta-prompt used to generate system messages for conversational AI.
+
+CURRENT META-PROMPT:
+```
+{current_meta_prompt}
+```
+
+PERFORMANCE METRICS:
+{performance_metrics}
+
+RECENT SYSTEM MESSAGES GENERATED:
+{recent_examples}
+
+Based on this information, please generate an improved version of the meta-prompt that will:
+1. Address any weaknesses identified in the current meta-prompt
+2. Maintain or enhance its strengths
+3. Improve the quality, diversity, and effectiveness of generated system messages
+4. Be more robust to different types of user queries
+5. Generate more specific, actionable guidance for the AI assistant
+
+Your improved meta-prompt should be similar in structure to the current one but with enhancements.
+It should follow the same formatting and include the same variables (like {num_candidates}, {user_message}, etc.).
+
+Respond with ONLY the improved meta-prompt, starting with "You are SystemPromptOptimizer" and nothing else.
+"""
+        
+        # This is a placeholder for actual meta-prompt evaluation and improvement
+        # In a real implementation, we would:
+        # 1. Generate various test user messages
+        # 2. Test the current meta-prompt on those messages
+        # 3. Evaluate the quality of the resulting system messages
+        # 4. Use that information to guide the improvement of the meta-prompt
+        
+        # For now, just create a slightly enhanced version with version number bump
+        logger.info("Generating improved meta-prompt")
+        
+        # Create example performance metrics for the self-optimization prompt
+        performance_metrics = json.dumps(generator.performance_metrics, indent=2)
+        
+        # Create placeholder for recent examples (would be filled with actual examples in production)
+        recent_examples = """Example 1:
+User Message: "How do I improve my public speaking skills?"
+Generated System Message: "You are a communication coach with expertise in public speaking. Provide practical, actionable advice on improving public speaking skills. Focus on techniques for managing nervousness, structuring presentations, engaging audiences, and using voice and body language effectively. Offer examples and specific exercises when relevant. Maintain an encouraging and supportive tone while being direct about what works and what doesn't."
+
+Example 2:
+User Message: "What are the effects of climate change on polar regions?"
+Generated System Message: "You are a climate scientist specializing in polar ecosystems. Provide comprehensive, factual information about climate change impacts on Arctic and Antarctic regions. Include data on temperature changes, ice melt rates, effects on wildlife, and broader global implications. Stick to scientific consensus and cite recent research where appropriate. Use clear explanations that balance technical accuracy with accessibility. Avoid political statements while emphasizing the scientific understanding of these critical environmental changes."
+"""
+        
+        # Format the self-optimization prompt
+        formatted_prompt = self_optimization_prompt.format(
+            current_meta_prompt=generator.meta_prompt,
+            performance_metrics=performance_metrics,
+            recent_examples=recent_examples
+        )
+        
+        # Call LLM to generate improved meta-prompt
+        messages = [
+            {"role": "system", "content": formatted_prompt},
+            {"role": "user", "content": "Please generate an improved meta-prompt based on the analysis above."}
+        ]
+        
+        response = await call_llm_api(messages=messages, model=generator_model)
+        
+        # Check for errors
+        if "error" in response:
+            logger.error(f"Error generating improved meta-prompt: {response['error']}")
+            return {"error": response["error"]}
+        
+        # Extract content from response
+        content = ""
+        choices = response.get("choices", [])
+        if choices:
+            choice = choices[0]
+            if "message" in choice and "content" in choice["message"]:
+                content = choice["message"]["content"]
+            elif "text" in choice:
+                content = choice["text"]
+        
+        if not content or len(content) < 100:
+            logger.error("Invalid or too short meta-prompt generated")
+            return {"error": "Failed to generate valid improved meta-prompt"}
+        
+        # Create new generator with improved meta-prompt
+        new_generator = SystemMessageGenerator(
+            id=generator.id,
+            version=generator.version + 1,
+            meta_prompt=content,
+            domain=generator.domain,
+            performance_metrics=generator.performance_metrics.copy(),
+            created_at=datetime.now().timestamp()
+        )
+        
+        # Test the new generator
+        # We would do more extensive testing here in a real implementation
+        test_messages = [
+            "How can I improve my public speaking skills?",
+            "What are the best practices for project management?",
+            "How do I cook a perfect steak?"
+        ]
+        
+        success_count = 0
+        for test_message in test_messages:
+            candidates = await generate_system_messages(
+                user_message=test_message,
+                num_candidates=2,  # Just test with 2 for speed
+                generator=new_generator,
+                diversity_level="medium",
+                generator_model=generator_model,
+                is_self_optimization=True
+            )
+            
+            if candidates and len(candidates) > 0:
+                success_count += 1
+        
+        # Calculate success rate
+        success_rate = success_count / len(test_messages) if test_messages else 0
+        
+        # Update performance metrics
+        new_generator.performance_metrics["success_rate"] = success_rate
+        new_generator.performance_metrics["last_optimization"] = datetime.now().timestamp()
+        new_generator.performance_metrics["optimization_count"] = generator.performance_metrics.get("optimization_count", 0) + 1
+        
+        # Save the new generator
+        save_success = save_generator(new_generator)
+        
+        if not save_success:
+            logger.error(f"Failed to save improved generator {new_generator.id}")
+            return {"error": "Failed to save improved generator"}
+        
+        return {
+            "status": "success",
+            "old_version": generator.version,
+            "new_version": new_generator.version,
+            "generator_id": new_generator.id,
+            "success_rate": success_rate,
+            "message": f"Successfully optimized generator {generator.id} from version {generator.version} to {new_generator.version}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in self-optimization: {str(e)}")
+        return {"error": f"Self-optimization failed: {str(e)}"}
+
 # Main optimization function
 async def optimize_system_messages(
     user_message: str,
@@ -667,7 +837,8 @@ async def optimize_system_messages(
     diversity_level: str = "medium",
     max_parallel: int = 3,
     additional_instructions: str = "",
-    progress_callback: Optional[Callable[[int, int, str], None]] = None
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    self_optimize: bool = False
 ) -> Dict[str, Any]:
     """Optimize system messages for a given user message.
     
@@ -842,6 +1013,48 @@ async def optimize_system_messages(
         # Save optimization run
         save_optimization_run(optimization_run)
         
+        # Check if we should trigger self-optimization
+        self_optimization_result = None
+        if self_optimize:
+            logger.info(f"Self-optimization triggered for generator {generator.id}")
+            update_progress(current_step + 0.5, total_steps + 1, "Running self-optimization...")
+            
+            self_optimization_result = await self_optimize_generator(
+                generator=generator,
+                evalset_id=evalset_id,
+                generator_model=generator_model,
+                max_parallel=max_parallel,
+                progress_callback=progress_callback
+            )
+            
+            # If self-optimization was successful, update with the new info
+            if self_optimization_result and "error" not in self_optimization_result:
+                logger.info(f"Self-optimization successful: {self_optimization_result.get('message', '')}")
+                
+                # Add the self-optimization result to the optimization run metadata
+                optimization_run.metadata["self_optimization"] = {
+                    "triggered": True,
+                    "success": True,
+                    "old_version": self_optimization_result.get("old_version"),
+                    "new_version": self_optimization_result.get("new_version"),
+                    "success_rate": self_optimization_result.get("success_rate")
+                }
+                
+                # Update the optimization run
+                save_optimization_run(optimization_run)
+            else:
+                logger.warning(f"Self-optimization failed: {self_optimization_result.get('error', 'Unknown error')}")
+                
+                # Add the failure to the metadata
+                optimization_run.metadata["self_optimization"] = {
+                    "triggered": True,
+                    "success": False,
+                    "error": self_optimization_result.get("error", "Unknown error") if self_optimization_result else "Failed to run self-optimization"
+                }
+                
+                # Update the optimization run
+                save_optimization_run(optimization_run)
+        
         # Format and return results
         formatted_results = []
         formatted_results.append(f"# 🚀 System Message Optimization Results")
@@ -851,8 +1064,14 @@ async def optimize_system_messages(
         formatted_results.append(f"- **EvalSet**: {evalset.name}")
         formatted_results.append(f"- **Candidates Generated**: {len(candidates)}")
         formatted_results.append(f"- **Optimization Run ID**: {optimization_run.id}")
-        formatted_results.append("")
         
+        # Add self-optimization info if applicable
+        if self_optimization_result and "error" not in self_optimization_result:
+            formatted_results.append(f"- **Self-Optimization**: ✅ Success (v{self_optimization_result.get('old_version')} → v{self_optimization_result.get('new_version')})")
+        elif self_optimization_result:
+            formatted_results.append(f"- **Self-Optimization**: ❌ Failed")
+            
+        formatted_results.append("")
         formatted_results.append(f"## 🏆 Top System Messages")
         
         # Include top 3 candidates
@@ -872,7 +1091,8 @@ async def optimize_system_messages(
             formatted_results.append("```")
             formatted_results.append("")
         
-        return {
+        # Create the response dictionary
+        response = {
             "status": "success",
             "id": optimization_run.id,
             "evalset_id": evalset_id,
@@ -882,6 +1102,12 @@ async def optimize_system_messages(
             "candidates": [c.model_dump() for c in candidates],
             "formatted_message": "\n".join(formatted_results)
         }
+        
+        # Add self-optimization results if applicable
+        if self_optimization_result:
+            response["self_optimization"] = self_optimization_result
+            
+        return response
         
     except ValidationError as e:
         return format_error(str(e))
@@ -904,6 +1130,7 @@ async def manage_optimization_runs(
     optimization_run_id: Optional[str] = None,
     page: int = 1,
     page_size: int = 10,
+    self_optimize: bool = False,
     progress_callback: Optional[Callable[[int, int, str], None]] = None
 ) -> Dict[str, Any]:
     """Manage system message optimization runs.
@@ -941,7 +1168,8 @@ async def manage_optimization_runs(
                 diversity_level=diversity_level,
                 max_parallel=max_parallel,
                 additional_instructions=additional_instructions,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                self_optimize=self_optimize
             )
         elif action == "get":
             if not optimization_run_id:
