@@ -5,6 +5,29 @@ All notable changes to AgentOptim will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [2.2.0] - 2025-09-10 (Planned)
+
+### Added
+- Revolutionary self-optimizing system message tool
+- New `optimize_system_messages_tool` with multiple actions:
+  - `optimize`: Generate, evaluate, and rank system messages for a user query
+  - `get`: Retrieve past optimization results by ID
+  - `list`: Browse all optimization runs with pagination and filtering
+- Automated generation of candidate system messages
+- Per-criterion performance breakdown for system message evaluation
+- Meta-prompt system with versioned storage
+- Domain-specific optimization capabilities
+- Comprehensive validation and error handling
+- Persistent storage for optimization results
+- Python example and interactive shell script
+
+### Changed
+- Enhanced cache statistics to include system message optimizer
+- Improved input validation across all parameters
+- Updated documentation to include system message optimization
+
 ## [2.1.1] - 2025-08-03
 
 ### Added
