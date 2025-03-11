@@ -1,4 +1,4 @@
-"""MCP server implementation for AgentOptim v2.1.0."""
+"""MCP server implementation for AgentOptim v2.2.0."""
 
 import os
 import sys
@@ -15,6 +15,11 @@ from agentoptim.runner import run_evalset, get_api_cache_stats
 from agentoptim.evalrun import (
     EvalRun, save_eval_run, get_eval_run, list_eval_runs, 
     manage_eval_runs, get_formatted_eval_run
+)
+
+# Import System Message Optimization tools
+from agentoptim.sysopt import (
+    manage_optimization_runs, get_sysopt_stats
 )
 
 # Import necessary utilities
@@ -703,6 +708,317 @@ async def manage_eval_runs_tool(
         return error_response
 
 
+@mcp.tool()
+async def optimize_system_messages_tool(
+    action: str,
+    user_message: Optional[str] = None,
+    evalset_id: Optional[str] = None,
+    base_system_message: Optional[str] = None,
+    num_candidates: int = 5,
+    generator_id: str = "default",
+    generator_model: Optional[str] = None,
+    diversity_level: str = "medium",
+    max_parallel: int = 3,
+    additional_instructions: str = "",
+    optimization_run_id: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 10
+) -> dict:
+    """
+    Optimize system messages for a given user message through automated generation, evaluation, and ranking.
+    
+    ## Overview
+    This tool helps find the most effective system message for any given user query by generating
+    multiple candidate system messages, evaluating each one against your evaluation criteria (EvalSet),
+    and ranking them based on performance. It can also self-optimize to continually improve its
+    candidate generation capabilities.
+    
+    ## Actions
+    
+    The tool supports these actions:
+    
+    1. `optimize` - Generate, evaluate, and rank system messages for a user query
+    2. `get` - Retrieve a specific optimization run by ID
+    3. `list` - List all optimization runs with pagination (optionally filtered by EvalSet)
+    
+    ## Arguments
+    
+    action: The operation to perform. Must be one of: "optimize", "get", "list"
+           
+    user_message: The user message/query to optimize system messages for.
+                REQUIRED for "optimize" action.
+                Example: "How do I reset my password?"
+                
+    evalset_id: ID of the EvalSet to use for evaluating candidate system messages.
+              REQUIRED for "optimize" action, optional filter for "list" action.
+              Example: "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
+              
+    base_system_message: Optional starting system message to use as a foundation.
+                      OPTIONAL for "optimize" action.
+                      Example: "You are a helpful assistant that provides clear and accurate information."
+    
+    num_candidates: Number of system message candidates to generate.
+                   OPTIONAL for "optimize" action. Default: 5. Range: 1-20.
+                   
+    generator_id: ID of the system message generator to use.
+                 OPTIONAL for "optimize" action. Default: "default".
+                 
+    generator_model: Model to use for generating candidate system messages.
+                    OPTIONAL for "optimize" action. If not specified, a model will be auto-detected.
+                    
+    diversity_level: Controls how diverse the generated candidates should be.
+                    OPTIONAL for "optimize" action. Values: "low", "medium", "high". Default: "medium".
+                    
+    max_parallel: Maximum number of evaluation questions to process simultaneously.
+                 OPTIONAL for "optimize" action. Default: 3.
+                 
+    additional_instructions: Additional instructions to guide system message generation.
+                           OPTIONAL for "optimize" action.
+                           
+    optimization_run_id: ID of a specific optimization run to retrieve.
+                        REQUIRED for "get" action.
+                        Example: "9f8d7e6a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
+                        
+    page: Page number for paginated list of runs (1-indexed).
+         OPTIONAL for "list" action. Default: 1.
+         
+    page_size: Number of items per page for paginated lists.
+              OPTIONAL for "list" action. Default: 10, range: 1-100.
+    
+    ## Return Value
+    
+    The tool returns a response based on the action performed:
+    
+    ### For "optimize" action
+    
+    ```json
+    {
+      "status": "success",
+      "id": "9f8d7e6a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+      "evalset_id": "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+      "evalset_name": "Response Quality Evaluation",
+      "best_system_message": "You are a technical support assistant specializing in...",
+      "best_score": 92.5,
+      "candidates": [
+        {
+          "content": "You are a technical support assistant specializing in...",
+          "score": 92.5,
+          "criterion_scores": {...},
+          "rank": 1
+        },
+        ...
+      ]
+    }
+    ```
+    
+    ### For "get" action
+    
+    ```json
+    {
+      "status": "success",
+      "optimization_run": {
+        "id": "9f8d7e6a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+        "user_message": "How do I reset my password?",
+        "evalset_id": "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+        "timestamp": 1717286400.0,
+        "candidates": [...],
+        ...
+      }
+    }
+    ```
+    
+    ### For "list" action (with pagination)
+    
+    ```json
+    {
+      "status": "success",
+      "optimization_runs": [
+        {
+          "id": "9f8d7e6a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+          "user_message": "How do I reset my password?",
+          "evalset_id": "6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+          "timestamp": 1717286400.0,
+          ...
+        },
+        ...
+      ],
+      "pagination": {
+        "page": 1,
+        "page_size": 10,
+        "total_count": 25,
+        "total_pages": 3,
+        "has_next": true,
+        ...
+      }
+    }
+    ```
+    
+    ## Usage Examples
+    
+    ### Running System Message Optimization
+    
+    ```python
+    # Optimize system messages for a user query
+    result = await optimize_system_messages_tool(
+        action="optimize",
+        user_message="How do I reset my password?",
+        evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+        num_candidates=5,
+        diversity_level="high"
+    )
+    
+    # Extract the optimization run ID and best system message
+    optimization_run_id = result["id"]
+    best_system_message = result["best_system_message"]
+    print(f"Best system message (score: {result['best_score']}%):")
+    print(best_system_message)
+    ```
+    
+    ### Retrieving a Past Optimization Run
+    
+    ```python
+    # Get a previous optimization run by ID
+    past_optimization = await optimize_system_messages_tool(
+        action="get",
+        optimization_run_id="9f8d7e6a-5b4c-4a3f-8d1e-7f9a6b5c4d3e"
+    )
+    
+    # Access the optimization data
+    run = past_optimization["optimization_run"]
+    print(f"Optimization from {run['timestamp']}")
+    print(f"Best system message: {run['candidates'][0]['content']}")
+    ```
+    
+    ### Listing Optimization Runs
+    
+    ```python
+    # List all optimization runs (paginated)
+    all_runs = await optimize_system_messages_tool(
+        action="list",
+        page=1,
+        page_size=10
+    )
+    
+    # Print summary of runs
+    print(f"Found {all_runs['pagination']['total_count']} optimization runs")
+    for run in all_runs['optimization_runs']:
+        print(f"Run {run['id']}: {run['user_message'][:30]}...")
+    
+    # Filter runs by EvalSet ID
+    filtered_runs = await optimize_system_messages_tool(
+        action="list",
+        evalset_id="6f8d9e2a-5b4c-4a3f-8d1e-7f9a6b5c4d3e",
+        page=1,
+        page_size=10
+    )
+    ```
+    """
+    logger.info(f"optimize_system_messages_tool called with action={action}")
+    
+    # Create progress tracking callback for real-time updates
+    progress_updates = []
+    
+    def track_progress(current: int, total: int, message: str):
+        """Track progress for the optimization process."""
+        progress = {
+            "current": current,
+            "total": total,
+            "percent": round((current / total) * 100, 1),
+            "message": message
+        }
+        progress_updates.append(progress)
+        logger.debug(f"Progress: {progress['percent']}% - {message}")
+    
+    try:
+        # Call the manage_optimization_runs function with progress tracking
+        result = await manage_optimization_runs(
+            action=action,
+            user_message=user_message,
+            evalset_id=evalset_id,
+            base_system_message=base_system_message,
+            num_candidates=num_candidates,
+            generator_id=generator_id,
+            generator_model=generator_model,
+            diversity_level=diversity_level,
+            max_parallel=max_parallel,
+            additional_instructions=additional_instructions,
+            optimization_run_id=optimization_run_id,
+            page=page,
+            page_size=page_size,
+            progress_callback=track_progress
+        )
+        
+        # Add progress updates to the result if available
+        if progress_updates and action == "optimize":
+            result["progress"] = progress_updates
+            
+        return result
+            
+    except Exception as e:
+        logger.error(f"Error in optimize_system_messages_tool: {str(e)}", exc_info=True)
+        error_msg = str(e)
+        error_response = {"error": error_msg}
+        
+        # Enhanced error messages with detailed troubleshooting information
+        if action == "optimize":
+            if "evalset_id" in error_msg and "not found" in error_msg:
+                error_response["details"] = "The evalset_id you provided doesn't exist in the system."
+                error_response["troubleshooting"] = [
+                    "First, use manage_evalset_tool(action=\"list\") to see all available EvalSets",
+                    "Check that you've copied the EvalSet ID correctly, including all hyphens",
+                    "If you need to create a new EvalSet, use manage_evalset_tool(action=\"create\", ...)",
+                    "EvalSet IDs are case-sensitive UUIDs in the format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                ]
+            elif "user_message" in error_msg:
+                error_response["details"] = "The user_message parameter is required for optimization."
+                error_response["troubleshooting"] = [
+                    "Provide a user_message parameter with the query you want to optimize for",
+                    "Make sure the user_message is not empty",
+                    "Try with a specific, clear user query for best results"
+                ]
+            elif "num_candidates" in error_msg:
+                error_response["details"] = "The num_candidates parameter has an invalid value."
+                error_response["troubleshooting"] = [
+                    "num_candidates must be between 1 and 20",
+                    "The recommended range is 3-10 for most use cases",
+                    "Higher values give more options but take longer to evaluate"
+                ]
+            else:
+                # Generic troubleshooting for other errors
+                error_response["troubleshooting"] = [
+                    "Check that your EvalSet exists and has valid questions",
+                    "Verify that the user message is clear and specific",
+                    "Try with default parameters first before customizing",
+                    "Check for proper formatting of all parameters",
+                    "Try setting AGENTOPTIM_DEBUG=1 for more verbose logs"
+                ]
+        elif action == "get":
+            if "optimization_run_id" in error_msg or "not found" in error_msg:
+                error_response["details"] = "The optimization_run_id you provided doesn't exist in the system."
+                error_response["troubleshooting"] = [
+                    "First, use optimize_system_messages_tool(action=\"list\") to see all available optimization runs",
+                    "Check that you've copied the run ID correctly, including all hyphens",
+                    "Run IDs are case-sensitive UUIDs in the format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                ]
+        elif action == "list":
+            if "page" in error_msg or "page_size" in error_msg:
+                error_response["details"] = "Invalid pagination parameters."
+                error_response["troubleshooting"] = [
+                    "page must be a positive integer (1 or greater)",
+                    "page_size must be between 1 and 100",
+                    "Try the default parameters: page=1, page_size=10"
+                ]
+        else:
+            # Generic troubleshooting for other errors
+            error_response["troubleshooting"] = [
+                "Check the action parameter: must be one of 'optimize', 'get', or 'list'",
+                "For 'optimize', make sure user_message and evalset_id are provided",
+                "For 'get', make sure optimization_run_id is provided",
+                "For 'list', both page and page_size are optional (default: page=1, page_size=10)"
+            ]
+        
+        return error_response
+
 def get_cache_stats() -> dict:
     """
     Get statistics about the caching system for monitoring and diagnostics.
@@ -718,6 +1034,7 @@ def get_cache_stats() -> dict:
     evalset_stats = get_cache_statistics()
     api_stats = get_api_cache_stats()
     evalruns_stats = get_eval_runs_cache_stats()
+    sysopt_stats = get_sysopt_stats()
     
     # Calculate overall stats
     total_hits = evalset_stats["hits"] + api_stats["hits"] + evalruns_stats["hits"]
@@ -753,6 +1070,10 @@ def get_cache_stats() -> dict:
         f"- Evictions: {evalruns_stats['evictions']}",
         f"- Expirations: {evalruns_stats['expirations']}",
         "",
+        "## System Optimization Stats",
+        f"- Total Optimization Runs: {sysopt_stats.get('total_optimization_runs', 0)}",
+        f"- Total Generators: {sysopt_stats.get('total_generators', 0)}",
+        "",
         "## Overall Performance",
         f"- Combined Hit Rate: {round(overall_hit_rate, 2)}%",
         f"- Total Hits: {total_hits}",
@@ -765,6 +1086,7 @@ def get_cache_stats() -> dict:
         "evalset_cache": evalset_stats,
         "api_cache": api_stats,
         "evalrun_cache": evalruns_stats,
+        "sysopt_stats": sysopt_stats,
         "overall": {
             "hit_rate_pct": round(overall_hit_rate, 2),
             "total_hits": total_hits,
