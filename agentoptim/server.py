@@ -42,8 +42,8 @@ logging.basicConfig(
 
 # Add environment info to log
 logger = logging.getLogger("agentoptim")
-logger.info(f"Logging to {log_file_path}")
-logger.info(f"Debug mode: {DEBUG_MODE}")
+logger.debug(f"Logging to {log_file_path}")
+logger.debug(f"Debug mode: {DEBUG_MODE}")
 
 # Initialize FastMCP server
 mcp = FastMCP("agentoptim")
