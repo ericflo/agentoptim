@@ -4,7 +4,7 @@
 Agentoptim command-line interface launcher.
 """
 
-from agentoptim.cli import main
+from agentoptim.cli.main import main
 
 if __name__ == "__main__":
     main()

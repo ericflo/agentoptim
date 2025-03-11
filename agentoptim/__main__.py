@@ -10,8 +10,8 @@ This module serves as the entry point for both:
 Run 'python -m agentoptim --help' for usage information.
 """
 
-# Import the CLI implementation
-from agentoptim.cli import main
+# Import the CLI implementation from the new modular structure
+from agentoptim.cli.main import main
 
 # Run main function when module is executed directly
 if __name__ == "__main__":
