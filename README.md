@@ -328,7 +328,6 @@ Version 2.2.0 introduces a revolutionary new tool to the MCP and CLI: a self-opt
    - [ ] **9.2** Update version numbers
    - [x] **9.3** Finalize documentation
    - [ ] **9.4** Create release package
-   - [ ] **9.5** Update PyPI package
    - [ ] **9.6** Announce release
 
 ## 📚 Documentation Roadmap
