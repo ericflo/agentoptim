@@ -1279,74 +1279,33 @@ async def optimize_system_messages(
         for i, candidate in enumerate(candidates):
             candidate.rank = i + 1
         
-        # Generate sample responses for top candidates
-        update_progress(current_step + 0.5, total_steps, "Generating sample responses for top candidates...")
+        # Convert previously generated responses into sample responses format
+        update_progress(current_step + 0.5, total_steps, "Formatting sample responses...")
         
         # Store responses for each candidate
         sample_responses = {}
         
-        # Generate sample responses for top 3 candidates only to save time/cost
+        # Use the top 3 candidates only (consistent with previous behavior)
         top_candidates = candidates[:min(3, len(candidates))]
         total_candidates = len(top_candidates)
         
-        # Only log details in debug mode to avoid spamming the console
-        if DEBUG_MODE:
-            logger.info(f"Generating sample responses for {total_candidates} top candidates")
+        logger.info(f"Converting previously generated responses for {total_candidates} top candidates to sample format")
         
         for i, candidate in enumerate(top_candidates):
-            # Update progress for each candidate (equally divide the remaining progress)
+            # Update progress for each candidate
             candidate_progress = current_step + 0.5 + ((i+1) / total_candidates) * 0.5
-            update_progress(candidate_progress, total_steps, f"Generating sample response {i+1}/{total_candidates}...")
+            update_progress(candidate_progress, total_steps, f"Processing response {i+1}/{total_candidates}...")
             
             try:
-                # Create messages for the API call
-                messages = [
-                    {"role": "system", "content": candidate.content},
-                    {"role": "user", "content": user_message}
-                ]
+                # Get the already generated response from candidate_responses
+                content = candidate_responses.get(str(i), "")
                 
-                # Call the API directly to get a natural response (without JSON schema)
-                from agentoptim.runner import get_api_base
+                if not content or content.startswith("Error:"):
+                    if DEBUG_MODE:
+                        logger.warning(f"No valid response found for candidate {i+1}, using placeholder")
+                    content = "No valid response was generated for this candidate."
                 
-                # Create basic payload for a normal text response
-                payload = {
-                    "model": generator_model or DEFAULT_GENERATOR_MODEL,
-                    "messages": messages,
-                    "temperature": 0.7,
-                    "max_tokens": 1024
-                }
-                
-                # Configure headers
-                headers = {"Content-Type": "application/json"}
-                
-                # Add authentication based on API base
-                api_base = get_api_base()
-                openai_api_key = os.environ.get("OPENAI_API_KEY")
-                anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
-                
-                if "openai.com" in api_base and openai_api_key:
-                    headers["Authorization"] = f"Bearer {openai_api_key}"
-                elif "anthropic.com" in api_base and anthropic_api_key:
-                    headers["x-api-key"] = anthropic_api_key
-                
-                # Detailed logging only in debug mode
-                if DEBUG_MODE:
-                    logger.info(f"Calling API for sample response {i+1}/{total_candidates}")
-                
-                with httpx.Client(timeout=30) as client:
-                    response = client.post(
-                        f"{api_base}/chat/completions",
-                        json=payload,
-                        headers=headers
-                    )
-                    response_data = response.json()
-                
-                # Extract response content
-                content = ""
-                if "choices" in response_data and response_data["choices"]:
-                    content = response_data["choices"][0].get("message", {}).get("content", "")
-                
-                # Store the result with more context about which system message generated it
+                # Store the result with the same format as before
                 sample_responses[str(i)] = {
                     "model": generator_model or DEFAULT_GENERATOR_MODEL,
                     "content": content,
@@ -1357,15 +1316,14 @@ async def optimize_system_messages(
                     "score": candidate.score
                 }
                 
-                # Only log details in debug mode
                 if DEBUG_MODE:
-                    logger.info(f"Generated sample response {i+1}/{total_candidates}")
+                    logger.info(f"Processed sample response {i+1}/{total_candidates}")
                 
             except Exception as e:
                 if DEBUG_MODE:
-                    logger.error(f"Error generating sample response for candidate {i+1}: {str(e)}")
+                    logger.error(f"Error processing sample response for candidate {i+1}: {str(e)}")
                 sample_responses[str(i)] = {
-                    "error": f"Failed to generate response: {str(e)}",
+                    "error": f"Failed to process response: {str(e)}",
                     "candidate_index": i,
                     "candidate_rank": candidate.rank
                 }
