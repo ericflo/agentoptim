@@ -806,8 +806,6 @@ async def handle_optimize_get(args):
         
         # Generate a sample response if requested
         if args.generate_response:
-            # Debug information
-            print(f"{Fore.YELLOW}DEBUG: Optimization run keys: {list(optimization_run.keys())}{Style.RESET_ALL}")
             
             # Configure environment variables for provider and model
             if args.provider:
@@ -870,10 +868,12 @@ async def handle_optimize_get(args):
                     {"role": "user", "content": user_message}
                 ]
                 
-                # Call the API
+                # Call the API - without a JSON schema for a more natural response
                 response = await call_llm_api(
                     messages=messages,
-                    model=args.model
+                    model=args.model,
+                    json_schema=None,  # Explicitly disable JSON schema
+                    temperature=0.7    # Add some creativity for a natural response
                 )
                 
                 # Extract the response content
