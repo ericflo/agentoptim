@@ -6,10 +6,12 @@ import json
 import asyncio
 import argparse
 import logging
+import time
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 from colorama import Fore, Back, Style, init as init_colorama
+from agentoptim.cli.core import FancySpinner
 
 from agentoptim.utils import DATA_DIR, ensure_data_directories
 from agentoptim.sysopt.core import (
@@ -764,108 +766,4 @@ async def handle_optimize(args):
         print(f"{Fore.RED}Error: Unknown action '{args.action}'{Style.RESET_ALL}")
         return 1
 
-# FancySpinner class for progress display
-# This would normally be imported from the main CLI module
-class FancySpinner:
-    """A spinner class for showing progress with ETA calculation."""
-    
-    def __init__(self):
-        """Initialize the spinner."""
-        self.running = False
-        self.thread = None
-        self.frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        self.message = ""
-        self.current_frame = 0
-        self.percent = 0
-        self.start_time = None
-        self.last_update_time = None
-        
-    def update(self, message=None, percent=None):
-        """Update the spinner message and/or percent."""
-        if message:
-            self.message = message
-        if percent is not None:
-            self.percent = percent
-        self.last_update_time = time.time()
-        
-    def _eta_text(self):
-        """Calculate and format ETA based on progress."""
-        if self.percent <= 0 or self.start_time is None:
-            return "calculating..."
-            
-        elapsed = time.time() - self.start_time
-        if self.percent >= 100:
-            return f"{int(elapsed)}s total"
-            
-        total_estimated = elapsed / (self.percent / 100)
-        remaining = total_estimated - elapsed
-        
-        if remaining < 60:
-            return f"~{int(remaining)}s remaining"
-        elif remaining < 3600:
-            return f"~{int(remaining / 60)}m {int(remaining % 60)}s remaining"
-        else:
-            return f"~{int(remaining / 3600)}h {int((remaining % 3600) / 60)}m remaining"
-    
-    def _spin(self):
-        """Spinner animation function that runs in a thread."""
-        import time
-        import sys
-        
-        self.start_time = time.time()
-        self.last_update_time = self.start_time
-        
-        try:
-            while self.running:
-                progress_bar = ""
-                if self.percent > 0:
-                    filled_len = int(20 * self.percent / 100)
-                    progress_bar = f"[{'=' * filled_len}{' ' * (20 - filled_len)}] {self.percent}% {self._eta_text()}"
-                
-                # Construct the spinner line
-                frame = self.frames[self.current_frame]
-                line = f"{Fore.CYAN}{frame}{Style.RESET_ALL} {self.message} {Fore.YELLOW}{progress_bar}{Style.RESET_ALL}"
-                
-                # Clear line and print spinner
-                sys.stdout.write("\r\033[K" + line)
-                sys.stdout.flush()
-                
-                # Update frame
-                self.current_frame = (self.current_frame + 1) % len(self.frames)
-                
-                # Sleep briefly
-                time.sleep(0.1)
-                
-        except:
-            # Handle any exceptions to prevent thread crashes
-            pass
-            
-    def start(self, message="Processing..."):
-        """Start the spinner with an initial message."""
-        if self.running:
-            return
-            
-        self.message = message
-        self.running = True
-        
-        # Import in method to avoid circular import
-        import threading
-        import time
-        
-        self.thread = threading.Thread(target=self._spin)
-        self.thread.daemon = True
-        self.thread.start()
-        
-    def stop(self):
-        """Stop the spinner and clean up."""
-        if not self.running:
-            return
-            
-        self.running = False
-        if self.thread:
-            self.thread.join(timeout=0.5)
-            
-        # Clear the line and print a final message
-        import sys
-        sys.stdout.write("\r\033[K")
-        sys.stdout.flush()
+# FancySpinner is now imported from agentoptim.cli.core

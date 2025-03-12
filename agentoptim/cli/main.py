@@ -72,6 +72,14 @@ def main():
         from agentoptim.cli.evalset_commands import setup_evalset_parser
         from agentoptim.cli.run_commands import setup_run_parser
         
+        # Try to import the optimize_commands module
+        try:
+            from agentoptim.cli.optimize_commands import setup_optimize_parser
+            has_optimize_commands = True
+        except ImportError:
+            has_optimize_commands = False
+            logger.debug("optimize_commands module not available for direct import")
+        
         # Register server commands
         setup_server_parser(subparsers)
         
@@ -84,14 +92,50 @@ def main():
         # Register run commands
         setup_run_parser(subparsers)
         
+        # Register optimize commands if available
+        if has_optimize_commands:
+            setup_optimize_parser(subparsers)
+            logger.debug("Registered optimize commands directly")
+        
         # Import CLI hooks to register extensions
         from agentoptim import cli_hooks
         
-        # Load built-in extensions
-        cli_hooks.load_builtin_extensions()
-        
-        # Apply extensions to register commands
-        applied_extensions = cli_hooks.apply_extensions(subparsers)
+        # For optimize commands in particular, we'll skip the hook registration if we registered directly
+        if has_optimize_commands:
+            # Register only non-optimize extensions
+            logger.debug("Using direct optimize commands - skip sysopt extension")
+            def filtered_apply_extensions(subparsers):
+                """Apply extensions but skip sysopt that we registered directly."""
+                all_extensions = cli_hooks._CLI_EXTENSION_HOOKS.copy()
+                if 'sysopt' in all_extensions:
+                    del all_extensions['sysopt']
+                
+                applied = []
+                for name, hook_func in all_extensions.items():
+                    try:
+                        logger.debug(f"Applying CLI extension: {name}")
+                        if hook_func(subparsers):
+                            applied.append(name)
+                            logger.info(f"CLI extension applied: {name}")
+                        else:
+                            logger.warning(f"CLI extension failed to apply: {name}")
+                    except Exception as e:
+                        logger.error(f"Error applying CLI extension {name}: {e}")
+                
+                return applied
+            
+            # Load built-in extensions (including sysopt, but we'll filter in apply)
+            cli_hooks.load_builtin_extensions()
+            
+            # Apply extensions except sysopt
+            applied_extensions = filtered_apply_extensions(subparsers)
+        else:
+            # Standard operation - load and apply all extensions
+            cli_hooks.load_builtin_extensions()
+            
+            # Apply extensions to register commands
+            applied_extensions = cli_hooks.apply_extensions(subparsers)
+            
         logger.debug(f"Applied CLI extensions: {applied_extensions}")
         
         # Parse arguments

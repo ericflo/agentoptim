@@ -70,7 +70,7 @@ CLI_TIPS = [
     "💡 Install tab completion with 'agentoptim --install-completion'",
     "💡 Use 'agentoptim run export latest --format html' to generate beautiful reports",
     "💡 Try comparing runs with 'agentoptim run compare latest latest-1'",
-    "💡 Use short aliases: 'es' for evalset and 'r' for run",
+    "💡 Use short aliases: 'es' for evalset, 'r' for run, and 'o' for optimize",
     "💡 Export to multiple formats: markdown, CSV, HTML, JSON, or PDF",
     "💡 Use --brief flag for faster evaluations without detailed reasoning",
     "💡 Try different judge models with --model <model_name>",
@@ -99,6 +99,12 @@ CLI_TIPS = [
     "💡 Dark terminal? Use AGENTOPTIM_HIGH_CONTRAST=1 for better readability",
     "💡 Use 'latest-N' to get the Nth most recent evaluation run",
     "💡 Set AGENTOPTIM_CELEBRATE=1 for extra delight on successful commands",
+    "💡 Generate optimized system messages with 'agentoptim optimize create'",
+    "💡 List your optimization runs with 'agentoptim optimize list'",
+    "💡 Export optimized system messages with 'agentoptim optimize get <id> -f html'",
+    "💡 Customize system message generation with the --diversity flag",
+    "💡 Improve the system message generator with 'agentoptim optimize meta'",
+    "💡 Export pretty HTML reports for system message optimization runs",
 ]
 
 # Success messages
@@ -470,6 +476,11 @@ def display_helpful_error(error, command):
             print(
                 f"\n{Fore.YELLOW}💡 Suggestion: Try viewing help for the run command:{Style.RESET_ALL}\n"
                 f"   agentoptim run --help"
+            )
+        elif command.startswith("optimize") or command.startswith("opt") or command.startswith("o"):
+            print(
+                f"\n{Fore.YELLOW}💡 Suggestion: Try viewing help for the optimize command:{Style.RESET_ALL}\n"
+                f"   agentoptim optimize --help"
             )
         else:
             print(

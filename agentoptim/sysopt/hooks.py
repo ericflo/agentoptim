@@ -18,6 +18,16 @@ def register_cli_commands(subparsers):
     Returns:
         True if registration was successful, False otherwise
     """
+    # Check if optimize command is already registered via direct import
+    try:
+        for action in subparsers._actions:
+            if hasattr(action, 'choices') and 'optimize' in action.choices:
+                logger.info("Optimize command already registered via direct import, skipping hook registration")
+                return True
+    except Exception:
+        # If any error occurs in checking, continue with normal registration
+        pass
+                
     try:
         # Import the optimize CLI implementation
         sysopt_cli = importlib.import_module("agentoptim.sysopt_cli")
