@@ -7,6 +7,7 @@ import asyncio
 import argparse
 import logging
 import time
+import threading
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
@@ -89,6 +90,11 @@ def optimize_setup_parser(subparsers):
     create_parser.add_argument(
         "--model", "-m",
         help="Model to use for generation and evaluation"
+    )
+    create_parser.add_argument(
+        "--provider",
+        choices=["openai", "anthropic", "local"],
+        help="Provider to use for evaluations (sets appropriate defaults)"
     )
     create_parser.add_argument(
         "--instructions", "-i",
@@ -216,6 +222,31 @@ def optimize_setup_parser(subparsers):
 
 def format_optimization_result(result, format_type="text", quiet=False):
     """Format optimization result based on the specified format."""
+    # Extract best system message and score from candidates if not directly available
+    best_score = result.get('best_score', 0)
+    best_system_message = result.get('best_system_message', '')
+    
+    # If best_score or best_system_message is not in the result data, but there are candidates
+    if (not best_score or not best_system_message) and result.get('candidates'):
+        # Find the best candidate based on best_candidate_index or highest score
+        best_candidate_index = result.get('best_candidate_index', 0)
+        if best_candidate_index is not None and 0 <= best_candidate_index < len(result['candidates']):
+            best_candidate = result['candidates'][best_candidate_index]
+        else:
+            # Fall back to finding the candidate with the highest score
+            best_candidate = max(result['candidates'], key=lambda c: c.get('score', 0), default=None)
+        
+        # If we found a best candidate, extract its score and content
+        if best_candidate:
+            if not best_score:
+                best_score = best_candidate.get('score', 0)
+            if not best_system_message:
+                best_system_message = best_candidate.get('content', '')
+    
+    # Add the extracted values back to the result for consistent access
+    result['best_score'] = best_score
+    result['best_system_message'] = best_system_message
+    
     if format_type == "json":
         return json.dumps(result, indent=2)
     
@@ -226,8 +257,8 @@ def format_optimization_result(result, format_type="text", quiet=False):
         md += f"**EvalSet:** {result.get('evalset_name', 'N/A')}\n"
         md += f"**User Query:** {result.get('user_message', 'N/A')}\n\n"
         
-        md += f"## Best System Message (Score: {result.get('best_score', 0):.1f}%)\n\n"
-        md += f"```\n{result.get('best_system_message', 'N/A')}\n```\n\n"
+        md += f"## Best System Message (Score: {best_score:.1f}%)\n\n"
+        md += f"```\n{best_system_message}\n```\n\n"
         
         md += "## All Candidates\n\n"
         for i, candidate in enumerate(result.get('candidates', [])):
@@ -272,6 +303,7 @@ def format_optimization_result(result, format_type="text", quiet=False):
                 <p><strong>EvalSet:</strong> {result.get("evalset_name", "N/A")}</p>
                 <p><strong>Candidates Generated:</strong> {len(result.get("candidates", []))}</p>
                 <p><strong>Optimization Run ID:</strong> {result.get("id", "N/A")}</p>
+                <p><strong>Best Score:</strong> {best_score:.1f}%</p>
         """
         
         # Add self-optimization info if available
@@ -366,7 +398,7 @@ def format_optimization_result(result, format_type="text", quiet=False):
     
     else:  # text format (default)
         if quiet:
-            return result.get("best_system_message", "No system message available")
+            return best_system_message
         
         formatted_text = []
         
@@ -401,13 +433,12 @@ def format_optimization_result(result, format_type="text", quiet=False):
         formatted_text.append("")
         
         # Best system message
-        formatted_text.append(f"{Fore.GREEN}🏆 Best System Message (Score: {result.get('best_score', 0):.1f}%):{Style.RESET_ALL}")
+        formatted_text.append(f"{Fore.GREEN}🏆 Best System Message (Score: {best_score:.1f}%):{Style.RESET_ALL}")
         formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
         
-        best_message = result.get("best_system_message", "No system message available")
         # Display the best system message, wrapping at 76 characters
         import textwrap
-        for line in textwrap.wrap(best_message, width=76):
+        for line in textwrap.wrap(best_system_message if best_system_message else "No system message available", width=76):
             formatted_text.append(line)
             
         formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
@@ -536,7 +567,22 @@ async def handle_optimize_create(args):
         print(f"{Fore.RED}Error: No user message provided{Style.RESET_ALL}")
         return 1
         
-    # Configure environment variables for model if specified
+    # Configure environment variables for provider and model
+    if args.provider:
+        if args.provider == "openai":
+            os.environ["AGENTOPTIM_API_BASE"] = "https://api.openai.com/v1"
+            if not args.model:
+                args.model = "gpt-4o-mini"  # Default OpenAI model
+        elif args.provider == "anthropic":
+            os.environ["AGENTOPTIM_API_BASE"] = "https://api.anthropic.com/v1"
+            if not args.model:
+                args.model = "claude-3-5-haiku-20240307"  # Default Anthropic model
+        elif args.provider == "local":
+            os.environ["AGENTOPTIM_API_BASE"] = "http://localhost:1234/v1"
+            if not args.model:
+                args.model = "meta-llama-3.1-8b-instruct"  # Default local model
+                
+    # Set model if specified
     if args.model:
         os.environ["AGENTOPTIM_JUDGE_MODEL"] = args.model
         
@@ -551,6 +597,8 @@ async def handle_optimize_create(args):
             # Initialize spinner on first progress update
             spinner = FancySpinner()
             spinner.start(f"Optimizing system messages for: {user_message[:40]}...")
+            # Show debugging info - this will help diagnose issues
+            print(f"{Fore.YELLOW}Debug: Set DEBUG_MODE=1 for more detailed logs{Style.RESET_ALL}")
             
         percent = int((current / total) * 100)
         spinner.update(percent=percent, message=message)
@@ -604,7 +652,20 @@ async def handle_optimize_create(args):
         if spinner:
             spinner.stop()
             
-        print(f"{Fore.RED}Error: {str(e)}{Style.RESET_ALL}")
+        # Provide more helpful error message
+        error_msg = str(e)
+        print(f"{Fore.RED}Error: {error_msg}{Style.RESET_ALL}")
+        
+        # Add suggestions for common errors
+        if "API" in error_msg or "model" in error_msg.lower():
+            print(f"\n{Fore.YELLOW}Troubleshooting suggestions:{Style.RESET_ALL}")
+            print(f"1. Check that you have set a valid API key for your provider:")
+            print(f"   - For OpenAI: export OPENAI_API_KEY=your_key_here")
+            print(f"   - For Anthropic: export ANTHROPIC_API_KEY=your_key_here")
+            print(f"2. Verify the model is available with your API key")
+            print(f"3. Try a different model with --model parameter")
+            print(f"4. For local models, ensure your local API server is running")
+        
         logger.exception("Error in handle_optimize_create")
         return 1
 
@@ -694,7 +755,22 @@ async def handle_optimize_meta(args):
         # Import necessary functions
         from agentoptim.sysopt import self_optimize_generator, get_all_meta_prompts
         
-        # Configure environment variables for model if specified
+        # Configure environment variables for provider and model
+        if args.provider:
+            if args.provider == "openai":
+                os.environ["AGENTOPTIM_API_BASE"] = "https://api.openai.com/v1"
+                if not args.model:
+                    args.model = "gpt-4o-mini"  # Default OpenAI model
+            elif args.provider == "anthropic":
+                os.environ["AGENTOPTIM_API_BASE"] = "https://api.anthropic.com/v1"
+                if not args.model:
+                    args.model = "claude-3-5-haiku-20240307"  # Default Anthropic model
+            elif args.provider == "local":
+                os.environ["AGENTOPTIM_API_BASE"] = "http://localhost:1234/v1"
+                if not args.model:
+                    args.model = "meta-llama-3.1-8b-instruct"  # Default local model
+                    
+        # Set model if specified
         if args.model:
             os.environ["AGENTOPTIM_JUDGE_MODEL"] = args.model
             
