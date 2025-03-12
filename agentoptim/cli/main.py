@@ -33,6 +33,20 @@ def main():
     # Track command for better error handling
     command = " ".join(sys.argv[1:3]) if len(sys.argv) > 2 else (sys.argv[1] if len(sys.argv) > 1 else "")
     
+    # Detect if we're running under MCP by checking specific environment variables
+    # MCP tools typically set MODEL_CONTEXT_PROTOCOL_STDIO or MODEL_CONTEXT_PROTOCOL_VERSION
+    is_mcp_environment = (
+        "MODEL_CONTEXT_PROTOCOL_STDIO" in os.environ or 
+        "MODEL_CONTEXT_PROTOCOL_VERSION" in os.environ
+    )
+    
+    # If we're in MCP environment, don't output any formatted content to stdout
+    # This prevents MCP protocol errors due to non-JSON text
+    if is_mcp_environment:
+        logger.info("Running in MCP environment, disabling formatted CLI output")
+        # Redirect all stdout to stderr in MCP mode to keep protocol clean
+        sys.stdout = sys.stderr
+    
     # Handle special "--install-completion" flag before parsing other args
     if len(sys.argv) == 2 and sys.argv[1] == "--install-completion":
         install_completion()
@@ -55,8 +69,9 @@ def main():
         secondary_color = theme_colors[theme]['secondary']
         core.LOGO = LOGO.replace(Fore.CYAN, theme_color).replace(Fore.YELLOW, secondary_color)
     
-    # Show welcome message
-    show_welcome()
+    # Show welcome message only if not in MCP mode
+    if not is_mcp_environment:
+        show_welcome()
     
     start_time = time.time()
     show_timer = os.environ.get("AGENTOPTIM_SHOW_TIMER", "0") == "1"
@@ -77,8 +92,15 @@ def main():
             from agentoptim.cli.optimize_commands import setup_optimize_parser
             has_optimize_commands = True
         except ImportError:
-            has_optimize_commands = False
-            logger.debug("optimize_commands module not available for direct import")
+            try:
+                # Fall back to direct import from sysopt_cli.py
+                from agentoptim.sysopt_cli import optimize_setup_parser
+                setup_optimize_parser = optimize_setup_parser
+                has_optimize_commands = True
+                logger.debug("Using optimize_setup_parser directly from sysopt_cli.py")
+            except ImportError:
+                has_optimize_commands = False
+                logger.debug("optimize_commands module not available for direct import")
         
         # Register server commands
         setup_server_parser(subparsers)
@@ -152,26 +174,27 @@ def main():
             func = args.func
             result = func(args)
             
-            # Show success message or timer
-            if show_timer:
-                elapsed_time = time.time() - start_time
-                show_success_animation()
-                show_success_message(command, elapsed_time)
-                
-                # Show a random tip occasionally (20% chance) after longer commands
-                if elapsed_time > 2 and random.random() < 0.2:
-                    tip = get_random_tip()
-                    print(format_box(
-                        "🌟 Pro Tip", 
-                        tip,
-                        style="single", 
-                        border_color=Fore.YELLOW,
-                        title_align="left"
-                    ), file=sys.stderr)
-            elif celebrate:
-                # Show success message without timer
-                show_success_animation()
-                show_success_message(command)
+            # Show success message or timer (only if not in MCP mode)
+            if not is_mcp_environment:
+                if show_timer:
+                    elapsed_time = time.time() - start_time
+                    show_success_animation()
+                    show_success_message(command, elapsed_time)
+                    
+                    # Show a random tip occasionally (20% chance) after longer commands
+                    if elapsed_time > 2 and random.random() < 0.2:
+                        tip = get_random_tip()
+                        print(format_box(
+                            "🌟 Pro Tip", 
+                            tip,
+                            style="single", 
+                            border_color=Fore.YELLOW,
+                            title_align="left"
+                        ), file=sys.stderr)
+                elif celebrate:
+                    # Show success message without timer
+                    show_success_animation()
+                    show_success_message(command)
         else:
             # No handler found
             parser.print_help()
