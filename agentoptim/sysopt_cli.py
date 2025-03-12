@@ -825,9 +825,28 @@ async def handle_optimize_get(args):
             best_system_message = optimization_run.get("best_system_message", "")
             user_message = optimization_run.get("user_message", "")
             
-            if not best_system_message or not user_message:
-                print(f"{Fore.RED}Error: Could not find system message or user message in optimization run{Style.RESET_ALL}")
+            # Check both fields
+            if not best_system_message:
+                print(f"{Fore.RED}Error: Could not find system message in optimization run{Style.RESET_ALL}")
                 return 1
+                
+            # For older optimization runs, the user message might be in the metadata
+            if not user_message:
+                # Try to get it from the candidate content which often includes the user query
+                if "You are a helpful AI assistant answering questions about" in best_system_message:
+                    try:
+                        # Extract from format like "...answering questions about What is life insurance?..."
+                        import re
+                        match = re.search(r"questions about (.*?)\.\.\.?", best_system_message)
+                        if match:
+                            user_message = match.group(1).strip()
+                    except Exception:
+                        pass
+                
+                # If still no user message, use a placeholder
+                if not user_message:
+                    print(f"{Fore.YELLOW}Warning: Could not find user message in optimization run. Using a placeholder.{Style.RESET_ALL}")
+                    user_message = "Please provide information about this topic."
             
             print(f"{Fore.YELLOW}Generating sample response...{Style.RESET_ALL}")
             
