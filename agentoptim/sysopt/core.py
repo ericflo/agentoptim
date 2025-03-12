@@ -6,6 +6,7 @@ import uuid
 import logging
 import asyncio
 import re
+import httpx
 from typing import Dict, List, Optional, Any, Union, Tuple, Callable
 from datetime import datetime
 from pydantic import BaseModel, Field, validator
@@ -130,6 +131,10 @@ class OptimizationRun(BaseModel):
         generator_version: Version of the generator used
         timestamp: Timestamp of when the optimization was run
         metadata: Additional metadata about the optimization run
+        sample_responses: Dictionary mapping candidate indices to generated responses
+        candidate_responses: Dictionary mapping candidate indices to their assistant responses
+        continued_from: ID of a previous optimization run this continues from (for iterations)
+        iteration: Iteration number in an optimization sequence (starts at 1)
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_message: str
@@ -141,6 +146,10 @@ class OptimizationRun(BaseModel):
     generator_version: int
     timestamp: float = Field(default_factory=lambda: datetime.now().timestamp())
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    sample_responses: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    candidate_responses: Dict[str, str] = Field(default_factory=dict)  # Map candidate index to assistant response
+    continued_from: Optional[str] = None
+    iteration: int = 1
 
 # Load the default meta prompt for system message generation
 DEFAULT_META_PROMPT_PATH = os.path.join(META_PROMPTS_DIR, "default_meta_prompt.txt")
@@ -612,6 +621,68 @@ def save_optimization_run(optimization_run: OptimizationRun) -> bool:
         logger.error(f"Error saving optimization run {optimization_run.id}: {str(e)}")
         return False
 
+# Generate an assistant response using a system message
+async def generate_assistant_response(
+    system_message: str,
+    user_message: str,
+    generator_model: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Generate an assistant response using a system message and user message.
+    
+    Args:
+        system_message: The system message to use
+        user_message: The user message to respond to
+        generator_model: Model to use for generation
+        
+    Returns:
+        Dictionary with response content and metadata
+    """
+    logger.info(f"Generating assistant response with system message: {system_message[:50]}...")
+    
+    try:
+        # Create messages for the API call
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message}
+        ]
+        
+        # Call the LLM API
+        response = await call_llm_api(
+            messages=messages,
+            model=generator_model or DEFAULT_GENERATOR_MODEL,
+            max_tokens=1024,
+            temperature=0.7
+        )
+        
+        # Check for errors
+        if "error" in response:
+            error_msg = response["error"]
+            logger.error(f"Error generating assistant response: {error_msg}")
+            return {"error": error_msg}
+        
+        # Extract content from response
+        content = ""
+        choice = response["choices"][0] if "choices" in response and response["choices"] else None
+        if choice:
+            if "message" in choice and "content" in choice["message"]:
+                content = choice["message"]["content"]
+            elif "text" in choice:
+                content = choice["text"]
+        
+        if not content:
+            logger.error("No content in assistant response")
+            return {"error": "Failed to generate assistant response"}
+        
+        return {
+            "content": content,
+            "model": generator_model or DEFAULT_GENERATOR_MODEL,
+            "timestamp": datetime.now().timestamp()
+        }
+    
+    except Exception as e:
+        logger.error(f"Error generating assistant response: {str(e)}")
+        return {"error": str(e)}
+
 # Helper function to get an optimization run by ID
 def get_optimization_run(optimization_run_id: str) -> Optional[OptimizationRun]:
     """Get an optimization run by ID.
@@ -769,6 +840,56 @@ async def evaluate_system_message(
     
     except Exception as e:
         logger.error(f"Error evaluating system message: {str(e)}")
+        return {"error": str(e)}
+
+# Evaluate a user-assistant conversation without system message
+async def evaluate_user_assistant_conversation(
+    user_message: str,
+    assistant_message: str,
+    evalset_id: str,
+    judge_model: Optional[str] = None,
+    max_parallel: int = 3,
+    evaluation_timeout: Optional[int] = None
+) -> Dict[str, Any]:
+    """Evaluate a user-assistant conversation pair using an EvalSet.
+    
+    Args:
+        user_message: The user message
+        assistant_message: The assistant's response
+        evalset_id: The EvalSet ID to use for evaluation
+        judge_model: Optional model to use for judging
+        max_parallel: Maximum number of parallel evaluations
+        evaluation_timeout: Optional timeout in seconds
+        
+    Returns:
+        Dictionary with evaluation results
+    """
+    logger.info(f"Evaluating user-assistant conversation with EvalSet: {evalset_id}")
+    
+    try:
+        # Create conversation with only user and assistant messages
+        conversation = [
+            {"role": "user", "content": user_message},
+            {"role": "assistant", "content": assistant_message}
+        ]
+        
+        # Run evaluation on this conversation
+        result = await run_evalset(
+            evalset_id=evalset_id,
+            conversation=conversation,
+            judge_model=judge_model,
+            max_parallel=max_parallel
+        )
+        
+        # Check for errors
+        if "error" in result:
+            logger.error(f"Error evaluating user-assistant conversation: {result['error']}")
+            return {"error": result["error"]}
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error evaluating user-assistant conversation: {str(e)}")
         return {"error": str(e)}
 
 # Self-optimization function
@@ -952,7 +1073,9 @@ async def optimize_system_messages(
     max_parallel: int = 3,
     additional_instructions: str = "",
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
-    self_optimize: bool = False
+    self_optimize: bool = False,
+    continued_from: Optional[str] = None,
+    iteration: int = 1
 ) -> Dict[str, Any]:
     """Optimize system messages for a given user message.
     
@@ -967,6 +1090,9 @@ async def optimize_system_messages(
         max_parallel: Maximum number of parallel evaluations
         additional_instructions: Additional instructions for the generator
         progress_callback: Optional callback for progress updates
+        self_optimize: Whether to trigger self-optimization of the generator
+        continued_from: ID of a previous optimization run this continues from
+        iteration: Iteration number in an optimization sequence (starts at 1)
         
     Returns:
         Dictionary with optimization results
@@ -975,7 +1101,7 @@ async def optimize_system_messages(
         logger.info(f"Starting system message optimization for user message: {user_message[:50]}...")
         
         # Initialize progress tracking
-        total_steps = 3  # Generation, evaluation, ranking
+        total_steps = 4  # Generation, response generation, evaluation, ranking
         current_step = 0
         
         def update_progress(current: int, total: int, message: str):
@@ -1045,24 +1171,70 @@ async def optimize_system_messages(
         
         logger.info(f"Generated {len(candidates)} system message candidates")
         
-        # Step 2: Evaluate all candidates
+        # Step 2: Generate assistant responses for each candidate
         current_step += 1
-        update_progress(current_step, total_steps, "Evaluating system message candidates...")
-        
-        # Create semaphore for parallel evaluation
+        update_progress(current_step, total_steps, "Generating assistant responses...")
+
+        # Create semaphore for parallel generation
         semaphore = asyncio.Semaphore(max_parallel)
         total_candidates = len(candidates)
-        completed_evals = 0
+        completed_generations = 0
+        candidate_responses = {}
+
+        # Define function to generate a response for a single candidate
+        async def generate_response_for_candidate(i, candidate):
+            nonlocal completed_generations
+            
+            async with semaphore:
+                # Generate response
+                response_result = await generate_assistant_response(
+                    system_message=candidate.content,
+                    user_message=user_message,
+                    generator_model=generator_model
+                )
+                
+                # Store the result
+                if "error" not in response_result:
+                    candidate_responses[str(i)] = response_result["content"]
+                else:
+                    logger.error(f"Error generating response for candidate {i+1}: {response_result['error']}")
+                    candidate_responses[str(i)] = f"Error: {response_result['error']}"
+                
+                # Update progress
+                completed_generations += 1
+                if progress_callback:
+                    sub_progress = f"Generated {completed_generations}/{total_candidates} responses"
+                    progress_callback(current_step + (completed_generations / total_candidates), total_steps, sub_progress)
+                
+                return i, response_result
+
+        # Run all response generations in parallel with rate limiting
+        generation_tasks = [generate_response_for_candidate(i, candidate) for i, candidate in enumerate(candidates)]
+        generation_results = await asyncio.gather(*generation_tasks)
         
-        # Define function to evaluate a single candidate with the semaphore
-        async def evaluate_candidate(i, candidate):
+        # Step 3: Evaluate the user-assistant conversation pairs
+        current_step += 1
+        update_progress(current_step, total_steps, "Evaluating assistant responses...")
+
+        # Reset counters for this phase
+        completed_evals = 0
+
+        # Define function to evaluate a single user-assistant conversation
+        async def evaluate_candidate_response(i, candidate):
             nonlocal completed_evals
             
             async with semaphore:
-                # Evaluate the candidate
-                evaluation_result = await evaluate_system_message(
-                    system_message=candidate.content,
+                # Get the assistant response for this candidate
+                assistant_response = candidate_responses.get(str(i), "")
+                if not assistant_response or assistant_response.startswith("Error:"):
+                    logger.error(f"No valid response for candidate {i+1}")
+                    candidate.score = 0
+                    return candidate
+                
+                # Evaluate the user-assistant conversation
+                evaluation_result = await evaluate_user_assistant_conversation(
                     user_message=user_message,
+                    assistant_message=assistant_response,
                     evalset_id=evalset_id,
                     judge_model=generator_model,
                     max_parallel=max_parallel
@@ -1087,16 +1259,16 @@ async def optimize_system_messages(
                 # Update progress
                 completed_evals += 1
                 if progress_callback:
-                    sub_progress = f"Evaluated {completed_evals}/{total_candidates} candidates"
+                    sub_progress = f"Evaluated {completed_evals}/{total_candidates} responses"
                     progress_callback(current_step + (completed_evals / total_candidates), total_steps, sub_progress)
                 
                 return candidate
-        
+
         # Run all evaluations in parallel with rate limiting
-        evaluation_tasks = [evaluate_candidate(i, candidate) for i, candidate in enumerate(candidates)]
+        evaluation_tasks = [evaluate_candidate_response(i, candidate) for i, candidate in enumerate(candidates)]
         await asyncio.gather(*evaluation_tasks)
         
-        # Step 3: Rank and select the best candidate
+        # Step 4: Rank and select the best candidate
         current_step += 1
         update_progress(current_step, total_steps, "Ranking system message candidates...")
         
@@ -1107,6 +1279,97 @@ async def optimize_system_messages(
         for i, candidate in enumerate(candidates):
             candidate.rank = i + 1
         
+        # Generate sample responses for top candidates
+        update_progress(current_step + 0.5, total_steps, "Generating sample responses for top candidates...")
+        
+        # Store responses for each candidate
+        sample_responses = {}
+        
+        # Generate sample responses for top 3 candidates only to save time/cost
+        top_candidates = candidates[:min(3, len(candidates))]
+        total_candidates = len(top_candidates)
+        
+        # Only log details in debug mode to avoid spamming the console
+        if DEBUG_MODE:
+            logger.info(f"Generating sample responses for {total_candidates} top candidates")
+        
+        for i, candidate in enumerate(top_candidates):
+            # Update progress for each candidate (equally divide the remaining progress)
+            candidate_progress = current_step + 0.5 + ((i+1) / total_candidates) * 0.5
+            update_progress(candidate_progress, total_steps, f"Generating sample response {i+1}/{total_candidates}...")
+            
+            try:
+                # Create messages for the API call
+                messages = [
+                    {"role": "system", "content": candidate.content},
+                    {"role": "user", "content": user_message}
+                ]
+                
+                # Call the API directly to get a natural response (without JSON schema)
+                from agentoptim.runner import get_api_base
+                
+                # Create basic payload for a normal text response
+                payload = {
+                    "model": generator_model or DEFAULT_GENERATOR_MODEL,
+                    "messages": messages,
+                    "temperature": 0.7,
+                    "max_tokens": 1024
+                }
+                
+                # Configure headers
+                headers = {"Content-Type": "application/json"}
+                
+                # Add authentication based on API base
+                api_base = get_api_base()
+                openai_api_key = os.environ.get("OPENAI_API_KEY")
+                anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
+                
+                if "openai.com" in api_base and openai_api_key:
+                    headers["Authorization"] = f"Bearer {openai_api_key}"
+                elif "anthropic.com" in api_base and anthropic_api_key:
+                    headers["x-api-key"] = anthropic_api_key
+                
+                # Detailed logging only in debug mode
+                if DEBUG_MODE:
+                    logger.info(f"Calling API for sample response {i+1}/{total_candidates}")
+                
+                with httpx.Client(timeout=30) as client:
+                    response = client.post(
+                        f"{api_base}/chat/completions",
+                        json=payload,
+                        headers=headers
+                    )
+                    response_data = response.json()
+                
+                # Extract response content
+                content = ""
+                if "choices" in response_data and response_data["choices"]:
+                    content = response_data["choices"][0].get("message", {}).get("content", "")
+                
+                # Store the result with more context about which system message generated it
+                sample_responses[str(i)] = {
+                    "model": generator_model or DEFAULT_GENERATOR_MODEL,
+                    "content": content,
+                    "candidate_index": i,
+                    "candidate_rank": candidate.rank,
+                    "system_message_preview": candidate.content[:100] + "...",
+                    "system_message_id": f"candidate_{i}",
+                    "score": candidate.score
+                }
+                
+                # Only log details in debug mode
+                if DEBUG_MODE:
+                    logger.info(f"Generated sample response {i+1}/{total_candidates}")
+                
+            except Exception as e:
+                if DEBUG_MODE:
+                    logger.error(f"Error generating sample response for candidate {i+1}: {str(e)}")
+                sample_responses[str(i)] = {
+                    "error": f"Failed to generate response: {str(e)}",
+                    "candidate_index": i,
+                    "candidate_rank": candidate.rank
+                }
+        
         # Create OptimizationRun object
         optimization_run = OptimizationRun(
             user_message=user_message,
@@ -1116,6 +1379,10 @@ async def optimize_system_messages(
             best_candidate_index=0 if candidates else None,
             generator_id=generator.id,
             generator_version=generator.version,
+            sample_responses=sample_responses,
+            candidate_responses=candidate_responses,  # Add the candidate responses
+            continued_from=continued_from,
+            iteration=iteration,
             metadata={
                 "diversity_level": diversity_level,
                 "num_candidates_requested": num_candidates,
@@ -1214,7 +1481,9 @@ async def optimize_system_messages(
             "best_system_message": candidates[0].content if candidates else None,
             "best_score": candidates[0].score if candidates else None,
             "candidates": [c.model_dump() for c in candidates],
-            "formatted_message": "\n".join(formatted_results)
+            "formatted_message": "\n".join(formatted_results),
+            "continued_from": continued_from,
+            "iteration": iteration
         }
         
         # Add self-optimization results if applicable
@@ -1245,7 +1514,9 @@ async def manage_optimization_runs(
     page: int = 1,
     page_size: int = 10,
     self_optimize: bool = False,
-    progress_callback: Optional[Callable[[int, int, str], None]] = None
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+    continued_from: Optional[str] = None,
+    iteration: int = 1
 ) -> Dict[str, Any]:
     """Manage system message optimization runs.
     
@@ -1283,7 +1554,9 @@ async def manage_optimization_runs(
                 max_parallel=max_parallel,
                 additional_instructions=additional_instructions,
                 progress_callback=progress_callback,
-                self_optimize=self_optimize
+                self_optimize=self_optimize,
+                continued_from=continued_from,
+                iteration=iteration
             )
         elif action == "get":
             if not optimization_run_id:
