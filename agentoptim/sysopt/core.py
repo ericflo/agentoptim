@@ -5,6 +5,7 @@ import json
 import uuid
 import logging
 import asyncio
+import re
 from typing import Dict, List, Optional, Any, Union, Tuple, Callable
 from datetime import datetime
 from pydantic import BaseModel, Field, validator
@@ -27,7 +28,8 @@ from agentoptim.constants import (
     DEFAULT_NUM_CANDIDATES,
     DEFAULT_GENERATOR_MODEL,
     DIVERSITY_LEVELS,
-    DEFAULT_DOMAINS
+    DEFAULT_DOMAINS,
+    MAX_PAGE_SIZE
 )
 
 # Configure logging
