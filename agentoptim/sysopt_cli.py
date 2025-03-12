@@ -806,6 +806,9 @@ async def handle_optimize_get(args):
         
         # Generate a sample response if requested
         if args.generate_response:
+            # Debug information
+            print(f"{Fore.YELLOW}DEBUG: Optimization run keys: {list(optimization_run.keys())}{Style.RESET_ALL}")
+            
             # Configure environment variables for provider and model
             if args.provider:
                 if args.provider == "openai":
@@ -821,8 +824,15 @@ async def handle_optimize_get(args):
                     if not args.model:
                         args.model = "meta-llama-3.1-8b-instruct"  # Default local model
             
-            # Get system message and user message
-            best_system_message = optimization_run.get("best_system_message", "")
+            # Get system message and user message - using direct access to ensure we get the values
+            best_system_message = optimization_run.get("best_system_message", None)
+            if not best_system_message and "candidates" in optimization_run and optimization_run["candidates"]:
+                # Try to get from the first candidate
+                best_candidate_index = optimization_run.get("best_candidate_index", 0)
+                if 0 <= best_candidate_index < len(optimization_run["candidates"]):
+                    best_candidate = optimization_run["candidates"][best_candidate_index]
+                    best_system_message = best_candidate.get("content", "")
+            
             user_message = optimization_run.get("user_message", "")
             
             # Check both fields
