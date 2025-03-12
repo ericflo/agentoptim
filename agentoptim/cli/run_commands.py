@@ -258,37 +258,18 @@ def setup_run_parser(subparsers):
     return run_parser
 
 def debug_print_object(obj, prefix=""):
-    """Helper function to print debug information about any object."""
-    print(f"{Fore.YELLOW}Debug: {prefix}Object type: {type(obj)}{Style.RESET_ALL}", file=sys.stderr)
+    """Helper function to print debug information about any object.
     
-    if isinstance(obj, dict):
-        print(f"{Fore.YELLOW}Debug: {prefix}Dict keys: {list(obj.keys())}{Style.RESET_ALL}", file=sys.stderr)
-        for key, value in obj.items():
-            if isinstance(value, (dict, list, tuple)) and key in ["results", "eval_run", "summary"]:
-                print(f"{Fore.YELLOW}Debug: {prefix}Sub-object '{key}' type: {type(value)}{Style.RESET_ALL}", file=sys.stderr)
-                if isinstance(value, list) and value:
-                    print(f"{Fore.YELLOW}Debug: {prefix}First item in '{key}' list type: {type(value[0])}{Style.RESET_ALL}", file=sys.stderr)
-    elif isinstance(obj, list):
-        print(f"{Fore.YELLOW}Debug: {prefix}List length: {len(obj)}{Style.RESET_ALL}", file=sys.stderr)
-        if obj:
-            print(f"{Fore.YELLOW}Debug: {prefix}First item type: {type(obj[0])}{Style.RESET_ALL}", file=sys.stderr)
-    elif isinstance(obj, tuple):
-        print(f"{Fore.YELLOW}Debug: {prefix}Tuple length: {len(obj)}{Style.RESET_ALL}", file=sys.stderr)
-        for i, item in enumerate(obj):
-            print(f"{Fore.YELLOW}Debug: {prefix}Tuple item {i} type: {type(item)}{Style.RESET_ALL}", file=sys.stderr)
+    This function is useful for debugging but is not called during normal operation.
+    """
+    pass
 
 def handle_output(data, args):
     """Handle outputting data based on format and destination."""
-    # Debug information about the data
-    debug_print_object(data, "handle_output: ")
-    
     # If data is a tuple, it may be from a return value that should be unpacked
-    if isinstance(data, tuple):
-        if len(data) > 0:
-            # Take the first element of the tuple, which is likely the data we want
-            print(f"{Fore.YELLOW}Debug: Using first element of tuple{Style.RESET_ALL}", file=sys.stderr)
-            data = data[0]
-            debug_print_object(data, "After unpacking tuple: ")
+    if isinstance(data, tuple) and len(data) > 0:
+        # Take the first element of the tuple, which is likely the data we want
+        data = data[0]
     
     if args.format == "json":
         if isinstance(data, (dict, list)):
@@ -486,103 +467,68 @@ def handle_output(data, args):
 def resolve_run_id(run_id):
     """Resolve special run IDs like 'latest' and 'latest-N'."""
     from agentoptim.server import list_eval_runs
-    import traceback
     
-    print(f"{Fore.YELLOW}Debug: resolve_run_id called with run_id={run_id}{Style.RESET_ALL}", file=sys.stderr)
-    
-    try:
-        if run_id == "latest":
-            # Get the most recent run
-            print(f"{Fore.YELLOW}Debug: Getting latest run{Style.RESET_ALL}", file=sys.stderr)
-            runs = list_eval_runs(page=1, page_size=1)
-            print(f"{Fore.YELLOW}Debug: list_eval_runs returned type {type(runs)}{Style.RESET_ALL}", file=sys.stderr)
+    if run_id == "latest":
+        # Get the most recent run
+        runs = list_eval_runs(page=1, page_size=1)
+        
+        if isinstance(runs, tuple) and len(runs) > 0:
+            # We should take the first element which is likely the runs data
+            runs = runs[0]
+        
+        # Handle the response structure based on what we got
+        if isinstance(runs, dict):
+            # Check for eval_runs in the response
+            if "eval_runs" in runs and runs["eval_runs"]:
+                if isinstance(runs["eval_runs"][0], dict) and "id" in runs["eval_runs"][0]:
+                    return runs["eval_runs"][0]["id"]
             
-            if isinstance(runs, tuple):
-                print(f"{Fore.YELLOW}Debug: runs is a tuple with {len(runs)} items{Style.RESET_ALL}", file=sys.stderr)
+            # Try other potential keys
+            for key in ["items", "eval_runs", "optimization_runs"]:
+                if key in runs and runs[key] and isinstance(runs[key][0], dict) and "id" in runs[key][0]:
+                    return runs[key][0]["id"]
+        
+        # Handle when runs is already a list of eval runs
+        if isinstance(runs, list) and runs:
+            if isinstance(runs[0], dict) and "id" in runs[0]:
+                return runs[0]["id"]
+        
+        raise ValueError("No evaluation runs found")
+        
+    elif run_id.startswith("latest-"):
+        try:
+            # Get the Nth most recent run
+            n = int(run_id.split("-")[1])
+            runs = list_eval_runs(page=1, page_size=n+1)
+            
+            if isinstance(runs, tuple) and len(runs) > 0:
                 # We should take the first element which is likely the runs data
                 runs = runs[0]
-                print(f"{Fore.YELLOW}Debug: After unpacking tuple, runs is now {type(runs)}{Style.RESET_ALL}", file=sys.stderr)
-            
-            # Print more details about the runs
-            if isinstance(runs, dict):
-                print(f"{Fore.YELLOW}Debug: runs keys: {list(runs.keys())}{Style.RESET_ALL}", file=sys.stderr)
-                if "eval_runs" in runs:
-                    eval_runs = runs["eval_runs"]
-                    print(f"{Fore.YELLOW}Debug: eval_runs type: {type(eval_runs)}, length: {len(eval_runs) if isinstance(eval_runs, (list, tuple)) else 'N/A'}{Style.RESET_ALL}", file=sys.stderr)
-                    if isinstance(eval_runs, (list, tuple)) and eval_runs:
-                        first_run = eval_runs[0]
-                        print(f"{Fore.YELLOW}Debug: first_run type: {type(first_run)}{Style.RESET_ALL}", file=sys.stderr)
-                        if isinstance(first_run, dict):
-                            print(f"{Fore.YELLOW}Debug: first_run keys: {list(first_run.keys())}{Style.RESET_ALL}", file=sys.stderr)
-                            if "id" in first_run:
-                                print(f"{Fore.YELLOW}Debug: Returning latest run ID: {first_run['id']}{Style.RESET_ALL}", file=sys.stderr)
-                                return first_run["id"]
             
             # Handle when runs is already a list of eval runs
-            if isinstance(runs, list) and runs:
-                print(f"{Fore.YELLOW}Debug: Runs is a list with {len(runs)} items{Style.RESET_ALL}", file=sys.stderr)
-                first_item = runs[0]
-                if isinstance(first_item, dict) and "id" in first_item:
-                    print(f"{Fore.YELLOW}Debug: Found ID in first list item: {first_item['id']}{Style.RESET_ALL}", file=sys.stderr)
-                    return first_item["id"]
-            
-            # Fallback to finding any eval_runs key that exists
-            if isinstance(runs, dict):
-                for key in runs:
-                    if key in ["items", "eval_runs", "optimization_runs"]:
-                        items = runs[key]
-                        if isinstance(items, (list, tuple)) and items:
-                            first_item = items[0]
-                            if isinstance(first_item, dict) and "id" in first_item:
-                                print(f"{Fore.YELLOW}Debug: Found ID in {key}: {first_item['id']}{Style.RESET_ALL}", file=sys.stderr)
-                                return first_item["id"]
-            
-            raise ValueError(f"No evaluation runs found in response: {runs}")
-        elif run_id.startswith("latest-"):
-            try:
-                # Get the Nth most recent run
-                n = int(run_id.split("-")[1])
-                print(f"{Fore.YELLOW}Debug: Getting latest-{n} run{Style.RESET_ALL}", file=sys.stderr)
-                runs = list_eval_runs(page=1, page_size=n+1)
-                print(f"{Fore.YELLOW}Debug: list_eval_runs returned type {type(runs)}{Style.RESET_ALL}", file=sys.stderr)
-                
-                if isinstance(runs, tuple):
-                    print(f"{Fore.YELLOW}Debug: runs is a tuple with {len(runs)} items{Style.RESET_ALL}", file=sys.stderr)
-                    # We should take the first element which is likely the runs data
-                    runs = runs[0]
-                    print(f"{Fore.YELLOW}Debug: After unpacking tuple, runs is now {type(runs)}{Style.RESET_ALL}", file=sys.stderr)
-                
-                # Handle when runs is already a list of eval runs
-                if isinstance(runs, list):
-                    print(f"{Fore.YELLOW}Debug: runs is a list with {len(runs)} items{Style.RESET_ALL}", file=sys.stderr)
-                    if len(runs) <= n:
-                        raise ValueError(f"Not enough evaluation runs available for {run_id}")
-                    
-                    if isinstance(runs[n], dict) and "id" in runs[n]:
-                        return runs[n]["id"]
-                
-                # Try to find the runs in various possible keys
-                eval_runs = None
-                if isinstance(runs, dict):
-                    for key in ["items", "eval_runs", "optimization_runs"]:
-                        if key in runs:
-                            eval_runs = runs[key]
-                            break
-                
-                if not eval_runs or len(eval_runs) <= n:
+            if isinstance(runs, list):
+                if len(runs) <= n:
                     raise ValueError(f"Not enough evaluation runs available for {run_id}")
                 
-                return eval_runs[n]["id"]
-            except (IndexError, ValueError) as e:
-                raise ValueError(f"Invalid run ID format: {run_id}. {str(e)}")
-        else:
-            # Regular run ID
-            return run_id
-    except Exception as e:
-        print(f"{Fore.RED}Error in resolve_run_id: {str(e)}\n{traceback.format_exc()}{Style.RESET_ALL}", file=sys.stderr)
-        raise
+                if isinstance(runs[n], dict) and "id" in runs[n]:
+                    return runs[n]["id"]
+            
+            # Try to find the runs in various possible keys
+            eval_runs = None
+            if isinstance(runs, dict):
+                for key in ["items", "eval_runs", "optimization_runs"]:
+                    if key in runs and runs[key]:
+                        eval_runs = runs[key]
+                        break
+            
+            if not eval_runs or len(eval_runs) <= n:
+                raise ValueError(f"Not enough evaluation runs available for {run_id}")
+            
+            return eval_runs[n]["id"]
+        except (IndexError, ValueError) as e:
+            raise ValueError(f"Invalid run ID format: {run_id}. {str(e)}")
     
-    # Return the ID as is
+    # Regular run ID
     return run_id
 
 def handle_run_list(args):
@@ -703,31 +649,17 @@ def handle_run_list(args):
 def handle_run_get(args):
     """Handle the run get command."""
     from agentoptim.server import manage_eval_runs
-    import traceback
     
     try:
-        # Debug information
-        print(f"{Fore.YELLOW}Debug: Starting handle_run_get with format {args.format}{Style.RESET_ALL}", file=sys.stderr)
-        
         # Resolve run ID (handles 'latest')
         run_id = resolve_run_id(args.eval_run_id)
-        print(f"{Fore.YELLOW}Debug: Resolved run_id to {run_id}{Style.RESET_ALL}", file=sys.stderr)
         
         # Get the eval run
-        print(f"{Fore.YELLOW}Debug: Calling manage_eval_runs{Style.RESET_ALL}", file=sys.stderr)
-        try:
-            result = manage_eval_runs(action="get", eval_run_id=run_id)
-            print(f"{Fore.YELLOW}Debug: Got result type {type(result)}{Style.RESET_ALL}", file=sys.stderr)
-            if isinstance(result, tuple):
-                print(f"{Fore.YELLOW}Debug: Result is a tuple of length {len(result)}{Style.RESET_ALL}", file=sys.stderr)
-                # If result is a tuple, it may be due to a function returning multiple values
-                # Let's try to use the first element which is likely the main data
-                if len(result) > 0:
-                    result = result[0]
-                    print(f"{Fore.YELLOW}Debug: Using first element of tuple, now type is {type(result)}{Style.RESET_ALL}", file=sys.stderr)
-        except Exception as e:
-            print(f"{Fore.RED}Error calling manage_eval_runs: {str(e)}\n{traceback.format_exc()}{Style.RESET_ALL}", file=sys.stderr)
-            return 1
+        result = manage_eval_runs(action="get", eval_run_id=run_id)
+        
+        # Handle the case where result might be a tuple (function returning multiple values)
+        if isinstance(result, tuple) and len(result) > 0:
+            result = result[0]
         
         if isinstance(result, dict) and result.get("error"):
             print(f"{Fore.RED}Error: {result['error']}{Style.RESET_ALL}")
@@ -736,14 +668,11 @@ def handle_run_get(args):
         # Extract the eval run data from the response
         if isinstance(result, dict):
             eval_run = result.get("eval_run", result)  # Use result itself if no eval_run key
-            print(f"{Fore.YELLOW}Debug: Extracted eval_run, type is {type(eval_run)}{Style.RESET_ALL}", file=sys.stderr)
         else:
             eval_run = result  # Just use the result as is if it's not a dict
-            print(f"{Fore.YELLOW}Debug: Using result directly as eval_run{Style.RESET_ALL}", file=sys.stderr)
         
         # Format the output based on the format
         if args.format in ["json", "yaml", "csv", "html", "markdown"]:
-            print(f"{Fore.YELLOW}Debug: Handling output with format {args.format}{Style.RESET_ALL}", file=sys.stderr)
             return handle_output(eval_run, args)
         
         # Text output
