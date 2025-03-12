@@ -1117,8 +1117,49 @@ def get_cache_stats() -> dict:
     }
 
 
+# Define run_server function for starting in HTTP mode
+async def run_server(host: str = "127.0.0.1", port: int = 40000):
+    """Run the server in HTTP mode with the given host and port.
+    
+    Args:
+        host: The host address to bind to
+        port: The port to listen on
+    """
+    # Detect if we're running under MCP by checking specific environment variables
+    is_mcp_environment = (
+        "MODEL_CONTEXT_PROTOCOL_STDIO" in os.environ or 
+        "MODEL_CONTEXT_PROTOCOL_VERSION" in os.environ or
+        os.environ.get("AGENTOPTIM_IN_MCP", "0") == "1"
+    )
+    
+    # If in MCP environment, redirect stdout to stderr
+    if is_mcp_environment:
+        logger.info("Running in MCP environment, redirecting stdout to stderr")
+        sys.stdout = sys.stderr
+    
+    # Set up the server
+    from mcp.server.transport.web import WebServerTransport
+    server = WebServerTransport(host=host, port=port)
+    
+    # Run the server
+    logger.info(f"Starting AgentOptim server on {host}:{port}")
+    await mcp.serve(transport=server)
+
+
 def main():
     """Run the MCP server."""
+    # Detect if we're running under MCP by checking specific environment variables
+    is_mcp_environment = (
+        "MODEL_CONTEXT_PROTOCOL_STDIO" in os.environ or 
+        "MODEL_CONTEXT_PROTOCOL_VERSION" in os.environ or
+        os.environ.get("AGENTOPTIM_IN_MCP", "0") == "1"
+    )
+    
+    # If in MCP environment, redirect stdout to stderr
+    if is_mcp_environment:
+        logger.info("Running in MCP environment, redirecting stdout to stderr")
+        sys.stdout = sys.stderr
+    
     logger.info("Starting AgentOptim MCP server")
     mcp.run(transport="stdio")
 
