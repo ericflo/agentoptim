@@ -147,6 +147,20 @@ def optimize_setup_parser(subparsers):
         "--output", "-o",
         help="Output file to write results to"
     )
+    get_parser.add_argument(
+        "--generate-response", "-g",
+        action="store_true",
+        help="Generate a sample response using the best system message"
+    )
+    get_parser.add_argument(
+        "--model", "-m",
+        help="Model to use for generating sample response"
+    )
+    get_parser.add_argument(
+        "--provider",
+        choices=["openai", "anthropic", "local"],
+        help="Provider to use for generating response (sets appropriate defaults)"
+    )
     
     # List (list optimization runs)
     list_parser = optimize_subparsers.add_parser(
@@ -404,6 +418,31 @@ def format_optimization_result(result, format_type="text", quiet=False):
             </div>
             """
         
+        # Add sample response if available
+        sample_response = result.get('sample_response', {})
+        if sample_response:
+            html += """
+            <div class="container">
+                <h2>Sample Response</h2>
+            """
+            
+            if 'content' in sample_response:
+                model = sample_response.get('model', 'unknown')
+                content = sample_response['content'].replace('\n', '<br>')
+                
+                html += f"""
+                <p><strong>Model:</strong> {model}</p>
+                <div class="system-message">{content}</div>
+                """
+            elif 'error' in sample_response:
+                html += f"""
+                <p style="color: red;">Error: {sample_response['error']}</p>
+                """
+                
+            html += """
+            </div>
+            """
+            
         html += """
         </body>
         </html>
@@ -494,9 +533,35 @@ def format_optimization_result(result, format_type="text", quiet=False):
             formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
             formatted_text.append("")
         
+        # Add sample response if available
+        sample_response = result.get('sample_response', {})
+        if sample_response:
+            formatted_text.append(f"{Fore.GREEN}💬 Sample Response:{Style.RESET_ALL}")
+            formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
+            
+            if 'content' in sample_response:
+                model = sample_response.get('model', 'unknown')
+                formatted_text.append(f"{Fore.WHITE}Model: {model}{Style.RESET_ALL}")
+                formatted_text.append("")
+                
+                # Display the response, wrapping at 76 characters
+                import textwrap
+                for line in textwrap.wrap(sample_response['content'], width=76):
+                    formatted_text.append(line)
+            elif 'error' in sample_response:
+                formatted_text.append(f"{Fore.RED}Error: {sample_response['error']}{Style.RESET_ALL}")
+                
+            formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
+            formatted_text.append("")
+        
         # Add information about how to get more details
         formatted_text.append(f"{Fore.YELLOW}ℹ️  To get more details:{Style.RESET_ALL}")
         formatted_text.append(f"   agentoptim optimize get {result.get('id', 'ID')} --format html --output report.html")
+        
+        # Add tip about generating a sample response if not already present
+        if not sample_response:
+            formatted_text.append(f"{Fore.YELLOW}ℹ️  To generate a sample response:{Style.RESET_ALL}")
+            formatted_text.append(f"   agentoptim optimize get {result.get('id', 'ID')} --generate-response")
         
         return "\n".join(formatted_text)
 
@@ -731,14 +796,81 @@ async def handle_optimize_get(args):
         if "error" in result:
             print(f"{Fore.RED}Error: {result['error']}{Style.RESET_ALL}")
             return 1
-            
-        # Format and display the result
+        
+        # Extract optimization run data
         if "optimization_run" in result:
-            formatted_result = format_optimization_result(result["optimization_run"], args.format, quiet=False)
+            optimization_run = result["optimization_run"]
         else:
             print(f"{Fore.RED}Error: No optimization run data in response{Style.RESET_ALL}")
             return 1
+        
+        # Generate a sample response if requested
+        if args.generate_response:
+            # Configure environment variables for provider and model
+            if args.provider:
+                if args.provider == "openai":
+                    os.environ["AGENTOPTIM_API_BASE"] = "https://api.openai.com/v1"
+                    if not args.model:
+                        args.model = "gpt-4o-mini"  # Default OpenAI model
+                elif args.provider == "anthropic":
+                    os.environ["AGENTOPTIM_API_BASE"] = "https://api.anthropic.com/v1"
+                    if not args.model:
+                        args.model = "claude-3-5-haiku-20240307"  # Default Anthropic model
+                elif args.provider == "local":
+                    os.environ["AGENTOPTIM_API_BASE"] = "http://localhost:1234/v1"
+                    if not args.model:
+                        args.model = "meta-llama-3.1-8b-instruct"  # Default local model
             
+            # Get system message and user message
+            best_system_message = optimization_run.get("best_system_message", "")
+            user_message = optimization_run.get("user_message", "")
+            
+            if not best_system_message or not user_message:
+                print(f"{Fore.RED}Error: Could not find system message or user message in optimization run{Style.RESET_ALL}")
+                return 1
+            
+            print(f"{Fore.YELLOW}Generating sample response...{Style.RESET_ALL}")
+            
+            # Get the model response
+            try:
+                from agentoptim.runner import call_llm_api
+                
+                # Create messages
+                messages = [
+                    {"role": "system", "content": best_system_message},
+                    {"role": "user", "content": user_message}
+                ]
+                
+                # Call the API
+                response = await call_llm_api(
+                    messages=messages,
+                    model=args.model
+                )
+                
+                # Extract the response content
+                if "choices" in response and response["choices"]:
+                    content = response["choices"][0].get("message", {}).get("content", "")
+                    
+                    # Add the generated response to the optimization run
+                    optimization_run["sample_response"] = {
+                        "model": args.model or response.get("model", "unknown"),
+                        "content": content
+                    }
+                else:
+                    # If there was an issue, add a note
+                    optimization_run["sample_response"] = {
+                        "error": "Failed to generate response",
+                        "details": response
+                    }
+            except Exception as e:
+                print(f"{Fore.RED}Error generating response: {str(e)}{Style.RESET_ALL}")
+                optimization_run["sample_response"] = {
+                    "error": f"Failed to generate response: {str(e)}"
+                }
+        
+        # Format and display the result
+        formatted_result = format_optimization_result(optimization_run, args.format, quiet=False)
+        
         # Handle output
         if args.output:
             with open(args.output, 'w') as f:
