@@ -146,28 +146,51 @@ def handle_server_command(args):
     import importlib
     import subprocess
     
+    # Detect if we're running under MCP by checking specific environment variables
+    # MCP tools typically set MODEL_CONTEXT_PROTOCOL_STDIO or MODEL_CONTEXT_PROTOCOL_VERSION
+    is_mcp_environment = (
+        "MODEL_CONTEXT_PROTOCOL_STDIO" in os.environ or 
+        "MODEL_CONTEXT_PROTOCOL_VERSION" in os.environ
+    )
+    
+    # Use stderr for output in MCP mode
+    output_file = sys.stderr if is_mcp_environment else sys.stdout
+    
     # Get server module import path
     server_module = "agentoptim.server"
     
     # Check if we should stop a running server
     if args.stop:
         if is_port_in_use(args.port):
-            print(f"Stopping AgentOptim server on port {args.port}...")
+            print(f"Stopping AgentOptim server on port {args.port}...", file=output_file)
             if stop_server(args.port):
-                print(f"{Fore.GREEN}✓ Server stopped successfully{Style.RESET_ALL}")
+                if not is_mcp_environment:
+                    print(f"{Fore.GREEN}✓ Server stopped successfully{Style.RESET_ALL}", file=output_file)
+                else:
+                    print("Server stopped successfully", file=output_file)
                 return 0
             else:
-                print(f"{Fore.RED}✗ Failed to stop server{Style.RESET_ALL}")
+                if not is_mcp_environment:
+                    print(f"{Fore.RED}✗ Failed to stop server{Style.RESET_ALL}", file=output_file)
+                else:
+                    print("Failed to stop server", file=output_file)
                 return 1
         else:
-            print(f"{Fore.YELLOW}⚠ No server running on port {args.port}{Style.RESET_ALL}")
+            if not is_mcp_environment:
+                print(f"{Fore.YELLOW}⚠ No server running on port {args.port}{Style.RESET_ALL}", file=output_file)
+            else:
+                print(f"No server running on port {args.port}", file=output_file)
             return 0
     
     # Check if port is already in use
     if is_port_in_use(args.port):
-        print(f"{Fore.RED}Error: Port {args.port} is already in use.{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}To stop the existing server:{Style.RESET_ALL}")
-        print(f"   agentoptim server --stop --port {args.port}")
+        if not is_mcp_environment:
+            print(f"{Fore.RED}Error: Port {args.port} is already in use.{Style.RESET_ALL}", file=output_file)
+            print(f"{Fore.YELLOW}To stop the existing server:{Style.RESET_ALL}", file=output_file)
+        else:
+            print(f"Error: Port {args.port} is already in use.", file=output_file)
+            print(f"To stop the existing server:", file=output_file)
+        print(f"   agentoptim server --stop --port {args.port}", file=output_file)
         return 1
     
     # Set up environment variables
@@ -203,6 +226,10 @@ def handle_server_command(args):
             if not args.model:
                 env["AGENTOPTIM_JUDGE_MODEL"] = "meta-llama-3.1-8b-instruct"
     
+    # Pass MCP environment detection to child processes
+    if is_mcp_environment:
+        env["AGENTOPTIM_IN_MCP"] = "1"
+    
     # Run the server
     if args.detach:
         # Run detached
@@ -215,8 +242,11 @@ def handle_server_command(args):
         else:
             subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
-        print(f"{Fore.GREEN}✓ AgentOptim server started on port {args.port} (detached){Style.RESET_ALL}")
-        print(f"  To stop the server: agentoptim server --stop --port {args.port}")
+        if not is_mcp_environment:
+            print(f"{Fore.GREEN}✓ AgentOptim server started on port {args.port} (detached){Style.RESET_ALL}", file=output_file)
+        else:
+            print(f"AgentOptim server started on port {args.port} (detached)", file=output_file)
+        print(f"  To stop the server: agentoptim server --stop --port {args.port}", file=output_file)
         return 0
     
     # Run in foreground
@@ -224,22 +254,40 @@ def handle_server_command(args):
         # Initialize the module
         server = importlib.import_module(server_module)
         
-        # Display server info
-        server_info = format_box(
-            "AgentOptim Server",
-            f"Host: {args.host}\n"
-            f"Port: {args.port}\n"
-            f"Judge Model: {env.get('AGENTOPTIM_JUDGE_MODEL', 'default')}\n"
-            f"Provider: {args.provider or 'default'}\n"
-            f"Verbose: {args.verbose}\n"
-            f"Brief Evaluations: {args.brief}",
-            style="rounded",
-            border_color=Fore.CYAN
-        )
+        # Display server info (plain text in MCP mode)
+        if is_mcp_environment:
+            # Plain text for MCP mode
+            server_info = (
+                "AgentOptim Server\n"
+                f"Host: {args.host}\n"
+                f"Port: {args.port}\n"
+                f"Judge Model: {env.get('AGENTOPTIM_JUDGE_MODEL', 'default')}\n"
+                f"Provider: {args.provider or 'default'}\n"
+                f"Verbose: {args.verbose}\n"
+                f"Brief Evaluations: {args.brief}"
+            )
+        else:
+            # Rich formatting for terminal mode
+            server_info = format_box(
+                "AgentOptim Server",
+                f"Host: {args.host}\n"
+                f"Port: {args.port}\n"
+                f"Judge Model: {env.get('AGENTOPTIM_JUDGE_MODEL', 'default')}\n"
+                f"Provider: {args.provider or 'default'}\n"
+                f"Verbose: {args.verbose}\n"
+                f"Brief Evaluations: {args.brief}",
+                style="rounded",
+                border_color=Fore.CYAN
+            )
         
-        print(server_info)
-        print(f"{Fore.YELLOW}Server starting...{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}Press Ctrl+C to stop the server{Style.RESET_ALL}")
+        print(server_info, file=output_file)
+        
+        if not is_mcp_environment:
+            print(f"{Fore.YELLOW}Server starting...{Style.RESET_ALL}", file=output_file)
+            print(f"{Fore.YELLOW}Press Ctrl+C to stop the server{Style.RESET_ALL}", file=output_file)
+        else:
+            print("Server starting...", file=output_file)
+            print("Press Ctrl+C to stop the server", file=output_file)
         
         # Run the server
         asyncio.run(server.run_server(host=args.host, port=args.port))
@@ -247,8 +295,14 @@ def handle_server_command(args):
         return 0
         
     except KeyboardInterrupt:
-        print(f"\n{Fore.YELLOW}Server stopped by user{Style.RESET_ALL}")
+        if not is_mcp_environment:
+            print(f"\n{Fore.YELLOW}Server stopped by user{Style.RESET_ALL}", file=output_file)
+        else:
+            print("\nServer stopped by user", file=output_file)
         return 0
     except Exception as e:
-        print(f"{Fore.RED}Error starting server: {str(e)}{Style.RESET_ALL}")
+        if not is_mcp_environment:
+            print(f"{Fore.RED}Error starting server: {str(e)}{Style.RESET_ALL}", file=output_file)
+        else:
+            print(f"Error starting server: {str(e)}", file=output_file)
         return 1
