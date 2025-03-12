@@ -247,6 +247,21 @@ def format_optimization_result(result, format_type="text", quiet=False):
     result['best_score'] = best_score
     result['best_system_message'] = best_system_message
     
+    # Make sure evalset_name is set - this is sometimes missing in older records
+    if 'evalset_id' in result and 'evalset_name' not in result:
+        # Try to look up the evalset name from the ID
+        evalset_id = result.get('evalset_id')
+        if evalset_id:
+            try:
+                from agentoptim.evalset import get_evalset
+                import asyncio
+                evalset = asyncio.run(get_evalset(evalset_id))
+                if evalset and 'name' in evalset:
+                    result['evalset_name'] = evalset['name']
+            except Exception:
+                # If we can't get the evalset name, just use the ID as name
+                result['evalset_name'] = f"Evalset {evalset_id[:8]}..."
+    
     if format_type == "json":
         return json.dumps(result, indent=2)
     
@@ -444,9 +459,43 @@ def format_optimization_result(result, format_type="text", quiet=False):
         formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
         formatted_text.append("")
         
+        # Add all candidates comparison
+        candidates = result.get('candidates', [])
+        if len(candidates) > 1:
+            formatted_text.append(f"{Fore.GREEN}📊 All Candidates Comparison:{Style.RESET_ALL}")
+            formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
+            
+            # Table header
+            formatted_text.append(f"{Fore.WHITE}{'Rank':^6} {'Score':^8} {'Type':^12} {'System Message (preview)':50}{Style.RESET_ALL}")
+            formatted_text.append(f"{Fore.CYAN}{'─' * 6:^6} {'─' * 8:^8} {'─' * 12:^12} {'─' * 50}{Style.RESET_ALL}")
+            
+            # Sort candidates by score
+            sorted_candidates = sorted(candidates, key=lambda c: c.get('score', 0), reverse=True)
+            
+            # Display candidates
+            for candidate in sorted_candidates:
+                # Determine type
+                if candidate.get('generation_metadata', {}).get('is_fallback', False):
+                    type_str = f"{Fore.YELLOW}Fallback{Style.RESET_ALL}"
+                else:
+                    type_str = "Generated"
+                
+                # Get content preview
+                content = candidate.get('content', '')
+                content_preview = content[:47] + '...' if len(content) > 50 else content
+                
+                # Format row
+                rank = candidate.get('rank', 'N/A')
+                score = candidate.get('score', 0)
+                score_str = f"{score:.1f}%"
+                
+                formatted_text.append(f"{rank:^6} {score_str:^8} {type_str:^12} {content_preview}")
+            
+            formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
+            formatted_text.append("")
+        
         # Add information about how to get more details
         formatted_text.append(f"{Fore.YELLOW}ℹ️  To get more details:{Style.RESET_ALL}")
-        formatted_text.append(f"   agentoptim optimize get {result.get('id', 'ID')}")
         formatted_text.append(f"   agentoptim optimize get {result.get('id', 'ID')} --format html --output report.html")
         
         return "\n".join(formatted_text)
