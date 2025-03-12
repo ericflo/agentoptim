@@ -855,6 +855,20 @@ async def handle_optimize_get(args):
                 if not user_message:
                     print(f"{Fore.YELLOW}Warning: Could not find user message in optimization run. Using a placeholder.{Style.RESET_ALL}")
                     user_message = "Please provide information about this topic."
+                
+                # Also ensure we have the full evalset name by looking it up if needed
+                if 'evalset_id' in optimization_run and ('evalset_name' not in optimization_run or optimization_run.get('evalset_name', '').startswith('Evalset ')):
+                    evalset_id = optimization_run.get('evalset_id')
+                    if evalset_id:
+                        try:
+                            from agentoptim.evalset import get_evalset
+                            import asyncio
+                            evalset = asyncio.run(get_evalset(evalset_id))
+                            if evalset and 'name' in evalset:
+                                optimization_run['evalset_name'] = evalset['name']
+                        except Exception:
+                            # If we can't get the evalset name, leave it as is
+                            pass
             
             print(f"{Fore.YELLOW}Generating sample response...{Style.RESET_ALL}")
             
