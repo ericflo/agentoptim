@@ -869,12 +869,47 @@ async def handle_optimize_get(args):
                 ]
                 
                 # Call the API - without a JSON schema for a more natural response
-                response = await call_llm_api(
-                    messages=messages,
-                    model=args.model,
-                    json_schema=None,  # Explicitly disable JSON schema
-                    temperature=0.7    # Add some creativity for a natural response
-                )
+                # We need to modify the call directly to avoid using JSON schema
+                from agentoptim.runner import get_api_base
+                
+                # Create basic payload for a normal text response
+                payload = {
+                    "model": args.model or "gpt-4o-mini",
+                    "messages": messages,
+                    "temperature": 0.7,
+                    "max_tokens": 1024
+                }
+                
+                # Configure headers
+                headers = {"Content-Type": "application/json"}
+                
+                # Add authentication
+                openai_api_key = os.environ.get("OPENAI_API_KEY")
+                api_base = get_api_base()
+                if openai_api_key:
+                    headers["Authorization"] = f"Bearer {openai_api_key}"
+                
+                # Make direct API call
+                import httpx
+                import json
+                
+                # Log the request
+                print(f"{Fore.YELLOW}Calling {api_base}/chat/completions directly...{Style.RESET_ALL}")
+                
+                # Make API request
+                try:
+                    with httpx.Client(timeout=30) as client:
+                        response = client.post(
+                            f"{api_base}/chat/completions",
+                            json=payload,
+                            headers=headers
+                        )
+                        response_data = response.json()
+                except Exception as e:
+                    response_data = {"error": f"API call failed: {str(e)}"}
+                    
+                # Convert to expected format
+                response = response_data
                 
                 # Extract the response content
                 if "choices" in response and response["choices"]:
