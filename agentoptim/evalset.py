@@ -345,7 +345,12 @@ def manage_evalset(
             evalset_dicts = [e.to_dict() for e in evalsets]
             
             # Add evalsets directly to make it easier to access in the CLI
-            result = format_list(evalset_dicts)
+            # Include questions and short_description in the formatted list
+            result = format_list(
+                evalset_dicts,
+                include_fields=["questions", "short_description"],
+                resource_type="evaluation sets"
+            )
             result["evalsets"] = {e["id"]: e for e in evalset_dicts}
             return result
         

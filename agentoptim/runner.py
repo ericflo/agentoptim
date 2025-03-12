@@ -112,7 +112,8 @@ async def call_llm_api(
     max_tokens: int = 1024,  # Increased to 1024 to ensure complete responses
     logit_bias: Optional[Dict[int, float]] = None,
     messages: Optional[List[Dict[str, str]]] = None,
-    omit_reasoning: bool = False
+    omit_reasoning: bool = False,
+    json_schema: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Call the LLM API to get structured model response with verbalized confidence.
@@ -124,6 +125,8 @@ async def call_llm_api(
         max_tokens: Maximum tokens to generate (default: 1024 to ensure complete responses)
         logit_bias: Optional logit bias to apply
         messages: List of message objects with role and content (preferred over prompt)
+        omit_reasoning: If True, don't generate or include reasoning in results
+        json_schema: Optional JSON schema to enforce structured output format
     
     Returns:
         Response from the LLM API
@@ -169,38 +172,43 @@ async def call_llm_api(
         # Use standard OpenAI-compatible JSON schema format
         logger.info("Using JSON schema format")
         
-        # Define the schema based on whether reasoning is included
-        schema = {
-            "type": "object",
-            "properties": {
-                "judgment": {
-                    "type": "boolean", 
-                    "description": "Your yes/no judgment as a boolean value: true if the answer to the evaluation question is 'yes', false if the answer is 'no'."
+        # Use provided JSON schema if available, otherwise use the default schema for evaluation
+        if json_schema:
+            schema = json_schema
+            logger.info("Using provided JSON schema for LLM response")
+        else:
+            # Define the schema based on whether reasoning is included
+            schema = {
+                "type": "object",
+                "properties": {
+                    "judgment": {
+                        "type": "boolean", 
+                        "description": "Your yes/no judgment as a boolean value: true if the answer to the evaluation question is 'yes', false if the answer is 'no'."
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "A number between 0.0 and 1.0 indicating how confident you are in your judgment."
+                    }
                 },
-                "confidence": {
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 1,
-                    "description": "A number between 0.0 and 1.0 indicating how confident you are in your judgment."
-                }
-            },
-            "required": ["judgment", "confidence"],
-            "additionalProperties": False
-        }
-        
-        # Add reasoning field if not omitted
-        if not omit_reasoning:
-            schema["properties"]["reasoning"] = {
-                "type": "string",
-                "description": "Provide a clear explanation justifying your judgment with evidence from the conversation."
+                "required": ["judgment", "confidence"],
+                "additionalProperties": False
             }
-            schema["required"].append("reasoning")
+            
+            # Add reasoning field if not omitted
+            if not omit_reasoning:
+                schema["properties"]["reasoning"] = {
+                    "type": "string",
+                    "description": "Provide a clear explanation justifying your judgment with evidence from the conversation."
+                }
+                schema["required"].append("reasoning")
         
         # Create payload with json_schema format
         payload["response_format"] = {
             "type": "json_schema",
             "json_schema": {
-                "name": "judgment_response",
+                "name": json_schema.get("name", "judgment_response") if json_schema else "judgment_response",
                 "schema": schema
             }
         }
@@ -592,10 +600,8 @@ EXAMPLE RESPONSE FORMAT:
 
 IMPORTANT: Output ONLY this JSON object. Do not include any explanations, comments, or text before or after the JSON. Your entire response should be valid JSON."""
             
-        # Use shorter prompts for long conversations
-        if len(rendered_prompt) > 2000:
-            # Shorten if necessary
-            logger.info("Prompt is very long, shortening for better compatibility")
+        # No longer shortening prompts to ensure we get full responses
+        # Modern LLMs can handle longer prompts effectively
             
             # Base prompt structure that's common for both with/without reasoning
             shortened_base = f"""Please evaluate the following question about the SPECIFIC conversation provided below:

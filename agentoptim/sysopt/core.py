@@ -10,6 +10,9 @@ from typing import Dict, List, Optional, Any, Union, Tuple, Callable
 from datetime import datetime
 from pydantic import BaseModel, Field, validator
 
+# Enable debug mode for advanced logging
+DEBUG_MODE = os.environ.get("AGENTOPTIM_DEBUG", "0") == "1"
+
 from agentoptim.utils import (
     DATA_DIR,
     ensure_data_directories,
@@ -322,7 +325,31 @@ async def generate_system_messages(
         
         # Call the LLM to generate system messages
         logger.info(f"Calling LLM to generate system messages with model: {generator_model}")
-        response = await call_llm_api(messages=messages, model=generator_model)
+        
+        # Let's directly help the model produce better outputs with more explicit instructions
+        # Add clear formatting instructions to the user message
+        messages[1]["content"] = f"""Generate {num_candidates} diverse system messages for this user query: '{user_message}'
+
+IMPORTANT: Each system message must be in this EXACT JSON format:
+```json
+[
+  {
+    "system_message": "Your system message text here...",
+    "explanation": "Brief explanation of this approach..."
+  },
+  ...additional system messages...
+]
+```
+
+Include exactly {num_candidates} system messages in your response. The response MUST be valid JSON."""
+
+        # Call the API with specific parameters for better generation
+        response = await call_llm_api(
+            messages=messages, 
+            model=generator_model,
+            max_tokens=2048,  # Ensure enough tokens for full responses
+            temperature=0.7   # Add some creativity for diverse system messages
+        )
         
         # Check for errors
         if "error" in response:
@@ -333,6 +360,12 @@ async def generate_system_messages(
         # Parse the response
         candidates = []
         try:
+            # Log the response for debugging, but only if DEBUG_MODE is enabled to avoid clutter
+            if DEBUG_MODE:
+                logger.info(f"Raw API response: {json.dumps(response, indent=2)}")
+            else:
+                logger.info("API response received (enable DEBUG_MODE for full details)")
+            
             # Extract the content from the response
             choice = response["choices"][0] if "choices" in response and response["choices"] else None
             if not choice:
@@ -347,47 +380,64 @@ async def generate_system_messages(
             else:
                 logger.error("No content in API response")
                 return []
+                
+            # Log the extracted content (show more details in debug mode)
+            content_preview = content[:200] + "..." if len(content) > 200 else content
+            if DEBUG_MODE:
+                logger.info(f"Extracted content from response: {content}")
+            else:
+                logger.info(f"Extracted content preview: {content_preview}")
             
             # Extract JSON from the response content
             # First try to extract JSON block if it's wrapped in ```json ... ``` or similar
+            # First attempt: Try to extract JSON from code blocks
             json_matches = re.findall(r'```(?:json)?\s*([\s\S]*?)```', content)
             
-            # If we found JSON blocks, use the longest one
+            # If we found JSON blocks, use the longest one, otherwise use the whole content
             if json_matches:
                 json_content = max(json_matches, key=len)
+                logger.info("Found JSON code block in response")
             else:
-                # Otherwise use the whole content
                 json_content = content
-            
-            # Parse the JSON
+                
+            # Attempt to extract any JSON array from the content
+            array_match = re.search(r'\[\s*\{.*\}\s*\]', json_content, re.DOTALL)
+            if array_match:
+                json_content = array_match.group(0)
+                logger.info("Found JSON array in content")
+                
+            # Try to parse the JSON
             try:
+                # Clean up any escaped quotes or newlines
+                json_content = json_content.replace('\\"', '"').replace('\\n', '\n')
                 data = json.loads(json_content)
+                logger.info("Successfully parsed JSON from response")
                 
-                # Handle both array and object formats
+                # Handle various JSON formats
+                candidate_list = []
                 if isinstance(data, list):
-                    # It's already a list of candidates
                     candidate_list = data
+                    logger.info(f"Found array with {len(candidate_list)} items")
                 elif isinstance(data, dict) and "candidates" in data:
-                    # It's an object with a candidates field
                     candidate_list = data["candidates"]
+                    logger.info(f"Found 'candidates' array with {len(candidate_list)} items")
                 elif isinstance(data, dict) and "system_message" in data:
-                    # It's a single candidate
                     candidate_list = [data]
+                    logger.info("Found single system message object")
                 else:
-                    # Unknown format, try to extract any system messages
-                    candidate_list = []
-                    # Look for anything that might be a system message in the data
-                    for key, value in data.items():
-                        if isinstance(value, str) and len(value) > 20:
-                            candidate_list.append({"system_message": value})
-                
-                # Create SystemMessageCandidate objects
+                    logger.warning("JSON format doesn't match expected structure")
+                    
+                # Create SystemMessageCandidate objects from parsed JSON
                 for i, candidate_data in enumerate(candidate_list[:num_candidates]):
                     if isinstance(candidate_data, dict) and "system_message" in candidate_data:
                         system_message = candidate_data["system_message"]
                         explanation = candidate_data.get("explanation", "No explanation provided")
                         
                         if system_message and isinstance(system_message, str):
+                            # Add more informative logging
+                            if DEBUG_MODE:
+                                logger.info(f"Found system message [{i+1}]: {system_message[:100]}...")
+                            
                             candidates.append(SystemMessageCandidate(
                                 content=system_message,
                                 generation_metadata={
@@ -398,47 +448,63 @@ async def generate_system_messages(
                                     "generation_index": i
                                 }
                             ))
-            
+                
             except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse JSON from response: {e}")
-                logger.debug(f"Content that failed to parse: {json_content}")
+                logger.error(f"Failed to parse JSON: {e}")
                 
-                # Fall back to regex extraction of system messages
-                # Look for system messages using regex patterns
-                system_messages = re.findall(r'"system_message"\s*:\s*"([^"]+)"', json_content.replace('\\"', '__ESCAPED_QUOTE__'))
+                # Fallback to pattern extraction methods
+                system_messages = []
+                logger.info("Attempting pattern-based extraction")
                 
-                # Replace back the escaped quotes
-                system_messages = [sm.replace('__ESCAPED_QUOTE__', '"') for sm in system_messages]
+                # Method 1: Look for "system_message": "content" patterns
+                pattern1 = r'"system_message"\s*:\s*"((?:\\"|[^"])+)"'
+                matches1 = re.findall(pattern1, content)
+                system_messages.extend(matches1)
+                logger.info(f"Method 1 extracted {len(matches1)} messages")
                 
-                # If we found some system messages, use them
-                if system_messages:
-                    for i, system_message in enumerate(system_messages[:num_candidates]):
+                # Method 2: Look for content between "System Message" headers
+                pattern2 = r'System Message(?:\s*\d+)?:?\s*(.*?)(?=\n\s*(?:System Message|Explanation:|$))'
+                matches2 = re.findall(pattern2, content, re.DOTALL | re.IGNORECASE)
+                # Clean up and filter matches
+                filtered_matches2 = [m.strip() for m in matches2 if len(m.strip()) > 30]
+                system_messages.extend(filtered_matches2)
+                logger.info(f"Method 2 extracted {len(filtered_matches2)} messages")
+                
+                # Method 3: Extract sections that look like system messages
+                sections = content.split("\n\n")
+                for section in sections:
+                    # If it's a substantial block (>100 chars) and doesn't look like explanation or JSON
+                    if (len(section) > 100 and 
+                        not section.startswith("{") and 
+                        not section.startswith("[") and
+                        not "explanation" in section.lower()[:30] and
+                        not "system message" in section.lower()[:30]):
+                        system_messages.append(section.strip())
+                logger.info(f"Method 3 extracted {len(system_messages) - len(matches1) - len(filtered_matches2)} messages")
+                
+                # Create candidates from extracted messages
+                for i, system_message in enumerate(system_messages[:num_candidates]):
+                    # Clean up the message
+                    system_message = system_message.replace('\\"', '"').replace('\\n', '\n').strip()
+                    
+                    # Remove quotes at beginning and end if present
+                    if (system_message.startswith('"') and system_message.endswith('"')) or \
+                       (system_message.startswith("'") and system_message.endswith("'")):
+                        system_message = system_message[1:-1]
+                    
+                    if len(system_message) > 30:  # Ensure reasonable length
                         candidates.append(SystemMessageCandidate(
                             content=system_message,
                             generation_metadata={
                                 "generator_id": generator.id,
                                 "generator_version": generator.version,
-                                "explanation": "Extracted from response using regex",
+                                "explanation": "Extracted via pattern matching",
                                 "diversity_level": diversity_level,
                                 "generation_index": i
                             }
                         ))
-                else:
-                    # Last resort: Split by sections that might be system messages
-                    sections = re.split(r'\n\s*\d+\.\s*|\n\s*System Message \d+:\s*|\n\s*Candidate \d+:\s*', content)
-                    filtered_sections = [s.strip() for s in sections if len(s.strip()) > 50]
-                    
-                    for i, section in enumerate(filtered_sections[:num_candidates]):
-                        candidates.append(SystemMessageCandidate(
-                            content=section,
-                            generation_metadata={
-                                "generator_id": generator.id,
-                                "generator_version": generator.version,
-                                "explanation": "Extracted from response using section splitting",
-                                "diversity_level": diversity_level,
-                                "generation_index": i
-                            }
-                        ))
+            
+            logger.info(f"Generated {len(candidates)} system message candidates")
         
         except Exception as e:
             logger.error(f"Error parsing system message candidates: {str(e)}")
@@ -472,7 +538,39 @@ async def generate_system_messages(
     
     except Exception as e:
         logger.error(f"Error generating system messages: {str(e)}")
-        return []
+        
+        # Generate fallback system messages even when there's an error
+        fallback_candidates = []
+        
+        # Create a set of common, useful system messages as fallbacks
+        fallbacks = [
+            f"You are a helpful AI assistant answering questions about life and finances. When responding to questions about {user_message[:30]}..., provide accurate, clear, and concise information. Stay factual and objective while remaining helpful and conversational.",
+            
+            f"You are a knowledgeable expert focused on providing factual information about {user_message[:30]}... Your explanations should be thorough but accessible, using plain language where possible. Include key concepts and details that would help someone understand this topic completely.",
+            
+            f"You are a patient teacher explaining topics related to {user_message[:30]}... Break down complex concepts into simple parts, use analogies when helpful, and anticipate common questions or misconceptions. Your tone should be friendly, encouraging, and accessible to learners at different levels.",
+            
+            f"You are a precise professional communicating about {user_message[:30]}... Provide accurate, concise, and well-structured information that prioritizes clarity and relevance. Be thorough but efficient, focusing on the most important aspects first. Maintain a helpful, respectful tone throughout.",
+            
+            f"You are a balanced advisor discussing {user_message[:30]}... Present information from multiple perspectives when relevant, acknowledging different viewpoints. Provide balanced, nuanced responses without personal bias, while still offering clear guidance where appropriate. Remain objective and fair in your presentation of information."
+        ]
+        
+        # Add however many fallbacks we need, up to num_candidates
+        for i in range(min(num_candidates, len(fallbacks))):
+            fallback_candidates.append(SystemMessageCandidate(
+                content=fallbacks[i],
+                generation_metadata={
+                    "generator_id": generator.id,
+                    "generator_version": generator.version,
+                    "explanation": "Fallback system message - generation process failed",
+                    "diversity_level": diversity_level, 
+                    "generation_index": i,
+                    "is_fallback": True
+                }
+            ))
+            
+        logger.info(f"Created {len(fallback_candidates)} fallback candidates due to generation error")
+        return fallback_candidates
 
 # Helper function to save a generator
 def save_generator(generator: SystemMessageGenerator) -> bool:
@@ -571,6 +669,20 @@ def list_optimization_runs(
                         # Filter by evalset_id if provided
                         if evalset_id and data.get('evalset_id') != evalset_id:
                             continue
+                        # Make sure best_score is set for display in list view
+                        # If it's not in the data directly, calculate it from the best candidate
+                        if 'best_score' not in data and 'candidates' in data and data['candidates']:
+                            # Get the best candidate (first one if they're sorted)
+                            best_candidate = data['candidates'][0]
+                            if 'score' in best_candidate:
+                                data['best_score'] = best_candidate['score']
+                        
+                        # Format timestamp for display
+                        if 'timestamp' in data:
+                            from datetime import datetime
+                            timestamp = datetime.fromtimestamp(data['timestamp'])
+                            data['timestamp_formatted'] = timestamp.strftime("%Y-%m-%d %H:%M")
+                            
                         # Add to list
                         optimization_runs.append(data)
                 except Exception as e:

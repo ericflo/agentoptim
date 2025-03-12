@@ -392,10 +392,13 @@ def handle_evalset_list(args):
             table.add_column("Short Description", style="yellow")
             
             for evalset in evalsets:
+                # Get question count if available
+                question_count = str(len(evalset.get("questions", []))) if "questions" in evalset else "?"
+                
                 table.add_row(
                     str(evalset["id"]),
                     str(evalset["name"]),
-                    "?",  # Questions count not available in list view
+                    question_count,
                     str(evalset.get("short_description", ""))
                 )
             
@@ -411,7 +414,9 @@ def handle_evalset_list(args):
             print(f"{Fore.CYAN}{'='*36} {'='*30} {'='*9} {'='*30}{Style.RESET_ALL}")
             
             for evalset in evalsets:
-                print(f"{evalset['id']:<36} {evalset['name']:<30} {'?':>9} {evalset.get('short_description', ''):<30}")
+                # Get question count if available
+                question_count = str(len(evalset.get("questions", []))) if "questions" in evalset else "?"
+                print(f"{evalset['id']:<36} {evalset['name']:<30} {question_count:>9} {evalset.get('short_description', ''):<30}")
         else:
             # Quiet mode - just print IDs
             for evalset in evalsets:
