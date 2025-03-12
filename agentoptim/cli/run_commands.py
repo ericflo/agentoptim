@@ -1165,6 +1165,15 @@ def handle_run_export(args):
                         except FileNotFoundError:
                             print(f"{Fore.RED}Error: PDF export requires either weasyprint or wkhtmltopdf.{Style.RESET_ALL}")
                             print(f"{Fore.YELLOW}Install with: pip install weasyprint{Style.RESET_ALL}")
+                            
+                            # Fallback to HTML and copy the temporary file to the output location
+                            if args.output:
+                                html_output = args.output
+                                if html_output.endswith('.pdf'):
+                                    html_output = html_output.replace('.pdf', '.html')
+                                import shutil
+                                shutil.copyfile(html_path, html_output)
+                                print(f"{Fore.YELLOW}Saved HTML version to {html_output}{Style.RESET_ALL}")
                             return 1
                         except subprocess.CalledProcessError as e:
                             print(f"{Fore.RED}Error generating PDF: {str(e)}{Style.RESET_ALL}")
