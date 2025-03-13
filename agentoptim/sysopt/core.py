@@ -1493,11 +1493,27 @@ Generated System Message: "You are a climate scientist specializing in polar eco
             created_at=datetime.now().timestamp()
         )
         
-        # Set up test data for transparency and evaluation
+        # Set up comprehensive test data covering different domains and query types
         test_messages = [
+            # Professional skills
             "How can I improve my public speaking skills?",
             "What are the best practices for project management?",
-            "How do I cook a perfect steak?"
+            
+            # Technical/educational
+            "How does photosynthesis work?",
+            "Explain quantum computing to a beginner",
+            
+            # Practical/how-to
+            "How do I cook a perfect steak?",
+            "What's the best way to remove stains from carpet?",
+            
+            # Creative/abstract
+            "How can I become more creative in my writing?",
+            "What are some philosophical perspectives on happiness?",
+            
+            # Health/personal
+            "How can I establish a good morning routine?",
+            "What exercises are best for lower back pain?"
         ]
         
         # Store test results for reporting
@@ -1562,33 +1578,215 @@ Generated System Message: "You are a climate scientist specializing in polar eco
         # Calculate success rate
         success_rate = success_count / len(test_messages) if test_messages else 0
         
-        # Update performance metrics
-        new_generator.performance_metrics["success_rate"] = success_rate
-        new_generator.performance_metrics["last_optimization"] = datetime.now().timestamp()
-        new_generator.performance_metrics["optimization_count"] = generator.performance_metrics.get("optimization_count", 0) + 1
+        # Calculate quality metrics for the candidates
+        quality_score = 0.0
+        diversity_score = 0.0
         
-        # Save the new generator
-        save_success = save_generator(new_generator)
+        # Group generated system messages by test message for diversity analysis
+        test_message_results = {}
+        for test_result in test_results.get("sample_outputs", []):
+            test_msg = test_result.get("test_message", "")
+            if test_msg not in test_message_results:
+                test_message_results[test_msg] = []
+            
+            if test_result.get("system_message"):
+                test_message_results[test_msg].append(test_result.get("system_message", ""))
         
-        if not save_success:
-            logger.error(f"Failed to save improved generator {new_generator.id}")
-            return {"error": "Failed to save improved generator"}
+        # Implement candidate quality evaluation
+        quality_scores = []
+        for test_result in test_results.get("sample_outputs", []):
+            if test_result.get("system_message"):
+                # Comprehensive quality heuristics for system messages
+                message = test_result.get("system_message", "")
+                test_message = test_result.get("test_message", "")
+                
+                # Length score (normalized between 0-1, optimal length ~200-300 chars)
+                length = len(message)
+                length_score = min(1.0, length / 300) if length < 300 else min(1.0, 500 / max(length, 1))
+                
+                # Specificity score (check for specific details vs generic language)
+                specificity_words = ["specific", "detailed", "precise", "exactly", "particular"]
+                specificity_score = sum(1 for word in specificity_words if word.lower() in message.lower()) / len(specificity_words)
+                
+                # Role clarity (check if the system message clearly defines a role)
+                role_phrases = ["you are", "as a", "acting as", "your role", "specialist in", "expert in"]
+                role_score = 0.0
+                for phrase in role_phrases:
+                    if phrase.lower() in message.lower():
+                        role_score = 1.0
+                        break
+                
+                # Topic relevance (check if system message mentions keywords from the test message)
+                keywords = [word.lower() for word in test_message.split() if len(word) > 4]
+                relevance_score = 0.0
+                if keywords:
+                    matches = sum(1 for keyword in keywords if keyword.lower() in message.lower())
+                    relevance_score = min(1.0, matches / max(1, len(keywords) / 2))
+                
+                # Actionability (check for action-oriented language)
+                action_words = ["guide", "explain", "provide", "offer", "describe", "analyze", "compare", "suggest"]
+                action_score = min(1.0, sum(1 for word in action_words if word.lower() in message.lower()) / 3)
+                
+                # Lack of generic templates (penalize messages that seem like unfilled templates)
+                generic_patterns = ["[", "]", "{", "}", "<role>", "<expertise>", "<topic>"]
+                generic_penalty = sum(1 for pattern in generic_patterns if pattern in message) * 0.2
+                
+                # Combine into a quality score with weights
+                message_quality = (
+                    (length_score * 0.15) + 
+                    (specificity_score * 0.2) + 
+                    (role_score * 0.25) + 
+                    (relevance_score * 0.25) + 
+                    (action_score * 0.15) - 
+                    generic_penalty
+                )
+                
+                # Ensure score is between 0 and 1
+                message_quality = max(0.0, min(1.0, message_quality))
+                quality_scores.append(message_quality)
+        
+        # Overall quality is the average of individual scores
+        if quality_scores:
+            quality_score = sum(quality_scores) / len(quality_scores)
+            
+        # Calculate diversity score for each test message with multiple results
+        diversity_scores = []
+        for test_msg, messages in test_message_results.items():
+            if len(messages) < 2:  # Need at least 2 messages to calculate diversity
+                continue
+                
+            # Simple diversity measurement based on content differences
+            total_diff = 0
+            comparisons = 0
+            
+            # Compare each message pair
+            for i in range(len(messages)):
+                for j in range(i+1, len(messages)):
+                    msg1 = messages[i]
+                    msg2 = messages[j]
+                    
+                    # Jaccard similarity: intersection over union for word sets
+                    words1 = set(msg1.lower().split())
+                    words2 = set(msg2.lower().split())
+                    
+                    intersection = len(words1.intersection(words2))
+                    union = len(words1.union(words2))
+                    
+                    if union > 0:
+                        similarity = intersection / union
+                        difference = 1 - similarity  # Convert to difference (0-1)
+                        total_diff += difference
+                        comparisons += 1
+            
+            # Average difference score for this test message
+            if comparisons > 0:
+                diversity_scores.append(total_diff / comparisons)
+        
+        # Overall diversity is the average of individual test message diversity scores
+        if diversity_scores:
+            diversity_score = sum(diversity_scores) / len(diversity_scores)
+            
+        # Combined metric that weights success rate, quality, and diversity
+        combined_score = (success_rate * 0.6) + (quality_score * 0.25) + (diversity_score * 0.15)
+        
+        # Compare to previous version to implement hill climbing
+        previous_score = generator.performance_metrics.get("combined_score", 0.0)
+        
+        # Create a visual representation of the hill climbing process for logging
+        score_diff = combined_score - previous_score
+        hill_climb_viz = f"Hill Climbing: "
+        
+        if score_diff > 0.05:
+            hill_climb_viz += f"↑↑↑ SIGNIFICANT IMPROVEMENT: {previous_score:.3f} → {combined_score:.3f} (+{score_diff:.3f})"
+        elif score_diff > 0:
+            hill_climb_viz += f"↑ Improvement: {previous_score:.3f} → {combined_score:.3f} (+{score_diff:.3f})"
+        elif score_diff == 0:
+            hill_climb_viz += f"→ No change: {previous_score:.3f} = {combined_score:.3f}"
+        elif score_diff > -0.05:
+            hill_climb_viz += f"↓ Worse: {previous_score:.3f} → {combined_score:.3f} ({score_diff:.3f})"
+        else:
+            hill_climb_viz += f"↓↓↓ SIGNIFICANT REGRESSION: {previous_score:.3f} → {combined_score:.3f} ({score_diff:.3f})"
+            
+        # Add component scores for clarity
+        hill_climb_viz += f" [success={success_rate:.2f}, quality={quality_score:.2f}, diversity={diversity_score:.2f}]"
+        
+        logger.info(hill_climb_viz)
+        
+        # Only save the new generator if it's better than the previous one
+        if combined_score >= previous_score:
+            # Update performance metrics
+            new_generator.performance_metrics["success_rate"] = success_rate
+            new_generator.performance_metrics["quality_score"] = quality_score
+            new_generator.performance_metrics["diversity_score"] = diversity_score
+            new_generator.performance_metrics["combined_score"] = combined_score
+            new_generator.performance_metrics["last_optimization"] = datetime.now().timestamp()
+            new_generator.performance_metrics["optimization_count"] = generator.performance_metrics.get("optimization_count", 0) + 1
+            
+            # Store detailed metrics for tracking improvement over time
+            if "improvement_history" not in new_generator.performance_metrics:
+                new_generator.performance_metrics["improvement_history"] = []
+                
+            # Add this iteration's scores to the history
+            new_generator.performance_metrics["improvement_history"].append({
+                "version": new_generator.version,
+                "timestamp": datetime.now().timestamp(),
+                "success_rate": success_rate,
+                "quality_score": quality_score,
+                "diversity_score": diversity_score,
+                "combined_score": combined_score
+            })
+            
+            # Save the improved generator
+            save_success = save_generator(new_generator)
+            
+            if not save_success:
+                logger.error(f"Failed to save improved generator {new_generator.id}")
+                return {"error": "Failed to save improved generator"}
+                
+            logger.info(f"Hill climbing: Accepted new version with score {combined_score} (previous: {previous_score})")
+            improvement = True
+        else:
+            # Reject the new version since it's not better
+            logger.info(f"Hill climbing: Rejected new version with score {combined_score} (previous: {previous_score})")
+            improvement = False
         
         # Add test results and diff information for better reporting
         old_meta_prompt_preview = generator.meta_prompt[:300] + "..." if len(generator.meta_prompt) > 300 else generator.meta_prompt
         new_meta_prompt_preview = new_generator.meta_prompt[:300] + "..." if len(new_generator.meta_prompt) > 300 else new_generator.meta_prompt
         
-        return {
-            "status": "success",
-            "old_version": generator.version,
-            "new_version": new_generator.version,
-            "generator_id": new_generator.id,
-            "success_rate": success_rate,
-            "test_results": test_results,
-            "old_meta_prompt_preview": old_meta_prompt_preview,
-            "new_meta_prompt_preview": new_meta_prompt_preview,
-            "message": f"Successfully optimized generator {generator.id} from version {generator.version} to {new_generator.version}"
-        }
+        # Return value now includes hill climbing information
+        if improvement:
+            return {
+                "status": "success",
+                "improved": True,
+                "old_version": generator.version,
+                "new_version": new_generator.version,
+                "generator_id": new_generator.id,
+                "success_rate": success_rate,
+                "quality_score": quality_score,
+                "diversity_score": diversity_score,
+                "combined_score": combined_score,
+                "previous_score": previous_score,
+                "test_results": test_results,
+                "old_meta_prompt_preview": old_meta_prompt_preview,
+                "new_meta_prompt_preview": new_meta_prompt_preview,
+                "message": f"Successfully optimized generator {generator.id} from version {generator.version} to {new_generator.version} (score improved from {previous_score:.3f} to {combined_score:.3f})"
+            }
+        else:
+            # Return information about the rejected optimization
+            return {
+                "status": "rejected",
+                "improved": False,
+                "old_version": generator.version,
+                "generator_id": generator.id,
+                "success_rate": success_rate,
+                "quality_score": quality_score,
+                "diversity_score": diversity_score,
+                "combined_score": combined_score,
+                "previous_score": previous_score,
+                "test_results": test_results,
+                "message": f"Optimization rejected - new version did not improve over previous (score: {combined_score:.3f}, previous: {previous_score:.3f})"
+            }
         
     except Exception as e:
         logger.error(f"Error in self-optimization: {str(e)}")
