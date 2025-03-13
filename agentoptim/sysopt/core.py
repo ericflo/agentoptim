@@ -2155,6 +2155,105 @@ async def optimize_system_messages(
                     "candidate_rank": candidate.rank
                 }
         
+        # Apply hill climbing if this is a continuation from a previous run
+        if continued_from:
+            previous_run = get_optimization_run(continued_from)
+            current_best_score = candidates[0].score if candidates else 0
+            hill_climbing_applied = False
+            
+            if previous_run:
+                # Check if the previous run had valid candidates
+                prev_candidates = previous_run.candidates
+                if prev_candidates and len(prev_candidates) > 0:
+                    # Get the best score from previous run
+                    previous_best_score = max((c.score or 0) for c in prev_candidates)
+                    previous_best_candidate = next((c for c in prev_candidates if c.score == previous_best_score), None)
+                    
+                    # Compare scores and apply hill climbing
+                    if previous_best_score > current_best_score:
+                        # The previous run was better - prepend the best previous candidate at the top
+                        logger.info(f"Hill climbing: Previous best candidate ({previous_best_score:.2f}) outperforms current best ({current_best_score:.2f})")
+                        
+                        # Use the best candidate from previous run instead of current best
+                        if previous_best_candidate:
+                            # Insert at the beginning and re-rank
+                            candidates.insert(0, previous_best_candidate)
+                            
+                            # Re-rank candidates after insertion
+                            for i, candidate in enumerate(candidates):
+                                candidate.rank = i + 1
+                                
+                            logger.info(f"Hill climbing: Promoted previous best candidate to rank 1 (score: {previous_best_score:.2f})")
+                            hill_climbing_applied = True
+                    else:
+                        # Our current run is better - continue with current candidates
+                        improvement = current_best_score - previous_best_score
+                        logger.info(f"Hill climbing: Current best candidate ({current_best_score:.2f}) improves upon previous best ({previous_best_score:.2f}), gain: +{improvement:.2f}")
+                        hill_climbing_applied = True
+            
+            # Create a visual representation of the hill climbing process
+            if hill_climbing_applied:
+                if previous_run:
+                    previous_best = max((c.score or 0) for c in previous_run.candidates) if previous_run.candidates else 0
+                    current_best = candidates[0].score if candidates else 0
+                    improvement = current_best - previous_best
+                    
+                    hill_climb_viz = f"Hill Climbing: "
+                    if improvement > 15:
+                        hill_climb_viz += f"↑↑↑ SIGNIFICANT IMPROVEMENT: {previous_best:.2f} → {current_best:.2f} (+{improvement:.2f})"
+                    elif improvement > 0:
+                        hill_climb_viz += f"↑ Improvement: {previous_best:.2f} → {current_best:.2f} (+{improvement:.2f})"
+                    elif improvement == 0:
+                        hill_climb_viz += f"→ No change: {previous_best:.2f} = {current_best:.2f}"
+                    elif improvement > -15:
+                        hill_climb_viz += f"↓ Regression: {previous_best:.2f} → {current_best:.2f} ({improvement:.2f})"
+                    else:
+                        hill_climb_viz += f"↓↓↓ SIGNIFICANT REGRESSION: {previous_best:.2f} → {current_best:.2f} ({improvement:.2f})"
+                    
+                    logger.info(hill_climb_viz)
+        
+        # Calculate the best hill-climbing info before creating the run
+        best_ever_score = 0
+        best_ever_run_id = None
+        hill_climbing_history = []
+        
+        # Set up initial values if this is a continuation
+        if continued_from and previous_run:
+            # Get the best score from previous run
+            previous_best_score = max((c.score or 0) for c in previous_run.candidates) if previous_run.candidates else 0
+            current_best_score = candidates[0].score if candidates else 0
+            
+            # Get existing history if available
+            if "hill_climbing_history" in previous_run.metadata:
+                hill_climbing_history = previous_run.metadata["hill_climbing_history"].copy()
+            
+            # Add current iteration to history (we'll update the run_id after creation)
+            new_history_entry = {
+                "iteration": iteration,
+                "run_id": None,  # Will be updated after run creation
+                "previous_best": previous_best_score,
+                "current_best": current_best_score,
+                "improvement": current_best_score - previous_best_score,
+                "timestamp": datetime.now().timestamp()
+            }
+            hill_climbing_history.append(new_history_entry)
+            
+            # Calculate all-time best score and run
+            best_ever_score = max(
+                current_best_score,
+                previous_run.metadata.get("best_ever_score", previous_best_score)
+            )
+            
+            # Track which run had the best score
+            if current_best_score >= best_ever_score:
+                best_ever_run_id = None  # Will be set to current run after creation
+            else:
+                best_ever_run_id = previous_run.metadata.get("best_ever_run_id", continued_from)
+        else:
+            # For first run, the best is the current
+            best_ever_score = candidates[0].score if candidates else 0
+            best_ever_run_id = None  # Will be set to current run after creation
+        
         # Create OptimizationRun object
         optimization_run = OptimizationRun(
             user_message=user_message,
@@ -2172,12 +2271,30 @@ async def optimize_system_messages(
                 "diversity_level": diversity_level,
                 "num_candidates_requested": num_candidates,
                 "num_candidates_generated": len(candidates),
-                "evalset_name": evalset.name
+                "evalset_name": evalset.name,
+                "hill_climbing": True if continued_from else False,
+                "best_ever_score": best_ever_score,
+                "best_ever_run_id": best_ever_run_id if best_ever_run_id else optimization_run.id,
+                "hill_climbing_history": hill_climbing_history,
+                "current_best_score": candidates[0].score if candidates else 0
             }
         )
         
+        # Update hill climbing history with actual run ID
+        if hill_climbing_history and hill_climbing_history[-1]["run_id"] is None:
+            hill_climbing_history[-1]["run_id"] = optimization_run.id
+            optimization_run.metadata["hill_climbing_history"] = hill_climbing_history
+            
+        # Update best_ever_run_id with actual run ID if needed
+        if optimization_run.metadata["best_ever_run_id"] is None:
+            optimization_run.metadata["best_ever_run_id"] = optimization_run.id
+            
         # Save optimization run
         save_optimization_run(optimization_run)
+        
+        # Log hill climbing summary if applicable
+        if continued_from and previous_run:
+            logger.info(f"Hill climbing summary: Best ever score is {best_ever_score:.2f} from run {optimization_run.metadata['best_ever_run_id']}")
         
         # Check if we should trigger self-optimization
         self_optimization_result = None
@@ -2230,6 +2347,38 @@ async def optimize_system_messages(
         formatted_results.append(f"- **EvalSet**: {evalset.name}")
         formatted_results.append(f"- **Candidates Generated**: {len(candidates)}")
         formatted_results.append(f"- **Optimization Run ID**: {optimization_run.id}")
+        
+        # Add hill climbing information if this is a continuation
+        if continued_from and previous_run:
+            previous_best_score = max((c.score or 0) for c in previous_run.candidates) if previous_run.candidates else 0
+            current_best_score = candidates[0].score if candidates else 0
+            improvement = current_best_score - previous_best_score
+            
+            if improvement > 15:
+                hill_climb_status = f"↑↑↑ SIGNIFICANT IMPROVEMENT: +{improvement:.2f} points"
+            elif improvement > 0:
+                hill_climb_status = f"↑ Improvement: +{improvement:.2f} points"
+            elif improvement == 0:
+                hill_climb_status = f"→ No change (scores equal)"
+            elif improvement > -15:
+                hill_climb_status = f"↓ Previous iteration was better by {-improvement:.2f} points"
+            else:
+                hill_climb_status = f"↓↓↓ SIGNIFICANT REGRESSION: Previous was better by {-improvement:.2f} points"
+                
+            formatted_results.append(f"- **Hill Climbing**: {hill_climb_status}")
+            formatted_results.append(f"- **Previous Best Score**: {previous_best_score:.2f}")
+            formatted_results.append(f"- **Current Best Score**: {current_best_score:.2f}")
+            formatted_results.append(f"- **Best Score Ever**: {best_ever_score:.2f}")
+            formatted_results.append(f"- **Iteration**: {iteration}")
+            
+            # Add information about which run has the best results
+            best_run_id = optimization_run.metadata["best_ever_run_id"]
+            if best_run_id == optimization_run.id:
+                formatted_results.append(f"- **Best Run**: Current run 🏆")
+            else:
+                formatted_results.append(f"- **Best Run**: {best_run_id} (previous)")
+                # Add button to retrieve the best run's best candidate
+                formatted_results.append(f"\nUse `python -m agentoptim.sysopt_cli get-best-candidate --run-id {best_run_id}` to see the best system message from all iterations.")
         
         # Add self-optimization info if applicable
         if self_optimization_result and "error" not in self_optimization_result:
