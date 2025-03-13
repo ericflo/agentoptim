@@ -600,13 +600,30 @@ Include exactly {num_candidates} system messages in the system_messages array. T
                     
                 # Try to parse the extracted JSON
                 try:
-                    # Clean up any escaped quotes or newlines
-                    json_content = json_content.replace('\\"', '"').replace('\\n', '\n')
+                    # Skip sanitization of JSON content - use it directly
                     data = json.loads(json_content)
                     logger.info("Successfully parsed JSON from extracted content")
                 except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse JSON after extraction: {e}")
-                    return []
+                    logger.warning(f"Failed to parse JSON after extraction: {e}")
+                    
+                    # Instead of returning an empty list, let's try to fix common JSON issues:
+                    try:
+                        # For broken JSON that might be missing closing brackets or other issues
+                        # Try to clean up common issues with JSON formatting
+                        fixed_json = json_content.replace('\\n', '\n').replace('\\"', '"')
+                        
+                        # Try to fix unclosed objects or arrays
+                        if fixed_json.count('{') > fixed_json.count('}'):
+                            fixed_json += '}'
+                        if fixed_json.count('[') > fixed_json.count(']'):
+                            fixed_json += ']'
+                            
+                        # Try again with the fixed JSON
+                        data = json.loads(fixed_json)
+                        logger.info("Successfully parsed JSON after fixing formatting issues")
+                    except Exception:
+                        logger.error("Failed to parse JSON even after attempting fixes")
+                        # Don't return yet - let the fallback processing continue
                 
                 # Handle various JSON formats
                 candidate_list = []
@@ -741,11 +758,31 @@ Include exactly {num_candidates} system messages in the system_messages array. T
                 system_messages = []
                 logger.info("Attempting pattern-based extraction")
                 
-                # Method 1: Look for "system_message": "content" patterns
-                pattern1 = r'"system_message"\s*:\s*"((?:\\"|[^"])+)"'
-                matches1 = re.findall(pattern1, content)
-                system_messages.extend(matches1)
-                logger.info(f"Method 1 extracted {len(matches1)} messages")
+                # Method 1: Look for "system_message": "content" patterns - multiple approaches
+                # Use multiple patterns to handle different quote styles and formats
+                # First try the standard double-quoted format
+                pattern1a = r'"system_message"\s*:\s*"(.*?)"(?=\s*[,}\]])'
+                matches1a = re.findall(pattern1a, content, re.DOTALL)
+                
+                # Also try single-quoted format
+                pattern1b = r'"system_message"\s*:\s*\'(.*?)\'(?=\s*[,}\]])'
+                matches1b = re.findall(pattern1b, content, re.DOTALL)
+                
+                # Try the format without quotes around the key
+                pattern1c = r'system_message\s*:\s*"(.*?)"(?=\s*[,}\]])'
+                matches1c = re.findall(pattern1c, content, re.DOTALL)
+                
+                # Try the format with quotes around key but value in backticks
+                pattern1d = r'"system_message"\s*:\s*`(.*?)`(?=\s*[,}\]])'
+                matches1d = re.findall(pattern1d, content, re.DOTALL)
+                
+                # Combine all matches
+                system_messages.extend(matches1a)
+                system_messages.extend(matches1b)
+                system_messages.extend(matches1c)
+                system_messages.extend(matches1d)
+                
+                logger.info(f"Method 1 extracted {len(matches1a) + len(matches1b) + len(matches1c) + len(matches1d)} messages")
                 
                 # Method 2: Look for content between "System Message" headers
                 pattern2 = r'System Message(?:\s*\d+)?:?\s*(.*?)(?=\n\s*(?:System Message|Explanation:|$))'
@@ -770,13 +807,8 @@ Include exactly {num_candidates} system messages in the system_messages array. T
                 # Create candidates from extracted messages
                 logger.info(f"Processing extracted messages with {len(system_messages)} candidates before filtering")
                 for i, system_message in enumerate(system_messages[:num_candidates]):
-                    # Clean up the message
-                    system_message = system_message.replace('\\"', '"').replace('\\n', '\n').strip()
-                    
-                    # Remove quotes at beginning and end if present
-                    if (system_message.startswith('"') and system_message.endswith('"')) or \
-                       (system_message.startswith("'") and system_message.endswith("'")):
-                        system_message = system_message[1:-1]
+                    # Skip sanitization and use raw content directly
+                    system_message = system_message.strip()
                     
                     # Log the message we're considering
                     logger.info(f"Considering extracted system message: {system_message[:100]}...")
@@ -818,27 +850,46 @@ Include exactly {num_candidates} system messages in the system_messages array. T
         except Exception as e:
             logger.error(f"Error parsing system message candidates: {str(e)}")
         
-        # Create a fallback candidate if no valid candidates were found
-        if len(candidates) == 0:
-            logger.warning("No valid candidates found, creating a fallback candidate")
-            try:
-                # Create a reasonable default candidate as a fallback
-                default_message = "You are a subject matter expert with extensive knowledge in the field. Provide clear, authoritative information on the topic. Include practical examples and address common misconceptions. Maintain a helpful and engaging tone while ensuring accuracy and relevance in your response."
-                candidates.append(SystemMessageCandidate(
-                    content=default_message,
-                    generation_metadata={
-                        "generator_id": generator.id,
-                        "generator_version": generator.version,
-                        "explanation": "Default fallback system message",
-                        "diversity_level": diversity_level,
-                        "generation_index": 0,
-                        "is_potentially_generic": True,
-                        "is_fallback": True
-                    }
-                ))
-                logger.info("Created fallback candidate")
-            except Exception as e:
-                logger.error(f"Error creating fallback candidate: {str(e)}")
+        # Create fallback candidates if no or insufficient valid candidates were found
+        if len(candidates) < num_candidates:
+            needed_fallbacks = num_candidates - len(candidates)
+            logger.warning(f"Only found {len(candidates)} valid candidates, creating {needed_fallbacks} fallback candidates")
+            
+            # List of diverse fallback messages appropriate for different query types
+            fallback_messages = [
+                "You are a subject matter expert with extensive knowledge in the field. Provide clear, authoritative information on the topic. Include practical examples and address common misconceptions. Maintain a helpful and engaging tone while ensuring accuracy and relevance in your response.",
+                
+                "You are an experienced educator specializing in explaining complex concepts in accessible ways. Break down the topic into understandable components, provide relevant analogies, and explain why this information matters. Use clear, concise language while maintaining scientific accuracy.",
+                
+                "You are a practical advisor with real-world experience. Focus on actionable advice with step-by-step instructions when appropriate. Include pros and cons of different approaches, common pitfalls to avoid, and how to measure success. Your tone should be direct, friendly, and solution-oriented.",
+                
+                "You are a balanced analyst who presents multiple perspectives on topics. Examine different viewpoints with their supporting evidence, acknowledge areas of uncertainty, and help the user form their own informed opinion. Present information objectively while remaining engaging and thoughtful.",
+                
+                "You are a creative problem-solver who approaches questions from unexpected angles. Suggest innovative approaches, make interesting connections between concepts, and encourage lateral thinking. Your responses should be intellectually stimulating while remaining practical and helpful."
+            ]
+            
+            # Add the needed number of fallback candidates
+            for i in range(min(needed_fallbacks, len(fallback_messages))):
+                try:
+                    # Select a fallback message appropriate for the number we need
+                    default_message = fallback_messages[i]
+                    candidates.append(SystemMessageCandidate(
+                        content=default_message,
+                        generation_metadata={
+                            "generator_id": generator.id,
+                            "generator_version": generator.version,
+                            "explanation": "Fallback system message",
+                            "diversity_level": diversity_level,
+                            "generation_index": len(candidates),
+                            "is_potentially_generic": False,
+                            "is_fallback": True
+                        }
+                    ))
+                    logger.info(f"Created fallback candidate {i+1}")
+                except Exception as e:
+                    logger.error(f"Error creating fallback candidate {i+1}: {str(e)}")
+                    
+            logger.info(f"Created {min(needed_fallbacks, len(fallback_messages))} fallback candidates")
                 
         # Log appropriate messages based on the number of candidates generated
         if len(candidates) < num_candidates:
@@ -858,8 +909,32 @@ Include exactly {num_candidates} system messages in the system_messages array. T
     except Exception as e:
         error_msg = f"Error generating system messages: {str(e)}"
         logger.error(error_msg)
-        # Return empty list instead of raising an error - let callers handle the empty result
-        return []
+        
+        # Create default fallback messages even in case of errors
+        fallback_candidates = []
+        try:
+            # Create generic fallback messages
+            for i in range(min(num_candidates, 3)):  # Create up to 3 fallback messages
+                message = f"You are a helpful assistant providing information about {user_message}. Offer accurate and relevant details, using examples where appropriate. Be clear and informative while maintaining a conversational tone."
+                fallback_candidates.append(SystemMessageCandidate(
+                    content=message,
+                    generation_metadata={
+                        "generator_id": generator.id,
+                        "generator_version": generator.version,
+                        "explanation": "Emergency fallback system message due to error",
+                        "diversity_level": diversity_level,
+                        "generation_index": i,
+                        "is_potentially_generic": True,
+                        "is_fallback": True,
+                        "is_error_fallback": True
+                    }
+                ))
+            logger.info(f"Created {len(fallback_candidates)} emergency fallback candidates due to error: {str(e)}")
+            return fallback_candidates
+        except Exception as inner_e:
+            logger.error(f"Failed to create emergency fallback candidates: {str(inner_e)}")
+            # Return empty list as last resort
+            return []
 
 # Helper function to save a generator
 def save_generator(generator: SystemMessageGenerator) -> bool:
