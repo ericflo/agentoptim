@@ -2216,27 +2216,25 @@ async def optimize_system_messages(
         best_ever_score = 0
         best_ever_run_id = None
         hill_climbing_history = []
+        current_best_score = candidates[0].score if candidates else 0
         
         # Set up initial values if this is a continuation
         if continued_from and previous_run:
             # Get the best score from previous run
             previous_best_score = max((c.score or 0) for c in previous_run.candidates) if previous_run.candidates else 0
-            current_best_score = candidates[0].score if candidates else 0
             
             # Get existing history if available
             if "hill_climbing_history" in previous_run.metadata:
                 hill_climbing_history = previous_run.metadata["hill_climbing_history"].copy()
             
-            # Add current iteration to history (we'll update the run_id after creation)
+            # Create new history entry (we'll add it after the run is created)
             new_history_entry = {
                 "iteration": iteration,
-                "run_id": None,  # Will be updated after run creation
                 "previous_best": previous_best_score,
                 "current_best": current_best_score,
                 "improvement": current_best_score - previous_best_score,
                 "timestamp": datetime.now().timestamp()
             }
-            hill_climbing_history.append(new_history_entry)
             
             # Calculate all-time best score and run
             best_ever_score = max(
@@ -2246,13 +2244,16 @@ async def optimize_system_messages(
             
             # Track which run had the best score
             if current_best_score >= best_ever_score:
-                best_ever_run_id = None  # Will be set to current run after creation
+                best_ever_run_id = "current"  # Will be set to current run after creation
             else:
                 best_ever_run_id = previous_run.metadata.get("best_ever_run_id", continued_from)
         else:
             # For first run, the best is the current
-            best_ever_score = candidates[0].score if candidates else 0
-            best_ever_run_id = None  # Will be set to current run after creation
+            best_ever_score = current_best_score
+            best_ever_run_id = "current"  # Will be set to current run after creation
+            
+            # Also set previous values for first run
+            previous_best_score = 0
         
         # Create OptimizationRun object
         optimization_run = OptimizationRun(
@@ -2274,20 +2275,24 @@ async def optimize_system_messages(
                 "evalset_name": evalset.name,
                 "hill_climbing": True if continued_from else False,
                 "best_ever_score": best_ever_score,
-                "best_ever_run_id": best_ever_run_id if best_ever_run_id else optimization_run.id,
+                "best_ever_run_id": None,  # Will be updated after creation
                 "hill_climbing_history": hill_climbing_history,
-                "current_best_score": candidates[0].score if candidates else 0
+                "current_best_score": current_best_score
             }
         )
         
-        # Update hill climbing history with actual run ID
-        if hill_climbing_history and hill_climbing_history[-1]["run_id"] is None:
-            hill_climbing_history[-1]["run_id"] = optimization_run.id
+        # Update hill climbing history and add the new entry with the actual run ID
+        if continued_from and previous_run:
+            # Add the history entry now that we have the run ID
+            new_history_entry["run_id"] = optimization_run.id
+            hill_climbing_history.append(new_history_entry)
             optimization_run.metadata["hill_climbing_history"] = hill_climbing_history
             
-        # Update best_ever_run_id with actual run ID if needed
-        if optimization_run.metadata["best_ever_run_id"] is None:
+        # Update best_ever_run_id with actual run ID
+        if best_ever_run_id == "current":
             optimization_run.metadata["best_ever_run_id"] = optimization_run.id
+        else:
+            optimization_run.metadata["best_ever_run_id"] = best_ever_run_id
             
         # Save optimization run
         save_optimization_run(optimization_run)
@@ -2372,7 +2377,9 @@ async def optimize_system_messages(
             formatted_results.append(f"- **Iteration**: {iteration}")
             
             # Add information about which run has the best results
-            best_run_id = optimization_run.metadata["best_ever_run_id"]
+            best_run_id = best_ever_run_id
+            if best_run_id == "current":
+                best_run_id = optimization_run.id
             if best_run_id == optimization_run.id:
                 formatted_results.append(f"- **Best Run**: Current run 🏆")
             else:
