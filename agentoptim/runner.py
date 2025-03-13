@@ -373,39 +373,61 @@ async def call_llm_api(
                 elif "text" in choice:
                     model_content = choice["text"]
             
-            # Try to fix the response directly by replacing unquoted literals
+            # Try to parse the response directly without sanitization
             try:
-                if "false" in error_str:
-                    fixed_content = model_content.replace("false", "false")  # This is a no-op but marks it as handled
-                    logger.info("Trying to fix unquoted 'false' in model response")
-                    # Parse the model's output as Python code and convert to JSON
-                    import ast
-                    # Replace all true/false literals with True/False
-                    python_fixed = model_content.replace("true", "True").replace("false", "False")
+                logger.info("Trying to salvage non-JSON response using ast.literal_eval")
+                import ast
+                
+                # Try to parse as a Python literal directly without replacing anything
+                try:
+                    parsed = ast.literal_eval(model_content)
+                    
+                    # Process the parsed result
+                    if isinstance(parsed, dict):
+                        if "judgment" in parsed:
+                            if parsed["judgment"] in [True, False, 0, 1]:
+                                return {
+                                    "choices": [
+                                        {
+                                            "message": {
+                                                "content": json.dumps({
+                                                    "reasoning": parsed.get("reasoning", "No reasoning provided"),
+                                                    "judgment": bool(parsed["judgment"]),
+                                                    "confidence": float(parsed.get("confidence", 0.5))
+                                                })
+                                            }
+                                        }
+                                    ]
+                                }
+                except (SyntaxError, ValueError) as syn_err:
+                    logger.warning(f"Failed to parse with direct literal_eval: {syn_err}")
+                    
+                    # Only if direct parsing fails, try with minimal conversion
                     try:
-                        # Parse as Python dict literal
+                        # Minimal conversion for Python compatibility
+                        python_fixed = model_content.replace("true", "True").replace("false", "False")
                         parsed = ast.literal_eval(python_fixed)
+                        
                         # Process the parsed result
                         if isinstance(parsed, dict):
                             if "judgment" in parsed:
-                                if parsed["judgment"] in [True, False, 0, 1]:
-                                    return {
-                                        "choices": [
-                                            {
-                                                "message": {
-                                                    "content": json.dumps({
-                                                        "reasoning": parsed.get("reasoning", "No reasoning provided"),
-                                                        "judgment": bool(parsed["judgment"]),
-                                                        "confidence": float(parsed.get("confidence", 0.5))
-                                                    })
-                                                }
+                                return {
+                                    "choices": [
+                                        {
+                                            "message": {
+                                                "content": json.dumps({
+                                                    "reasoning": parsed.get("reasoning", "No reasoning provided"),
+                                                    "judgment": bool(parsed["judgment"]),
+                                                    "confidence": float(parsed.get("confidence", 0.5))
+                                                })
                                             }
-                                        ]
-                                    }
+                                        }
+                                    ]
+                                }
                     except (SyntaxError, ValueError) as syn_err:
-                        logger.warning(f"Failed to fix JSON with Python literal_eval: {syn_err}")
+                        logger.warning(f"Failed to parse even with boolean conversion: {syn_err}")
             except Exception as fix_err:
-                logger.warning(f"Failed to fix JSON response: {fix_err}")
+                logger.warning(f"Failed to salvage non-JSON response: {fix_err}")
             
             # Comprehensive, helpful error message with detailed instructions
             return {
@@ -766,31 +788,24 @@ CRITICAL: DO NOT add any text, code blocks, or explanations - JUST THE RAW JSON 
                     # Log the original content for debugging
                     logger.debug(f"Attempting to parse JSON content: {content}")
                     
-                    # Pre-sanitize common issues before even attempting to parse
-                    # This helps avoid NameError exceptions by fixing Python-style literals
-                    sanitized_content = (content.replace("True", "true")
-                                          .replace("False", "false")
-                                          .replace("None", "null")
-                                          .replace("'", '"'))  # Replace single quotes with double quotes
-                    
-                    # Add more logging for debugging
-                    logger.debug(f"Sanitized content: {sanitized_content}")
-                    
-                    # First try with the sanitized content since it's more likely to work
+                    # Skip sanitization and try to directly parse the raw content
                     judgment_obj = None
                     parse_error = None
                     
                     try:
-                        judgment_obj = json.loads(sanitized_content)
-                        logger.debug("Successfully parsed sanitized content as JSON")
-                    except Exception as sanitized_err:
-                        parse_error = str(sanitized_err)
-                        logger.warning(f"Failed to parse sanitized content: {parse_error}")
+                        # Try to parse the raw content directly
+                        judgment_obj = json.loads(content)
+                        logger.debug("Successfully parsed raw content as JSON")
+                    except Exception as raw_err:
+                        parse_error = str(raw_err)
+                        logger.warning(f"Failed to parse raw content: {parse_error}")
                         
-                        # If sanitized content failed, fall back to trying original
+                        # Only if direct parsing fails, try with minimal sanitization
                         try:
-                            judgment_obj = json.loads(content)
-                            logger.debug("Successfully parsed original content as JSON")
+                            # Only convert Python booleans for compatibility
+                            minimal_fixed = content.replace("True", "true").replace("False", "false")
+                            judgment_obj = json.loads(minimal_fixed)
+                            logger.debug("Successfully parsed with minimal boolean conversion")
                         except Exception as original_err:
                             logger.warning(f"Failed to parse original content: {str(original_err)}")
                             
