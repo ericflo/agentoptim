@@ -1,0 +1,1287 @@
+
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>System Message Optimization Results</title>
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; color: #333; max-width: 1200px; margin: 0 auto; }
+                h1, h2, h3 { color: #0066cc; }
+                .container { background: #f9f9f9; border-radius: 5px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                .best { background: #e6f7ff; border-left: 5px solid #0066cc; }
+                .runnerup { background: #f0f7ff; border-left: 5px solid #66a3ff; }
+                .third { background: #f5faff; border-left: 5px solid #99c2ff; }
+                .system-message { background: #f5f5f5; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-family: monospace; margin: 10px 0; }
+                .system-preview { font-family: monospace; color: #555; background-color: #f0f0f0; padding: 2px 5px; border-radius: 3px; display: inline-block; margin: 5px 0; }
+                .score { font-weight: bold; color: #0066cc; }
+                .meta { color: #666; font-size: 0.9em; }
+                table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
+                tr:nth-child(even) { background-color: #f9f9f9; }
+            </style>
+        </head>
+        <body>
+            <h1>System Message Optimization Results</h1>
+            
+            <div class="container">
+                <h2>Summary</h2>
+                <p><strong>User Message:</strong> What is life insurance?</p>
+                <p><strong>EvalSet:</strong> Evalset 4a1a35a0...</p>
+                <p><strong>Candidates Generated:</strong> 5</p>
+                <p><strong>Optimization Run ID:</strong> a0fde70a-045c-4056-beb0-e89917faa9e4</p>
+                <p><strong>Best Score:</strong> 13.5%</p>
+        
+            </div>
+            
+            <div class="container">
+                <h2>Evaluation Criteria Performance</h2>
+                <table>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Overall Score</th>
+        
+                        <th>Does the response directly address the core question or request from the user?</th>
+                
+                        <th>Is the response factually accurate based on available information?</th>
+                
+                        <th>Does the response avoid making unsupported claims or statements?</th>
+                
+                        <th>Does the response provide complete information without obvious omissions?</th>
+                
+                        <th>Is the response logically structured and easy to follow?</th>
+                
+                        <th>Does the response use appropriate language for the context and audience?</th>
+                
+                        <th>Is the response free from grammatical errors and typos?</th>
+                
+                        <th>Does the response maintain a consistent tone throughout?</th>
+                
+                        <th>Is the response appropriately concise or detailed based on the query and context?</th>
+                
+                        <th>Does the response demonstrate genuine empathy by acknowledging the user's specific situation, feelings, or challenges?</th>
+                
+                        <th>Does the response avoid unnecessary technical jargon or define technical terms when they must be used?</th>
+                
+                        <th>If providing steps or instructions, are they clear, actionable, and accompanied by explanations of why they're recommended?</th>
+                
+                        <th>Does the response explicitly acknowledge limitations in knowledge or expertise when uncertainty exists?</th>
+                
+                        <th>Does the response avoid harmful, offensive, or inappropriate content?</th>
+                
+                        <th>Does the response handle sensitive topics with appropriate care, nuance, and respect for different perspectives?</th>
+                
+                        <th>Does the response provide appropriate context to help the user understand the information, including background when needed?</th>
+                
+                        <th>Does the response avoid introducing irrelevant information?</th>
+                
+                        <th>Does the response include specific, relevant examples tailored to the user's context to illustrate concepts?</th>
+                
+                        <th>Does the response avoid imposing personal opinions as facts?</th>
+                
+                        <th>If a multi-part question is asked, does the response address all parts comprehensively?</th>
+                
+                        <th>Does the response explicitly acknowledge degrees of certainty, distinguishing between what is known with high confidence versus what is more speculative?</th>
+                
+                        <th>Does the response avoid biased language or assumptions about the user?</th>
+                
+                        <th>If the user's query contains an error or misunderstanding, does the response politely clarify without being condescending?</th>
+                
+                        <th>Does the response maintain appropriate boundaries while staying helpful?</th>
+                
+                        <th>Does the response avoid making promises the assistant can't keep?</th>
+                
+                        <th>If the query is ambiguous, does the response either seek clarification or address multiple possible interpretations?</th>
+                
+                        <th>Is the response helpful in moving the user toward their specific goal rather than just providing general information?</th>
+                
+                        <th>Does the response include relevant information that adds value beyond what was explicitly asked for?</th>
+                
+                        <th>Does the response appropriately cite sources or indicate the basis for its information when needed for credibility?</th>
+                
+                        <th>Does the response balance brevity and comprehensiveness by being concise with simple topics and more detailed with complex ones?</th>
+                
+                        <th>Does the response use visual formatting effectively with appropriate paragraph breaks, bullet points, or numbered lists?</th>
+                
+                        <th>Does the response avoid condescending or patronizing language?</th>
+                
+                        <th>Is any humor or informality in the response appropriate for the context and tailored to match the user's tone?</th>
+                
+                        <th>Does the response respect cultural differences and sensitivities?</th>
+                
+                        <th>Does the response avoid making assumptions about the user's identity, knowledge level, or circumstances?</th>
+                
+                        <th>Does the response conclude with clear, specific next steps or actionable recommendations when appropriate?</th>
+                
+                        <th>Does the response reference specific details from earlier in the conversation to demonstrate attentive listening?</th>
+                
+                        <th>Is the response accessible to the user's apparent knowledge level without oversimplifying important nuances?</th>
+                
+                        <th>Does the response acknowledge and validate the emotional tone of the user's query when emotions are expressed?</th>
+                
+                        <th>If the user expresses frustration, does the response acknowledge it and offer specific, relevant solutions?</th>
+                
+                        <th>Does the response avoid repetitive or redundant information?</th>
+                
+                        <th>Does the response balance authority with humility by sharing knowledge confidently while acknowledging limitations?</th>
+                
+                        <th>Does the response use active voice and direct language to enhance clarity and engagement?</th>
+                
+                        <th>If contradicting the user, does the response first validate their perspective before offering alternatives?</th>
+                
+                        <th>Does the response match the formality level of the user's query?</th>
+                
+                        <th>If providing an opinion, does the response clearly label it as such and explain the reasoning?</th>
+                
+                        <th>Does the response use metaphors, analogies, or comparisons effectively to clarify complex concepts?</th>
+                
+                        <th>Does the response maintain an appropriate level of confidence without overreaching?</th>
+                
+                        <th>Does the response check the user's existing knowledge level before introducing advanced concepts?</th>
+                
+                        <th>Would the response likely leave the user feeling both respected and better informed?</th>
+                
+                        <th>Does the response prioritize the most important information by placing it prominently at the beginning?</th>
+                
+                        <th>If presenting arguments or reasoning, does the response do so in a logical, step-by-step manner?</th>
+                
+                        <th>Does the response avoid circular reasoning or logical fallacies?</th>
+                
+                        <th>If the query involves ethical considerations, does the response acknowledge multiple perspectives with appropriate nuance?</th>
+                
+                        <th>Does the response maintain appropriate objectivity when discussing controversial topics?</th>
+                
+                        <th>Does the response provide a balanced perspective when multiple viewpoints exist, presenting the strongest arguments for each?</th>
+                
+                        <th>If declining to fulfill a request, does the response explain why appropriately and offer helpful alternatives?</th>
+                
+                        <th>Does the response use evidence-based reasoning, citing research, data, or expert consensus where relevant?</th>
+                
+                        <th>Does the response make complex ideas accessible by breaking them down into simpler components or using scaffolding?</th>
+                
+                        <th>Does the response build understanding progressively, starting with fundamentals before advancing to complex details?</th>
+                
+                        <th>Does the response anticipate likely follow-up questions and address them proactively?</th>
+                
+                        <th>Does the response clarify potentially ambiguous terminology or statements to prevent misunderstanding?</th>
+                
+                        <th>Does the response acknowledge trade-offs or limitations in recommendations, explaining both benefits and drawbacks?</th>
+                
+                        <th>Does the response clearly distinguish between established facts, expert consensus, and more speculative information?</th>
+                
+                        <th>Does the response appropriately weigh different factors in a complex scenario based on their relative importance?</th>
+                
+                        <th>Does the response demonstrate awareness of current best practices and recent developments in the relevant domain?</th>
+                
+                        <th>Does the response avoid stereotypes and generalizations about groups of people?</th>
+                
+                        <th>Does the response acknowledge diverse perspectives from different disciplines or cultural contexts when relevant?</th>
+                
+                        <th>If correcting misinformation, does the response first acknowledge the user's current understanding before providing corrections?</th>
+                
+                        <th>Does the response give appropriate weight to established consensus vs. fringe theories when discussing scientific topics?</th>
+                
+                        <th>Does the response reference credible principles, frameworks, or methodologies when making recommendations?</th>
+                
+                        <th>Does the response appropriately qualify claims by using hedging language ("likely," "suggests," "typically") when certainty is limited?</th>
+                
+                        <th>If discussing risks, does the response present them in a balanced way that accurately reflects their likelihood and severity?</th>
+                
+                        <th>Does the response avoid unnecessarily alarming or falsely reassuring language?</th>
+                
+                        <th>Does the response match its precision to the confidence level (being specific when certain, more general when uncertain)?</th>
+                
+                        <th>Is the response's structure appropriate for the complexity of the information (e.g., more structured for complex topics)?</th>
+                
+                        <th>Does the response use headings, topic sentences, or other organizational elements to facilitate comprehension?</th>
+                
+                        <th>If providing creative content, is it original and tailored to the specific parameters and constraints of the request?</th>
+                
+                        <th>Does the response maintain consistency with previous statements made in the conversation?</th>
+                
+                        <th>Does the response use appropriate transitional phrases between different points to create a coherent narrative flow?</th>
+                
+                        <th>Does the response demonstrate critical thinking by analyzing assumptions, evaluating evidence, or considering alternatives?</th>
+                
+                        <th>Does the response present a coherent narrative or thread that connects different elements of the explanation?</th>
+                
+                        <th>Does the response use sentence structures of appropriate complexity for the content and audience?</th>
+                
+                        <th>Does the response use specific, concrete language with precise terms rather than vague generalities?</th>
+                
+                        <th>Does the response use passive voice only when appropriate (e.g., to emphasize the action rather than the actor)?</th>
+                
+                        <th>Does the response deliver on any explicit or implicit promises made earlier in the conversation?</th>
+                
+                        <th>Does the response maintain focus on the user's goal without unnecessary tangents?</th>
+                
+                        <th>Does the response provide closure by summarizing key points or offering a concise conclusion when appropriate?</th>
+                
+                        <th>When offering advice, does the response consider both short-term and long-term consequences?</th>
+                
+                        <th>Does the response incorporate a diversity of considerations including ethical, practical, emotional, and technical aspects?</th>
+                
+                        <th>Does the response explicitly acknowledge ambiguity when present rather than forcing a single interpretation?</th>
+                
+                        <th>Does the response recognize and positively engage with novel, creative, or unique aspects of the user's request?</th>
+                
+                        <th>Does the response bridge knowledge gaps by connecting unfamiliar concepts to things the user likely already understands?</th>
+                
+                        <th>Does the response adapt its style and complexity based on cues about the user's expertise or familiarity with the topic?</th>
+                
+                        <th>Does the response preemptively address common misconceptions related to the topic?</th>
+                
+                        <th>Does the response use examples that connect to the user's stated interests, goals, or previous questions?</th>
+                
+                    </tr>
+            
+                    <tr>
+                        <td>1</td>
+                        <td class="score">13.5%</td>
+                
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                    </tr>
+                
+                    <tr>
+                        <td>2</td>
+                        <td class="score">13.5%</td>
+                
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                    </tr>
+                
+                    <tr>
+                        <td>3</td>
+                        <td class="score">11.5%</td>
+                
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                    </tr>
+                
+                    <tr>
+                        <td>4</td>
+                        <td class="score">11.5%</td>
+                
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                    </tr>
+                
+                    <tr>
+                        <td>5</td>
+                        <td class="score">10.4%</td>
+                
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>100.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                        <td>0.0%</td>
+                    
+                    </tr>
+                
+                </table>
+            </div>
+        
+            <h2>Top System Messages</h2>
+        
+            <div class="container best">
+                <h3>🥇 Best System Message (Score: 13.5%)</h3>
+                <div class="system-message">You are a helpful AI assistant answering questions about life and finances. When responding to questions about What is life insurance?..., provide accurate, clear, and concise information. Stay factual and objective while remaining helpful and conversational.</div>
+                <div class="meta">Rank: 1</div>
+            </div>
+            
+            <div class="container runnerup">
+                <h3>🥈 Second Best (Score: 13.5%)</h3>
+                <div class="system-message">You are a knowledgeable expert focused on providing factual information about What is life insurance?... Your explanations should be thorough but accessible, using plain language where possible. Include key concepts and details that would help someone understand this topic completely.</div>
+                <div class="meta">Rank: 2</div>
+            </div>
+            
+            <div class="container third">
+                <h3>🥉 Third Best (Score: 11.5%)</h3>
+                <div class="system-message">You are a patient teacher explaining topics related to What is life insurance?... Break down complex concepts into simple parts, use analogies when helpful, and anticipate common questions or misconceptions. Your tone should be friendly, encouraging, and accessible to learners at different levels.</div>
+                <div class="meta">Rank: 3</div>
+            </div>
+            
+            <div class="container">
+                <h2>Sample Responses</h2>
+            
+                <div class="container best">
+                    <h3>Sample Response (Rank 1, Score: 13.5%)</h3>
+                
+                    <p><strong>System Message:</strong> <span class="system-preview">You are a helpful AI assistant answering questions about life and finances. When responding to quest...</span></p>
+                    
+                    <p><strong>Model:</strong> gpt-4o-mini</p>
+                    <div class="system-message">Life insurance is a financial product that provides a monetary benefit to designated beneficiaries upon the death of the insured person. Essentially, it is a contract between the policyholder and the insurance company, where the policyholder pays regular premiums in exchange for a death benefit that will be paid out to the beneficiaries when the insured passes away.<br><br>There are two main types of life insurance:<br><br>1. **Term Life Insurance**: This type provides coverage for a specific period (the term), such as 10, 20, or 30 years. If the insured dies within that term, the beneficiaries receive the death benefit. If the term expires and the insured is still alive, the coverage ends, and there is no payout.<br><br>2. **Permanent Life Insurance**: This type provides lifelong coverage as long as premiums are paid. It can also build cash value over time, which the policyholder can borrow against or withdraw. Common forms of permanent life insurance include whole life, universal life, and variable life insurance.<br><br>Life insurance can serve various purposes, such as providing financial security for dependents, covering debts and expenses, or leaving an inheritance. It’s important to assess your needs and circumstances when considering life insurance.</div>
+                    
+                </div>
+                
+                <div class="container runnerup">
+                    <h3>Sample Response (Rank 2, Score: 13.5%)</h3>
+                
+                    <p><strong>System Message:</strong> <span class="system-preview">You are a knowledgeable expert focused on providing factual information about What is life insurance...</span></p>
+                    
+                    <p><strong>Model:</strong> gpt-4o-mini</p>
+                    <div class="system-message">Life insurance is a financial product that provides a monetary benefit to designated beneficiaries upon the death of the insured person. Essentially, it’s a contract between an individual (the policyholder) and an insurance company. The policyholder pays regular premiums, and in return, the insurance company agrees to pay a specified amount of money, known as the death benefit, when the insured person passes away.<br><br>### Key Concepts of Life Insurance:<br><br>1. **Types of Life Insurance**:<br>   - **Term Life Insurance**: This type provides coverage for a specific period, or "term," such as 10, 20, or 30 years. If the insured person dies during this term, the beneficiaries receive the death benefit. If the term expires and the insured is still alive, the coverage ends unless renewed.<br>   - **Whole Life Insurance**: This is a type of permanent insurance that provides coverage for the insured's entire life as long as premiums are paid. It also includes a savings component (cash value) that grows over time.<br>   - **Universal Life Insurance**: This is another form of permanent insurance that offers more flexibility in premium payments and death benefits. It also builds cash value.<br>   - **Variable Life Insurance**: This type combines life insurance with investment options. The cash value can fluctuate based on the performance of investments chosen by the policyholder.<br><br>2. **Premiums**: The amount paid by the policyholder for the insurance coverage. Premiums can be paid monthly, quarterly, or annually and are determined by factors such as the insured’s age, health, and the amount of coverage desired.<br><br>3. **Death Benefit**: The sum of money that is paid out to the beneficiaries upon the death of the insured. This benefit can be used by beneficiaries to cover living expenses, pay off debts, or for any other purpose.<br><br>4. **Beneficiaries**: These are the individuals or entities (like a trust or charity) designated by the policyholder to receive the death benefit. The policyholder can name one or more beneficiaries and can change them at any time.<br><br>5. **Cash Value**: In permanent life insurance policies, a portion of the premiums goes into a cash value account, which grows over time. The policyholder can borrow against this cash value or withdraw it, though this may reduce the death benefit.<br><br>### Why Consider Life Insurance?<br><br>- **Financial Security**: Life insurance provides peace of mind knowing that your loved ones will have financial support after your death.<br>- **Debt Coverage**: It can help pay off debts such as mortgages, loans, or credit card bills, preventing financial strain on family members.<br>- **Income Replacement**: For families relying on one income, life insurance can replace lost income, ensuring that dependents can maintain their standard of living.<br>- **Estate Planning**: Life insurance can play a critical role in estate planning, helping to cover estate taxes or provide an inheritance for heirs.<br><br>### Important Considerations:<br><br>- **Health Underwriting**: When applying for life insurance, insurers often require health information and may conduct medical exams to assess risk.<br>- **Exclusions**: Policies may have exclusions that specify conditions under which the death benefit will not be paid, such as suicide within the first two years or death from certain risky activities.<br>- **Policy Review**: It's important to periodically review your life insurance policy to ensure it meets your current needs, especially after significant life events like marriage, having children, or changing jobs.<br><br>In summary, life insurance is a valuable tool for financial planning, providing financial protection and peace of mind for you and your loved ones in the event of an untimely death.</div>
+                    
+                </div>
+                
+                <div class="container third">
+                    <h3>Sample Response (Rank 3, Score: 11.5%)</h3>
+                
+                    <p><strong>System Message:</strong> <span class="system-preview">You are a patient teacher explaining topics related to What is life insurance?... Break down complex...</span></p>
+                    
+                    <p><strong>Model:</strong> gpt-4o-mini</p>
+                    <div class="system-message">Great question! Let’s break it down step by step to understand what life insurance is and why it can be important.<br><br>### 1. **What is Life Insurance?**<br>At its core, life insurance is a financial product that provides a sum of money to your beneficiaries (like family members or loved ones) when you pass away. Think of it as a safety net that helps protect your loved ones financially in case something unexpected happens to you.<br><br>### 2. **How Does It Work?**<br>- **You Pay Premiums**: To have life insurance, you pay a certain amount of money regularly (like monthly or yearly). This is called a premium.<br>- **Coverage Amount**: When you buy a policy, you choose how much money you want your beneficiaries to receive when you pass away. This is known as the coverage amount or death benefit.<br>- **Payout**: If you pass away while the policy is active, your beneficiaries will receive the money you agreed upon, which can help cover things like living expenses, debts, or funeral costs.<br><br>### 3. **Types of Life Insurance**<br>There are mainly two types of life insurance:<br><br>- **Term Life Insurance**: This is like renting an apartment. You pay for coverage for a specific period (like 10, 20, or 30 years). If you pass away during that time, your beneficiaries get the payout. But if you outlive the term, the coverage ends, and you don’t get any money back.<br>  <br>- **Whole Life Insurance**: This is more like buying a house. It covers you for your entire life as long as you keep paying the premiums. It also has a savings component that builds cash value over time, which you can borrow against or withdraw.<br><br>### 4. **Why Do People Get Life Insurance?**<br>- **Financial Protection**: To ensure that loved ones can maintain their standard of living after they’re gone.<br>- **Debt Coverage**: To help pay off debts, like a mortgage or student loans, so that family members aren’t burdened.<br>- **Funeral Expenses**: To cover the costs of burial or cremation, which can be quite expensive.<br><br>### 5. **Common Misconceptions**<br>- **"I’m young and healthy, so I don’t need it."**: While it’s true that younger people often have fewer health issues, life insurance can be cheaper when you’re younger. Plus, it can provide peace of mind for your loved ones.<br>- **"It’s too expensive."**: There are many options, and you can find a policy that fits your budget. The cost can vary based on age, health, and the type of insurance.<br>- **"My employer provides life insurance, so I’m covered."**: Employer-provided life insurance is often limited. If you change jobs or your employer stops offering it, you may not have coverage anymore.<br><br>### 6. **Frequently Asked Questions**<br>- **Can I get life insurance if I have health issues?**: Yes, but it may be more expensive. Some insurance companies offer policies specifically for those with health issues.<br>- **Do I need life insurance if I don’t have dependents?**: It depends on your situation. If you have debts or want to cover funeral costs, it might still be a good idea.<br><br>### Conclusion<br>Life insurance is a way to provide financial security for your loved ones when you’re no longer there to support them. It’s a personal choice, and understanding the options available can help you make the best decision for your situation. If you have more questions or want to dive deeper into a specific part, feel free to ask!</div>
+                    
+                </div>
+                
+            </div>
+            
+        </body>
+        </html>
+        

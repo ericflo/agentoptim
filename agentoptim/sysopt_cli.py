@@ -10,6 +10,10 @@ import time
 import threading
 from typing import Optional, List, Dict, Any
 from pathlib import Path
+import httpx
+
+# Enable debug mode for advanced logging
+DEBUG_MODE = os.environ.get("AGENTOPTIM_DEBUG", "0") == "1"
 
 from colorama import Fore, Back, Style, init as init_colorama
 from agentoptim.cli.core import FancySpinner
@@ -44,6 +48,9 @@ def optimize_setup_parser(subparsers):
         aliases=["opt", "o"],
         description="Optimize, evaluate, and rank system messages for optimal performance."
     )
+    
+    # Set the handler function
+    optimize_parser.set_defaults(func=handle_optimize)
     
     # Add subcommands to optimize
     optimize_subparsers = optimize_parser.add_subparsers(
@@ -125,6 +132,10 @@ def optimize_setup_parser(subparsers):
         "--interactive",
         action="store_true",
         help="Enter interactive mode for inputting user message"
+    )
+    create_parser.add_argument(
+        "--continue-from",
+        help="Continue optimization from a previous run ID (uses best system message as base)"
     )
     
     # Get (retrieve an optimization run)
@@ -220,6 +231,11 @@ def optimize_setup_parser(subparsers):
         help="Model to use for optimization"
     )
     meta_parser.add_argument(
+        "--provider",
+        choices=["openai", "anthropic", "local"],
+        help="Provider to use for evaluations (sets appropriate defaults)"
+    )
+    meta_parser.add_argument(
         "--concurrency", "-c",
         type=int,
         default=3,
@@ -268,8 +284,8 @@ def format_optimization_result(result, format_type="text", quiet=False):
         if evalset_id:
             try:
                 from agentoptim.evalset import get_evalset
-                import asyncio
-                evalset = asyncio.run(get_evalset(evalset_id))
+                # Call directly without asyncio.run - the function is not async
+                evalset = get_evalset(evalset_id)
                 if evalset and 'name' in evalset:
                     result['evalset_name'] = evalset['name']
             except Exception:
@@ -298,6 +314,43 @@ def format_optimization_result(result, format_type="text", quiet=False):
             for criterion, score in candidate.get('criterion_scores', {}).items():
                 md += f"- {criterion}: {score:.1f}%\n"
             md += "\n"
+            
+        # Add sample responses if available
+        sample_responses = result.get('sample_responses', {})
+        
+        # Also check the old format for backward compatibility
+        single_sample_response = result.get('sample_response', {})
+        if single_sample_response and not sample_responses:
+            sample_responses = {"best": single_sample_response}
+            
+        if sample_responses:
+            md += "## Sample Responses\n\n"
+            
+            for key, response in sample_responses.items():
+                # Get candidate info if available
+                candidate_info = ""
+                if 'candidate_rank' in response:
+                    rank = response.get('candidate_rank', 'N/A')
+                    score = response.get('score', 0)
+                    candidate_info = f" (Rank {rank}, Score: {score:.1f}%)"
+                elif key == "best":
+                    candidate_info = " (Best System Message)"
+                elif key.isdigit():
+                    # For backward compatibility with numerically indexed responses
+                    candidate_info = f" (Candidate {int(key)+1})"
+                
+                md += f"### Sample Response{candidate_info}\n\n"
+                
+                # Add system message preview if available
+                if 'system_message_preview' in response:
+                    md += f"**System Message:** {response['system_message_preview']}\n\n"
+                
+                if 'content' in response:
+                    model = response.get('model', 'unknown')
+                    md += f"**Model:** {model}\n\n"
+                    md += f"```\n{response['content']}\n```\n\n"
+                elif 'error' in response:
+                    md += f"**Error:** {response['error']}\n\n"
         
         return md
     
@@ -315,6 +368,7 @@ def format_optimization_result(result, format_type="text", quiet=False):
                 .runnerup {{ background: #f0f7ff; border-left: 5px solid #66a3ff; }}
                 .third {{ background: #f5faff; border-left: 5px solid #99c2ff; }}
                 .system-message {{ background: #f5f5f5; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-family: monospace; margin: 10px 0; }}
+                .system-preview {{ font-family: monospace; color: #555; background-color: #f0f0f0; padding: 2px 5px; border-radius: 3px; display: inline-block; margin: 5px 0; }}
                 .score {{ font-weight: bold; color: #0066cc; }}
                 .meta {{ color: #666; font-size: 0.9em; }}
                 table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
@@ -333,6 +387,9 @@ def format_optimization_result(result, format_type="text", quiet=False):
                 <p><strong>Candidates Generated:</strong> {len(result.get("candidates", []))}</p>
                 <p><strong>Optimization Run ID:</strong> {result.get("id", "N/A")}</p>
                 <p><strong>Best Score:</strong> {best_score:.1f}%</p>
+                
+                {"<p><strong>Iteration:</strong> " + str(result.get('iteration', 1)) + "</p>" if result.get('iteration', 1) > 1 or result.get('continued_from') else ""}
+                {"<p><strong>Continued From:</strong> " + str(result.get('continued_from', '')) + "</p>" if result.get('continued_from') else ""}
         """
         
         # Add self-optimization info if available
@@ -418,27 +475,73 @@ def format_optimization_result(result, format_type="text", quiet=False):
             </div>
             """
         
-        # Add sample response if available
-        sample_response = result.get('sample_response', {})
-        if sample_response:
+        # Add sample responses if available
+        sample_responses = result.get('sample_responses', {})
+        
+        # Also check the old format for backward compatibility
+        single_sample_response = result.get('sample_response', {})
+        if single_sample_response and not sample_responses:
+            sample_responses = {"best": single_sample_response}
+        
+        if sample_responses:
             html += """
             <div class="container">
-                <h2>Sample Response</h2>
+                <h2>Sample Responses</h2>
             """
             
-            if 'content' in sample_response:
-                model = sample_response.get('model', 'unknown')
-                content = sample_response['content'].replace('\n', '<br>')
+            for key, response in sample_responses.items():
+                # Get candidate info if available
+                candidate_info = ""
+                candidate_class = ""
+                
+                if 'candidate_rank' in response:
+                    rank = response.get('candidate_rank', 'N/A')
+                    score = response.get('score', 0)
+                    candidate_info = f" (Rank {rank}, Score: {score:.1f}%)"
+                    
+                    # Set CSS class based on rank
+                    if rank == 1:
+                        candidate_class = "best"
+                    elif rank == 2:
+                        candidate_class = "runnerup"
+                    elif rank == 3:
+                        candidate_class = "third"
+                        
+                elif key == "best":
+                    candidate_info = " (Best System Message)"
+                    candidate_class = "best"
+                elif key.isdigit():
+                    # For backward compatibility with numerically indexed responses
+                    candidate_info = f" (Candidate {int(key)+1})"
                 
                 html += f"""
-                <p><strong>Model:</strong> {model}</p>
-                <div class="system-message">{content}</div>
-                """
-            elif 'error' in sample_response:
-                html += f"""
-                <p style="color: red;">Error: {sample_response['error']}</p>
+                <div class="container {candidate_class}">
+                    <h3>Sample Response{candidate_info}</h3>
                 """
                 
+                # Add system message preview if available
+                if 'system_message_preview' in response:
+                    html += f"""
+                    <p><strong>System Message:</strong> <span class="system-preview">{response['system_message_preview']}</span></p>
+                    """
+                
+                if 'content' in response:
+                    model = response.get('model', 'unknown')
+                    content = response['content'].replace('\n', '<br>')
+                    
+                    html += f"""
+                    <p><strong>Model:</strong> {model}</p>
+                    <div class="system-message">{content}</div>
+                    """
+                elif 'error' in response:
+                    html += f"""
+                    <p style="color: red;">Error: {response['error']}</p>
+                    """
+                    
+                html += """
+                </div>
+                """
+            
             html += """
             </div>
             """
@@ -456,10 +559,21 @@ def format_optimization_result(result, format_type="text", quiet=False):
         
         formatted_text = []
         
-        # Title
-        formatted_text.append(f"{Fore.CYAN}╔{'═' * 76}╗{Style.RESET_ALL}")
-        formatted_text.append(f"{Fore.CYAN}║{Style.RESET_ALL}  {Fore.YELLOW}📋 System Message Optimization Results{Style.RESET_ALL}{' ' * 36}{Fore.CYAN}║{Style.RESET_ALL}")
-        formatted_text.append(f"{Fore.CYAN}╚{'═' * 76}╝{Style.RESET_ALL}")
+        # Get terminal width for better formatting
+        import shutil
+        term_width = shutil.get_terminal_size().columns
+        box_width = min(76, term_width - 4)
+        
+        # Simpler title for narrow terminals
+        if term_width < 60:
+            formatted_text.append(f"{Fore.CYAN}== System Message Optimization Results =={Style.RESET_ALL}")
+        else:
+            # Title with box - adjusted to terminal width
+            formatted_text.append(f"{Fore.CYAN}╔{'═' * box_width}╗{Style.RESET_ALL}")
+            title_text = "📋 System Message Optimization Results"
+            padding = max(0, box_width - len(title_text) - 2)
+            formatted_text.append(f"{Fore.CYAN}║{Style.RESET_ALL}  {Fore.YELLOW}{title_text}{Style.RESET_ALL}{' ' * padding}{Fore.CYAN}║{Style.RESET_ALL}")
+            formatted_text.append(f"{Fore.CYAN}╚{'═' * box_width}╝{Style.RESET_ALL}")
         formatted_text.append("")
         
         # Summary
@@ -475,6 +589,12 @@ def format_optimization_result(result, format_type="text", quiet=False):
         formatted_text.append(f"  {Fore.WHITE}Candidates Generated:{Style.RESET_ALL} {len(result.get('candidates', []))}")
         formatted_text.append(f"  {Fore.WHITE}Optimization Run ID:{Style.RESET_ALL} {result.get('id', 'Unknown')}")
         
+        # Show iteration information if this is part of a sequence
+        if result.get('iteration', 1) > 1 or result.get('continued_from'):
+            formatted_text.append(f"  {Fore.WHITE}Iteration:{Style.RESET_ALL} {result.get('iteration', 1)}")
+            if result.get('continued_from'):
+                formatted_text.append(f"  {Fore.WHITE}Continued From:{Style.RESET_ALL} {result.get('continued_from')}")
+        
         # Add self-optimization info if available
         self_opt = result.get("self_optimization", {})
         if self_opt and "error" not in self_opt:
@@ -488,31 +608,51 @@ def format_optimization_result(result, format_type="text", quiet=False):
         
         # Best system message
         formatted_text.append(f"{Fore.GREEN}🏆 Best System Message (Score: {best_score:.1f}%):{Style.RESET_ALL}")
-        formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
         
-        # Display the best system message, wrapping at 76 characters
+        # Use line width based on terminal width
+        line_width = min(78, term_width - 2)
+        formatted_text.append(f"{Fore.CYAN}{'─' * line_width}{Style.RESET_ALL}")
+        
+        # Display the best system message, wrapping based on terminal width
         import textwrap
-        for line in textwrap.wrap(best_system_message if best_system_message else "No system message available", width=76):
+        wrap_width = min(76, term_width - 4)  # Leave some margin
+        
+        # Always show the full system message
+        # It's crucial information that shouldn't be truncated
+        for line in textwrap.wrap(best_system_message if best_system_message else "No system message available", width=wrap_width):
             formatted_text.append(line)
             
-        formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
+        formatted_text.append(f"{Fore.CYAN}{'─' * line_width}{Style.RESET_ALL}")
         formatted_text.append("")
         
         # Add all candidates comparison
         candidates = result.get('candidates', [])
         if len(candidates) > 1:
-            formatted_text.append(f"{Fore.GREEN}📊 All Candidates Comparison:{Style.RESET_ALL}")
-            formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
+            formatted_text.append(f"{Fore.GREEN}📊 Top Candidates Comparison:{Style.RESET_ALL}")
             
-            # Table header
-            formatted_text.append(f"{Fore.WHITE}{'Rank':^6} {'Score':^8} {'Type':^12} {'System Message (preview)':50}{Style.RESET_ALL}")
-            formatted_text.append(f"{Fore.CYAN}{'─' * 6:^6} {'─' * 8:^8} {'─' * 12:^12} {'─' * 50}{Style.RESET_ALL}")
+            # Use line width based on terminal width
+            line_width = min(78, term_width - 2)
+            formatted_text.append(f"{Fore.CYAN}{'─' * line_width}{Style.RESET_ALL}")
+            
+            # Get preview width based on terminal width
+            preview_width = min(50, max(30, line_width - 30))
+            
+            # Table header - adjust based on terminal width
+            if term_width < 80:
+                # Compact header for narrow terminals
+                formatted_text.append(f"{Fore.WHITE}{'#':^3} {'Score':^8} {'Preview':{preview_width}}{Style.RESET_ALL}")
+                formatted_text.append(f"{Fore.CYAN}{'─' * 3:^3} {'─' * 8:^8} {'─' * preview_width}{Style.RESET_ALL}")
+            else:
+                # Full header for wider terminals
+                formatted_text.append(f"{Fore.WHITE}{'Rank':^6} {'Score':^8} {'Type':^12} {'System Message (preview)':{preview_width}}{Style.RESET_ALL}")
+                formatted_text.append(f"{Fore.CYAN}{'─' * 6:^6} {'─' * 8:^8} {'─' * 12:^12} {'─' * preview_width}{Style.RESET_ALL}")
             
             # Sort candidates by score
             sorted_candidates = sorted(candidates, key=lambda c: c.get('score', 0), reverse=True)
             
-            # Display candidates
-            for candidate in sorted_candidates:
+            # Display top candidates only (limit to 3 to avoid excessive output)
+            top_candidates = sorted_candidates[:min(3, len(sorted_candidates))]
+            for candidate in top_candidates:
                 # Determine type
                 if candidate.get('generation_metadata', {}).get('is_fallback', False):
                     type_str = f"{Fore.YELLOW}Fallback{Style.RESET_ALL}"
@@ -521,36 +661,89 @@ def format_optimization_result(result, format_type="text", quiet=False):
                 
                 # Get content preview
                 content = candidate.get('content', '')
-                content_preview = content[:47] + '...' if len(content) > 50 else content
+                preview_len = preview_width - 3  # Leave room for ellipsis
+                # In the table, we still use a preview
+                content_preview = content[:preview_len] + '...' if len(content) > preview_len else content
                 
                 # Format row
                 rank = candidate.get('rank', 'N/A')
                 score = candidate.get('score', 0)
                 score_str = f"{score:.1f}%"
                 
-                formatted_text.append(f"{rank:^6} {score_str:^8} {type_str:^12} {content_preview}")
+                # Adjust row format based on terminal width
+                if term_width < 80:
+                    formatted_text.append(f"{rank:^3} {score_str:^8} {content_preview}")
+                else:
+                    formatted_text.append(f"{rank:^6} {score_str:^8} {type_str:^12} {content_preview}")
             
-            formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
+            # Show count if we truncated the list
+            if len(sorted_candidates) > len(top_candidates):
+                remaining = len(sorted_candidates) - len(top_candidates)
+                formatted_text.append(f"{Fore.YELLOW}... and {remaining} more candidates not shown{Style.RESET_ALL}")
+                
+            formatted_text.append(f"{Fore.CYAN}{'─' * line_width}{Style.RESET_ALL}")
             formatted_text.append("")
         
-        # Add sample response if available
-        sample_response = result.get('sample_response', {})
-        if sample_response:
-            formatted_text.append(f"{Fore.GREEN}💬 Sample Response:{Style.RESET_ALL}")
+        # Add sample responses if available
+        sample_responses = result.get('sample_responses', {})
+        
+        # Also check the old format for backward compatibility
+        single_sample_response = result.get('sample_response', {})
+        if single_sample_response and not sample_responses:
+            sample_responses = {"best": single_sample_response}
+            
+        if sample_responses:
+            formatted_text.append(f"{Fore.GREEN}💬 Sample Responses:{Style.RESET_ALL}")
             formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
             
-            if 'content' in sample_response:
-                model = sample_response.get('model', 'unknown')
-                formatted_text.append(f"{Fore.WHITE}Model: {model}{Style.RESET_ALL}")
+            import textwrap
+            for key, response in sample_responses.items():
+                # Get candidate info if available
+                candidate_info = ""
+                candidate_color = Fore.YELLOW
+                if 'candidate_rank' in response:
+                    rank = response.get('candidate_rank', 'N/A')
+                    score = response.get('score', 0)
+                    candidate_info = f" (Rank {rank}, Score: {score:.1f}%)"
+                    
+                    # Set color based on rank
+                    if rank == 1:
+                        candidate_color = Fore.GREEN
+                    elif rank == 2:
+                        candidate_color = Fore.CYAN
+                    elif rank == 3:
+                        candidate_color = Fore.BLUE
+                        
+                elif key == "best":
+                    candidate_info = " (Best System Message)"
+                    candidate_color = Fore.GREEN
+                elif key.isdigit():
+                    # For backward compatibility with numerically indexed responses
+                    candidate_info = f" (Candidate {int(key)+1})"
+                
+                formatted_text.append(f"{candidate_color}Sample Response{candidate_info}:{Style.RESET_ALL}")
+                
+                # Add system message preview if available
+                if 'system_message_preview' in response:
+                    formatted_text.append(f"{Fore.WHITE}System Message: {Fore.CYAN}{response['system_message_preview']}{Style.RESET_ALL}")
+                
+                if 'content' in response:
+                    model = response.get('model', 'unknown')
+                    formatted_text.append(f"{Fore.WHITE}Model: {model}{Style.RESET_ALL}")
+                    formatted_text.append("")
+                    
+                    # Display the response, wrapping at 76 characters
+                    for line in textwrap.wrap(response['content'], width=76):
+                        formatted_text.append(line)
+                    formatted_text.append("")
+                elif 'error' in response:
+                    formatted_text.append(f"{Fore.RED}Error: {response['error']}{Style.RESET_ALL}")
+                    formatted_text.append("")
+                    
+                # Add a separator between responses
+                formatted_text.append(f"{Fore.CYAN}{'─' * 40}{Style.RESET_ALL}")
                 formatted_text.append("")
-                
-                # Display the response, wrapping at 76 characters
-                import textwrap
-                for line in textwrap.wrap(sample_response['content'], width=76):
-                    formatted_text.append(line)
-            elif 'error' in sample_response:
-                formatted_text.append(f"{Fore.RED}Error: {sample_response['error']}{Style.RESET_ALL}")
-                
+            
             formatted_text.append(f"{Fore.CYAN}{'─' * 78}{Style.RESET_ALL}")
             formatted_text.append("")
         
@@ -558,10 +751,13 @@ def format_optimization_result(result, format_type="text", quiet=False):
         formatted_text.append(f"{Fore.YELLOW}ℹ️  To get more details:{Style.RESET_ALL}")
         formatted_text.append(f"   agentoptim optimize get {result.get('id', 'ID')} --format html --output report.html")
         
-        # Add tip about generating a sample response if not already present
-        if not sample_response:
-            formatted_text.append(f"{Fore.YELLOW}ℹ️  To generate a sample response:{Style.RESET_ALL}")
-            formatted_text.append(f"   agentoptim optimize get {result.get('id', 'ID')} --generate-response")
+        # Add tip about generating more sample responses
+        formatted_text.append(f"{Fore.YELLOW}ℹ️  To generate additional sample responses:{Style.RESET_ALL}")
+        formatted_text.append(f"   agentoptim optimize get {result.get('id', 'ID')} --generate-response")
+        
+        # Add tip about continuing optimization
+        formatted_text.append(f"{Fore.YELLOW}ℹ️  To continue optimizing from this result:{Style.RESET_ALL}")
+        formatted_text.append(f"   agentoptim optimize create {result.get('evalset_id', 'EVALSET')} \"{result.get('user_message', 'QUERY')}\" --continue-from {result.get('id', 'ID')}")
         
         return "\n".join(formatted_text)
 
@@ -619,10 +815,21 @@ def format_optimization_list(result, format_type="text", quiet=False):
         
         formatted_text = []
         
-        # Title
-        formatted_text.append(f"{Fore.CYAN}╔{'═' * 76}╗{Style.RESET_ALL}")
-        formatted_text.append(f"{Fore.CYAN}║{Style.RESET_ALL}  {Fore.YELLOW}📋 System Message Optimization Runs{Style.RESET_ALL}{' ' * 36}{Fore.CYAN}║{Style.RESET_ALL}")
-        formatted_text.append(f"{Fore.CYAN}╚{'═' * 76}╝{Style.RESET_ALL}")
+        # Get terminal width for better formatting
+        import shutil
+        term_width = shutil.get_terminal_size().columns
+        box_width = min(76, term_width - 4)
+        
+        # Simpler title for narrow terminals
+        if term_width < 60:
+            formatted_text.append(f"{Fore.CYAN}== System Message Optimization Runs =={Style.RESET_ALL}")
+        else:
+            # Title with box - adjusted to terminal width
+            formatted_text.append(f"{Fore.CYAN}╔{'═' * box_width}╗{Style.RESET_ALL}")
+            title_text = "📋 System Message Optimization Runs"
+            padding = max(0, box_width - len(title_text) - 2)
+            formatted_text.append(f"{Fore.CYAN}║{Style.RESET_ALL}  {Fore.YELLOW}{title_text}{Style.RESET_ALL}{' ' * padding}{Fore.CYAN}║{Style.RESET_ALL}")
+            formatted_text.append(f"{Fore.CYAN}╚{'═' * box_width}╝{Style.RESET_ALL}")
         formatted_text.append("")
         
         # Handle empty results
@@ -630,16 +837,37 @@ def format_optimization_list(result, format_type="text", quiet=False):
             formatted_text.append(f"{Fore.YELLOW}No optimization runs found.{Style.RESET_ALL}")
             return "\n".join(formatted_text)
         
-        # Table header
-        formatted_text.append(f"{Fore.WHITE}{'ID':<36} {'User Message':<30} {'Score':>7} {'Date':<16}{Style.RESET_ALL}")
-        formatted_text.append(f"{Fore.CYAN}{'─' * 36} {'─' * 30} {'─' * 7} {'─' * 16}{Style.RESET_ALL}")
+        # Calculate column widths based on terminal size
+        if term_width < 80:
+            # Compact mode for narrow terminals
+            id_width = 8  # Show truncated IDs on narrow terminals
+            msg_width = max(15, term_width - id_width - 15)  # Dynamic message width
+            
+            # Compact header
+            formatted_text.append(f"{Fore.WHITE}{'ID':<{id_width}} {'Message':<{msg_width}} {'Score':>7}{Style.RESET_ALL}")
+            formatted_text.append(f"{Fore.CYAN}{'─' * id_width} {'─' * msg_width} {'─' * 7}{Style.RESET_ALL}")
+        else:
+            # Standard layout for wider terminals
+            id_width = min(36, max(8, int(term_width * 0.3)))  # Dynamic width
+            date_width = 16
+            score_width = 7
+            msg_width = max(15, term_width - id_width - score_width - date_width - 10)  # Dynamic message width
+            
+            # Full header
+            formatted_text.append(f"{Fore.WHITE}{'ID':<{id_width}} {'User Message':<{msg_width}} {'Score':>7} {'Date':<{date_width}}{Style.RESET_ALL}")
+            formatted_text.append(f"{Fore.CYAN}{'─' * id_width} {'─' * msg_width} {'─' * score_width} {'─' * date_width}{Style.RESET_ALL}")
         
         # Table rows
         for run in result.get("optimization_runs", []):
-            # Truncate user message if too long
+            # Format ID - truncate for narrow terminals
+            run_id = run.get('id', '')
+            if term_width < 80:
+                run_id = run_id[:id_width-2] + ".." if len(run_id) > id_width else run_id
+            
+            # Truncate user message based on available width
             user_msg = run.get("user_message", "")
-            if len(user_msg) > 27:
-                user_msg = user_msg[:24] + "..."
+            if len(user_msg) > msg_width - 3:  # Leave room for ellipsis
+                user_msg = user_msg[:msg_width-3] + "..."
                 
             # Format score with color based on value
             score = run.get("best_score", 0)
@@ -649,8 +877,14 @@ def format_optimization_list(result, format_type="text", quiet=False):
                 score_str = f"{Fore.YELLOW}{score:.1f}%{Style.RESET_ALL}"
             else:
                 score_str = f"{Fore.RED}{score:.1f}%{Style.RESET_ALL}"
-                
-            formatted_text.append(f"{run.get('id', ''):<36} {user_msg:<30} {score_str:>11} {run.get('timestamp_formatted', ''):<16}")
+            
+            # Format row based on terminal width
+            if term_width < 80:
+                # Compact row
+                formatted_text.append(f"{run_id:<{id_width}} {user_msg:<{msg_width}} {score_str:>11}")
+            else:
+                # Full row
+                formatted_text.append(f"{run_id:<{id_width}} {user_msg:<{msg_width}} {score_str:>11} {run.get('timestamp_formatted', ''):<{date_width}}")
             
         formatted_text.append("")
         
@@ -681,6 +915,43 @@ async def handle_optimize_create(args):
         print(f"{Fore.RED}Error: No user message provided{Style.RESET_ALL}")
         return 1
         
+    # Handle continuing from a previous optimization
+    if args.continue_from:
+        print(f"{Fore.CYAN}Continuing from previous optimization run: {args.continue_from}{Style.RESET_ALL}")
+        
+        # Get the previous optimization run (not an async function)
+        previous_run = get_optimization_run(args.continue_from)
+        if not previous_run:
+            print(f"{Fore.RED}Error: Previous optimization run not found: {args.continue_from}{Style.RESET_ALL}")
+            return 1
+            
+        # Find the best system message from the previous run
+        previous_best = None
+        
+        # First try using the direct best_system_message field
+        if hasattr(previous_run, 'best_system_message') and previous_run.best_system_message:
+            previous_best = previous_run.best_system_message
+        # Otherwise find the best candidate
+        elif hasattr(previous_run, 'candidates') and previous_run.candidates:
+            # Use best_candidate_index if available
+            if hasattr(previous_run, 'best_candidate_index') and previous_run.best_candidate_index is not None:
+                idx = previous_run.best_candidate_index
+                if 0 <= idx < len(previous_run.candidates):
+                    previous_best = previous_run.candidates[idx].content
+            # Otherwise find the highest scored candidate
+            else:
+                best_candidate = max(previous_run.candidates, key=lambda c: getattr(c, 'score', 0) or 0)
+                if best_candidate:
+                    previous_best = best_candidate.content
+                    
+        if not previous_best:
+            print(f"{Fore.RED}Error: Could not find best system message in previous run{Style.RESET_ALL}")
+            return 1
+            
+        # Use the previous best as the base system message
+        print(f"{Fore.GREEN}Using best system message from previous run as base{Style.RESET_ALL}")
+        args.base = previous_best
+        
     # Configure environment variables for provider and model
     if args.provider:
         if args.provider == "openai":
@@ -702,22 +973,53 @@ async def handle_optimize_create(args):
         
     # Set up progress display
     spinner = None
+    last_message = None  # Track last message to avoid repeating
     
     def update_progress(current, total, message):
         """Progress callback for optimization."""
-        nonlocal spinner
+        nonlocal spinner, last_message
         
         if spinner is None:
             # Initialize spinner on first progress update
             spinner = FancySpinner()
             spinner.start(f"Optimizing system messages for: {user_message[:40]}...")
-            # Show debugging info - this will help diagnose issues
-            print(f"{Fore.YELLOW}Debug: Set DEBUG_MODE=1 for more detailed logs{Style.RESET_ALL}")
+            # Only show debugging tip if we hit an issue or in a terminal
+            if DEBUG_MODE or os.environ.get("AGENTOPTIM_VERBOSE", "0") == "1":
+                print(f"{Fore.YELLOW}Tip: Set DEBUG_MODE=1 for more detailed logs{Style.RESET_ALL}")
             
+        # Calculate percent as a whole number
         percent = int((current / total) * 100)
-        spinner.update(percent=percent, message=message)
+        
+        # Only update if the message changed or percent changed significantly
+        # This prevents console spam
+        if message != last_message or percent % 5 == 0:  # Update on 5% increments or message change
+            spinner.update(percent=percent, message=message)
+            last_message = message
     
     try:
+        # Additional params for iteration tracking
+        continued_from = args.continue_from
+        iteration = 1
+        
+        # If continuing from a previous run, determine the iteration number
+        if continued_from:
+            # Get the previous run without awaiting (it's not an async function)
+            previous_run = get_optimization_run(continued_from)
+            if previous_run and hasattr(previous_run, 'iteration'):
+                iteration = previous_run.iteration + 1
+                
+            # Ensure iteration doesn't go beyond a reasonable limit to prevent
+            # trajectory optimization from getting worse over time
+            if iteration > 3:
+                print(f"{Fore.YELLOW}Warning: Limiting iteration to max of 3 (was {iteration}){Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Too many iterations can lead to optimization degradation.{Style.RESET_ALL}")
+                iteration = 3  # Cap at 3 iterations to avoid degradation
+                
+            # Add diagnostic output about whether we're continuing correctly
+            if DEBUG_MODE:
+                print(f"{Fore.CYAN}Continuing from previous run: {continued_from}{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}Iteration: {iteration}{Style.RESET_ALL}")
+        
         # Call the manage_optimization_runs function
         result = await manage_optimization_runs(
             action="optimize",
@@ -731,7 +1033,9 @@ async def handle_optimize_create(args):
             max_parallel=args.concurrency,
             additional_instructions=args.instructions,
             self_optimize=args.self_optimize,
-            progress_callback=update_progress
+            progress_callback=update_progress,
+            continued_from=continued_from,
+            iteration=iteration
         )
         
         # Stop spinner if it was started
@@ -740,7 +1044,17 @@ async def handle_optimize_create(args):
             
         # Check for errors
         if "error" in result:
-            print(f"{Fore.RED}Error: {result['error']}{Style.RESET_ALL}")
+            error_msg = result['error']
+            print(f"{Fore.RED}Error: {error_msg}{Style.RESET_ALL}")
+            
+            # Add helpful suggestions for common errors
+            if isinstance(error_msg, str):
+                if "evalset" in error_msg.lower() and "not found" in error_msg.lower():
+                    print(f"{Fore.YELLOW}Hint: Use 'agentoptim evalset list' to list available EvalSets{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}      or create a new one with 'agentoptim evalset create --wizard'{Style.RESET_ALL}")
+                elif "generator" in error_msg.lower() and "not found" in error_msg.lower():
+                    print(f"{Fore.YELLOW}Hint: The specified generator doesn't exist. Try using 'default'{Style.RESET_ALL}")
+            
             return 1
             
         # Format and display the result
@@ -770,15 +1084,40 @@ async def handle_optimize_create(args):
         error_msg = str(e)
         print(f"{Fore.RED}Error: {error_msg}{Style.RESET_ALL}")
         
-        # Add suggestions for common errors
-        if "API" in error_msg or "model" in error_msg.lower():
+        # Add suggestions for common errors with more detailed help
+        if isinstance(error_msg, str) and ("API" in error_msg or "model" in error_msg.lower()):
             print(f"\n{Fore.YELLOW}Troubleshooting suggestions:{Style.RESET_ALL}")
-            print(f"1. Check that you have set a valid API key for your provider:")
-            print(f"   - For OpenAI: export OPENAI_API_KEY=your_key_here")
-            print(f"   - For Anthropic: export ANTHROPIC_API_KEY=your_key_here")
-            print(f"2. Verify the model is available with your API key")
-            print(f"3. Try a different model with --model parameter")
-            print(f"4. For local models, ensure your local API server is running")
+            
+            # API key errors
+            if "key" in error_msg.lower() or "authentication" in error_msg.lower() or "auth" in error_msg.lower():
+                print(f"{Fore.GREEN}API Key Issue Detected:{Style.RESET_ALL}")
+                print(f"1. Check that you have set a valid API key:")
+                print(f"   - For OpenAI: {Fore.CYAN}export OPENAI_API_KEY=your_key_here{Style.RESET_ALL}")
+                print(f"   - For Anthropic: {Fore.CYAN}export ANTHROPIC_API_KEY=your_key_here{Style.RESET_ALL}")
+                print(f"2. Verify your API key has not expired or been revoked")
+                
+            # Model-specific errors
+            elif "model" in error_msg.lower() or "not found" in error_msg.lower():
+                print(f"{Fore.GREEN}Model Availability Issue Detected:{Style.RESET_ALL}")
+                print(f"1. Try a different model with: {Fore.CYAN}--model gpt-4-turbo{Style.RESET_ALL} or {Fore.CYAN}--model claude-3-opus{Style.RESET_ALL}")
+                print(f"2. For OpenAI models, try: {Fore.CYAN}--model gpt-4o-mini{Style.RESET_ALL} (newer model)")
+                print(f"3. For Anthropic models, try: {Fore.CYAN}--model claude-3-5-sonnet{Style.RESET_ALL} (newer model)")
+                
+            # Connection errors
+            elif "connect" in error_msg.lower() or "timeout" in error_msg.lower():
+                print(f"{Fore.GREEN}Connection Issue Detected:{Style.RESET_ALL}")
+                print(f"1. Check your internet connection")
+                print(f"2. For local models, verify your local API server is running")
+                print(f"3. The provider's API service may be experiencing issues - try again later")
+            
+            # Generic API errors
+            else:
+                print(f"1. Check that you have set a valid API key for your provider:")
+                print(f"   - For OpenAI: {Fore.CYAN}export OPENAI_API_KEY=your_key_here{Style.RESET_ALL}")
+                print(f"   - For Anthropic: {Fore.CYAN}export ANTHROPIC_API_KEY=your_key_here{Style.RESET_ALL}")
+                print(f"2. Verify the model is available with your API key")
+                print(f"3. Try a different model with {Fore.CYAN}--model parameter{Style.RESET_ALL}")
+                print(f"4. For local models, ensure your local API server is running")
         
         logger.exception("Error in handle_optimize_create")
         return 1
@@ -804,7 +1143,7 @@ async def handle_optimize_get(args):
             print(f"{Fore.RED}Error: No optimization run data in response{Style.RESET_ALL}")
             return 1
         
-        # Generate a sample response if requested
+        # Generate additional sample responses if requested
         if args.generate_response:
             
             # Configure environment variables for provider and model
@@ -862,15 +1201,15 @@ async def handle_optimize_get(args):
                     if evalset_id:
                         try:
                             from agentoptim.evalset import get_evalset
-                            import asyncio
-                            evalset = asyncio.run(get_evalset(evalset_id))
+                            # Call the function directly (not async)
+                            evalset = get_evalset(evalset_id)
                             if evalset and 'name' in evalset:
                                 optimization_run['evalset_name'] = evalset['name']
                         except Exception:
                             # If we can't get the evalset name, leave it as is
                             pass
             
-            print(f"{Fore.YELLOW}Generating sample response...{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Generating additional sample response...{Style.RESET_ALL}")
             
             # Get the model response
             try:
@@ -889,9 +1228,16 @@ async def handle_optimize_get(args):
                 # Create basic payload for a normal text response
                 payload = {
                     "model": args.model or "gpt-4o-mini",
-                    "messages": messages,
-                    "temperature": 0.7,
+                    "messages": [
+                        # Add a strong system message to force natural language responses
+                        {"role": "system", "content": "You are a helpful assistant that provides clear, natural language responses to user questions. Do NOT output JSON or structured formats unless explicitly requested. Just answer the question directly in plain, conversational language."},
+                        # The original messages
+                        {"role": "system", "content": best_system_message},
+                        {"role": "user", "content": user_message}
+                    ],
+                    "temperature": 0.5,  # Lower temperature for more consistent responses
                     "max_tokens": 1024
+                    # Removed top_p parameter as it's not supported by direct API calls
                 }
                 
                 # Configure headers
@@ -899,16 +1245,21 @@ async def handle_optimize_get(args):
                 
                 # Add authentication
                 openai_api_key = os.environ.get("OPENAI_API_KEY")
+                anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
                 api_base = get_api_base()
-                if openai_api_key:
+                
+                if "openai.com" in api_base and openai_api_key:
                     headers["Authorization"] = f"Bearer {openai_api_key}"
+                elif "anthropic.com" in api_base and anthropic_api_key:
+                    headers["x-api-key"] = anthropic_api_key
                 
                 # Make direct API call
                 import httpx
                 import json
                 
-                # Log the request
-                print(f"{Fore.YELLOW}Calling {api_base}/chat/completions directly...{Style.RESET_ALL}")
+                # Only log API details in debug mode
+                if DEBUG_MODE:
+                    print(f"{Fore.YELLOW}Calling {api_base}/chat/completions directly...{Style.RESET_ALL}")
                 
                 # Make API request
                 try:
@@ -929,19 +1280,82 @@ async def handle_optimize_get(args):
                 if "choices" in response and response["choices"]:
                     content = response["choices"][0].get("message", {}).get("content", "")
                     
-                    # Add the generated response to the optimization run
+                    # Initialize sample_responses if it doesn't exist
+                    if "sample_responses" not in optimization_run:
+                        optimization_run["sample_responses"] = {}
+                    
+                    # Add the generated response to the optimization run - use additional to differentiate from auto-generated ones
+                    response_index = f"additional_{int(time.time())}"
+                    
+                    # Create a system message preview for better context
+                    system_message_preview = best_system_message[:100] + "..." if len(best_system_message) > 100 else best_system_message
+                    
+                    optimization_run["sample_responses"][response_index] = {
+                        "model": args.model or response.get("model", "unknown"),
+                        "content": content,
+                        "generated_via": "additional request",
+                        "system_message_preview": system_message_preview,
+                        "system_message_id": "best",
+                        "candidate_rank": 1  # Mark as from the best system message
+                    }
+                    
+                    # For backward compatibility, also set sample_response
                     optimization_run["sample_response"] = {
                         "model": args.model or response.get("model", "unknown"),
                         "content": content
                     }
                 else:
                     # If there was an issue, add a note
+                    response_index = f"additional_{int(time.time())}"
+                    
+                    if "sample_responses" not in optimization_run:
+                        optimization_run["sample_responses"] = {}
+                        
+                    # Create a system message preview for better context in error cases
+                    system_message_preview = best_system_message[:100] + "..." if len(best_system_message) > 100 else best_system_message
+                    
+                    optimization_run["sample_responses"][response_index] = {
+                        "error": "Failed to generate response",
+                        "details": response,
+                        "system_message_preview": system_message_preview,
+                        "system_message_id": "best",
+                        "candidate_rank": 1,  # Mark as from the best system message
+                        "generated_via": "additional request (failed)"
+                    }
+                    
+                    # For backward compatibility
                     optimization_run["sample_response"] = {
                         "error": "Failed to generate response",
                         "details": response
                     }
+                
+                # Save the updated optimization run
+                from agentoptim.sysopt.core import save_optimization_run, OptimizationRun
+                run_obj = OptimizationRun(**optimization_run)
+                save_optimization_run(run_obj)
+                
             except Exception as e:
                 print(f"{Fore.RED}Error generating response: {str(e)}{Style.RESET_ALL}")
+                
+                # Initialize sample_responses if it doesn't exist
+                if "sample_responses" not in optimization_run:
+                    optimization_run["sample_responses"] = {}
+                
+                # Add error to sample_responses
+                response_index = f"additional_{int(time.time())}"
+                
+                # Create a system message preview for better context even in error cases
+                system_message_preview = best_system_message[:100] + "..." if len(best_system_message) > 100 else best_system_message
+                
+                optimization_run["sample_responses"][response_index] = {
+                    "error": f"Failed to generate response: {str(e)}",
+                    "system_message_preview": system_message_preview,
+                    "system_message_id": "best",
+                    "candidate_rank": 1,  # Mark as from the best system message
+                    "generated_via": "additional request (failed)"
+                }
+                
+                # For backward compatibility
                 optimization_run["sample_response"] = {
                     "error": f"Failed to generate response: {str(e)}"
                 }
@@ -1011,8 +1425,8 @@ async def handle_optimize_meta(args):
         spinner = FancySpinner()
         spinner.start(f"Self-optimizing generator '{args.generator}'...")
         
-        # Import necessary functions
-        from agentoptim.sysopt import self_optimize_generator, get_all_meta_prompts
+        # Import necessary functions from correct location
+        from agentoptim.sysopt.core import self_optimize_generator, get_all_meta_prompts
         
         # Configure environment variables for provider and model
         if args.provider:
@@ -1086,19 +1500,30 @@ async def handle_optimize_meta(args):
         logger.exception("Error in handle_optimize_meta")
         return 1
 
-async def handle_optimize(args):
+def handle_optimize(args):
     """Handle the optimize command."""
-    # Dispatch to the appropriate handler based on the action
-    if args.action == "create":
-        return await handle_optimize_create(args)
-    elif args.action == "get":
-        return await handle_optimize_get(args)
-    elif args.action == "list":
-        return await handle_optimize_list(args)
-    elif args.action == "meta":
-        return await handle_optimize_meta(args)
-    else:
-        print(f"{Fore.RED}Error: Unknown action '{args.action}'{Style.RESET_ALL}")
+    # Handle optimize command without async functions
+    try:
+        # Dispatch to the appropriate handler based on the action
+        if args.action == "create":
+            asyncio.run(handle_optimize_create(args))
+            return 0  # Success
+        elif args.action == "get":
+            asyncio.run(handle_optimize_get(args))
+            return 0  # Success
+        elif args.action == "list":
+            asyncio.run(handle_optimize_list(args))
+            return 0  # Success
+        elif args.action == "meta":
+            asyncio.run(handle_optimize_meta(args))
+            return 0  # Success
+        else:
+            print(f"{Fore.RED}Error: Unknown action '{args.action}'{Style.RESET_ALL}")
+            return 1
+    except Exception as e:
+        print(f"{Fore.RED}Error handling optimize command: {str(e)}{Style.RESET_ALL}")
+        import traceback
+        traceback.print_exc()
         return 1
 
 # FancySpinner is now imported from agentoptim.cli.core

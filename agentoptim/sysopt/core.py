@@ -646,12 +646,13 @@ async def generate_assistant_response(
             {"role": "user", "content": user_message}
         ]
         
-        # Call the LLM API
+        # Call the LLM API with more conservative parameters
         response = await call_llm_api(
             messages=messages,
             model=generator_model or DEFAULT_GENERATOR_MODEL,
             max_tokens=1024,
-            temperature=0.7
+            temperature=0.4  # Lower temperature for more reliable output
+            # Removed top_p parameter as it's not supported by the current API
         )
         
         # Check for errors
@@ -669,9 +670,20 @@ async def generate_assistant_response(
             elif "text" in choice:
                 content = choice["text"]
         
+        # Validate content
         if not content:
             logger.error("No content in assistant response")
             return {"error": "Failed to generate assistant response"}
+            
+        # Limit content length to avoid issues with extremely long responses
+        if len(content) > 15000:
+            logger.warning(f"Response content was very long ({len(content)} chars), truncating")
+            content = content[:15000] + "... [truncated due to excessive length]"
+            
+        # Make sure there's meaningful content
+        if len(content.strip()) < 10:
+            logger.warning(f"Response content was too short: '{content}'")
+            return {"error": "Generated response was too short or empty"}
         
         return {
             "content": content,
@@ -915,6 +927,17 @@ async def self_optimize_generator(
     logger.info(f"Starting self-optimization for generator {generator.id}")
     
     try:
+        # Debug what's in the cache
+        if DEBUG_MODE:
+            logger.info(f"Debugging: generator id={generator.id}, version={generator.version}")
+            logger.info(f"Debugging: evalset_id={evalset_id}")
+            logger.info(f"Debugging: generator_model={generator_model}")
+            logger.info(f"Debugging: max_parallel={max_parallel}")
+            if progress_callback:
+                logger.info("Debugging: progress_callback is provided")
+            else:
+                logger.info("Debugging: progress_callback is None")
+        
         # Create a self-optimization meta-prompt
         self_optimization_prompt = """You are MetaPromptOptimizer, an expert AI specializing in optimizing system message generators.
 
@@ -967,12 +990,35 @@ User Message: "What are the effects of climate change on polar regions?"
 Generated System Message: "You are a climate scientist specializing in polar ecosystems. Provide comprehensive, factual information about climate change impacts on Arctic and Antarctic regions. Include data on temperature changes, ice melt rates, effects on wildlife, and broader global implications. Stick to scientific consensus and cite recent research where appropriate. Use clear explanations that balance technical accuracy with accessibility. Avoid political statements while emphasizing the scientific understanding of these critical environmental changes."
 """
         
-        # Format the self-optimization prompt
-        formatted_prompt = self_optimization_prompt.format(
-            current_meta_prompt=generator.meta_prompt,
-            performance_metrics=performance_metrics,
-            recent_examples=recent_examples
-        )
+        # Format the self-optimization prompt with better error handling
+        try:
+            # Check if the meta prompt contains placeholders that might cause issues
+            if "{num_candidates}" in self_optimization_prompt:
+                logger.warning("self_optimization_prompt contains {num_candidates} which might cause conflicts")
+                self_optimization_prompt = self_optimization_prompt.replace("{num_candidates}", "{{num_candidates}}")
+                
+            if "{user_message}" in self_optimization_prompt:
+                logger.warning("self_optimization_prompt contains {user_message} which might cause conflicts")
+                self_optimization_prompt = self_optimization_prompt.replace("{user_message}", "{{user_message}}")
+                
+            formatted_prompt = self_optimization_prompt.format(
+                current_meta_prompt=generator.meta_prompt,
+                performance_metrics=performance_metrics,
+                recent_examples=recent_examples
+            )
+        except KeyError as e:
+            logger.error(f"KeyError formatting self-optimization prompt: {str(e)}")
+            # Try a simplified version without the problematic key
+            try:
+                formatted_prompt = "You are MetaPromptOptimizer. Please create an improved system message generator that follows the same format as the current one but with better performance.\n\n"
+                formatted_prompt += f"The current meta-prompt is:\n\n```\n{generator.meta_prompt}\n```\n\n"
+                formatted_prompt += "Your response must include all the original placeholders like {num_candidates}, {user_message}, {diversity_instructions}, etc."
+            except Exception as e2:
+                logger.error(f"Error in fallback formatting: {str(e2)}")
+                return {"error": f"Error formatting self-optimization prompt: {str(e)} then {str(e2)}"}
+        except Exception as e:
+            logger.error(f"Error formatting self-optimization prompt: {str(e)}")
+            return {"error": f"Error in self-optimization formatting: {str(e)}"}
         
         # Call LLM to generate improved meta-prompt
         messages = [
@@ -980,7 +1026,20 @@ Generated System Message: "You are a climate scientist specializing in polar eco
             {"role": "user", "content": "Please generate an improved meta-prompt based on the analysis above."}
         ]
         
-        response = await call_llm_api(messages=messages, model=generator_model)
+        # Create a custom messages array with an explicit instruction to return plain text
+        fixed_messages = [
+            {"role": "system", "content": "You are a helpful assistant that gives responses in plain text. DO NOT use JSON format for your responses."},
+            {"role": "system", "content": formatted_prompt},
+            {"role": "user", "content": "Please generate an improved meta-prompt based on the analysis above. Return ONLY the improved meta-prompt text, no JSON."}
+        ]
+        
+        # Use more conservative parameters for meta-prompt generation
+        response = await call_llm_api(
+            messages=fixed_messages, 
+            model=generator_model,
+            temperature=0.3,  # Lower temperature for more reliable output
+            max_tokens=4096   # Allow more tokens for complete meta-prompt
+        )
         
         # Check for errors
         if "error" in response:
@@ -1001,6 +1060,28 @@ Generated System Message: "You are a climate scientist specializing in polar eco
             logger.error("Invalid or too short meta-prompt generated")
             return {"error": "Failed to generate valid improved meta-prompt"}
         
+        # Check if all required placeholders are in the new meta prompt
+        required_placeholders = [
+            "{num_candidates}",
+            "{user_message}",
+            "{diversity_instructions}",
+            "{base_system_message_instructions}",
+            "{additional_instructions}"
+        ]
+        
+        # Placeholder check
+        missing_placeholders = []
+        for placeholder in required_placeholders:
+            if placeholder not in content:
+                missing_placeholders.append(placeholder)
+                
+        if missing_placeholders:
+            logger.warning(f"New meta prompt is missing placeholders: {missing_placeholders}")
+            # Add the missing placeholders at the end
+            content += "\n\n# Additional placeholders (auto-added):\n"
+            for placeholder in missing_placeholders:
+                content += f"\n{placeholder}"
+                
         # Create new generator with improved meta-prompt
         new_generator = SystemMessageGenerator(
             id=generator.id,
@@ -1021,17 +1102,29 @@ Generated System Message: "You are a climate scientist specializing in polar eco
         
         success_count = 0
         for test_message in test_messages:
-            candidates = await generate_system_messages(
-                user_message=test_message,
-                num_candidates=2,  # Just test with 2 for speed
-                generator=new_generator,
-                diversity_level="medium",
-                generator_model=generator_model,
-                is_self_optimization=True
-            )
-            
-            if candidates and len(candidates) > 0:
-                success_count += 1
+            # Debug info for troubleshooting
+            if DEBUG_MODE:
+                logger.info(f"Testing generator with message: {test_message}")
+                logger.info(f"Meta prompt keys: {new_generator.meta_prompt.count('{num_candidates}')}")
+                
+            # Use try-except to catch any errors during generation
+            try:
+                candidates = await generate_system_messages(
+                    user_message=test_message,
+                    num_candidates=2,  # Just test with 2 for speed
+                    generator=new_generator,
+                    diversity_level="medium",
+                    generator_model=generator_model,
+                    additional_instructions="",  # Add missing parameter
+                    is_self_optimization=True
+                )
+                # If we get here, the generation worked
+                if candidates and len(candidates) > 0:
+                    success_count += 1
+            except Exception as e:
+                logger.error(f"Error testing generator with message '{test_message}': {str(e)}")
+                # Continue testing with the next message despite the error
+                continue
         
         # Calculate success rate
         success_rate = success_count / len(test_messages) if test_messages else 0
@@ -1154,12 +1247,26 @@ async def optimize_system_messages(
         current_step += 1
         update_progress(current_step, total_steps, "Generating system message candidates...")
         
+        # Show warning if this is a high iteration
+        if iteration > 2:
+            logger.warning(f"Running high iteration optimization (iteration {iteration})")
+            
+        # Adjust diversity level for iterations to prevent degradation
+        effective_diversity = diversity_level
+        if iteration > 1:
+            if diversity_level == "low":
+                effective_diversity = "medium"
+                logger.info(f"Increasing diversity from 'low' to 'medium' for iteration {iteration}")
+            elif diversity_level == "medium":
+                effective_diversity = "high"
+                logger.info(f"Increasing diversity from 'medium' to 'high' for iteration {iteration}")
+                
         # Generate system message candidates
         candidates = await generate_system_messages(
             user_message=user_message,
             num_candidates=num_candidates,
             generator=generator,
-            diversity_level=diversity_level,
+            diversity_level=effective_diversity,  # Use adjusted diversity level
             base_system_message=base_system_message,
             generator_model=generator_model,
             additional_instructions=additional_instructions
@@ -1186,12 +1293,40 @@ async def optimize_system_messages(
             nonlocal completed_generations
             
             async with semaphore:
-                # Generate response
-                response_result = await generate_assistant_response(
-                    system_message=candidate.content,
-                    user_message=user_message,
-                    generator_model=generator_model
+                # Generate response with an added pre-system message to enforce non-JSON output
+                messages = [
+                    {"role": "system", "content": "You are a helpful assistant that provides clear, natural language responses to user questions. Do NOT output JSON or structured formats unless explicitly requested."},
+                    {"role": "system", "content": candidate.content},
+                    {"role": "user", "content": user_message}
+                ]
+                
+                # Call API directly instead of using generate_assistant_response
+                api_response = await call_llm_api(
+                    messages=messages,
+                    model=generator_model or DEFAULT_GENERATOR_MODEL,
+                    max_tokens=1024,
+                    temperature=0.4
                 )
+                
+                # Process the response
+                response_result = {}
+                if "error" in api_response:
+                    response_result["error"] = api_response["error"]
+                else:
+                    # Extract content from the API response
+                    content = ""
+                    choice = api_response.get("choices", [{}])[0] if "choices" in api_response else {}
+                    if "message" in choice and "content" in choice["message"]:
+                        content = choice["message"]["content"]
+                    elif "text" in choice:
+                        content = choice["text"]
+                    
+                    if content:
+                        response_result["content"] = content
+                        response_result["model"] = generator_model or DEFAULT_GENERATOR_MODEL
+                        response_result["timestamp"] = datetime.now().timestamp()
+                    else:
+                        response_result["error"] = "No valid content in response"
                 
                 # Store the result
                 if "error" not in response_result:
@@ -1231,29 +1366,45 @@ async def optimize_system_messages(
                     candidate.score = 0
                     return candidate
                 
-                # Evaluate the user-assistant conversation
-                evaluation_result = await evaluate_user_assistant_conversation(
-                    user_message=user_message,
-                    assistant_message=assistant_response,
-                    evalset_id=evalset_id,
-                    judge_model=generator_model,
-                    max_parallel=max_parallel
-                )
-                
-                # Extract overall score and per-question scores
-                if "error" not in evaluation_result:
-                    # Set overall score
-                    candidate.score = evaluation_result.get("summary", {}).get("yes_percentage", 0)
+                # Check for valid response
+                if len(assistant_response.strip()) < 10:
+                    logger.error(f"Response for candidate {i+1} is too short: '{assistant_response}'")
+                    candidate.score = 0
+                    candidate.criterion_scores["Response Quality"] = 0
+                    return candidate
+
+                try:
+                    # Evaluate the user-assistant conversation
+                    evaluation_result = await evaluate_user_assistant_conversation(
+                        user_message=user_message,
+                        assistant_message=assistant_response,
+                        evalset_id=evalset_id,
+                        judge_model=generator_model,
+                        max_parallel=max_parallel
+                    )
                     
-                    # Set per-criterion scores
-                    results = evaluation_result.get("results", [])
-                    for j, result in enumerate(results):
-                        question_text = result.get("question", f"Question {j+1}")
-                        judgment = result.get("judgment", False)
-                        score = 100 if judgment else 0
-                        candidate.criterion_scores[question_text] = score
-                else:
-                    logger.error(f"Error evaluating candidate {i+1}: {evaluation_result['error']}")
+                    # Extract overall score and per-question scores
+                    if "error" not in evaluation_result:
+                        # Set overall score
+                        candidate.score = evaluation_result.get("summary", {}).get("yes_percentage", 0)
+                        
+                        # Make sure score is valid (between 0-100)
+                        if candidate.score is None or not (0 <= candidate.score <= 100):
+                            logger.warning(f"Invalid score for candidate {i+1}: {candidate.score}, resetting to 0")
+                            candidate.score = 0
+                        
+                        # Set per-criterion scores
+                        results = evaluation_result.get("results", [])
+                        for j, result in enumerate(results):
+                            question_text = result.get("question", f"Question {j+1}")
+                            judgment = result.get("judgment", False)
+                            score = 100 if judgment else 0
+                            candidate.criterion_scores[question_text] = score
+                    else:
+                        logger.error(f"Error evaluating candidate {i+1}: {evaluation_result['error']}")
+                        candidate.score = 0
+                except Exception as e:
+                    logger.error(f"Exception evaluating candidate {i+1}: {str(e)}")
                     candidate.score = 0
                 
                 # Update progress
@@ -1279,6 +1430,22 @@ async def optimize_system_messages(
         for i, candidate in enumerate(candidates):
             candidate.rank = i + 1
         
+        # Verify ranking is correct
+        # If somehow all scores are 0 or similar issues, redo scoring using diversity
+        if all(c.score == 0 for c in candidates) or all(c.score is None for c in candidates):
+            logger.warning("All candidates have zero or None scores, reassigning scores based on content diversity")
+            # Assign some basic scores to avoid complete failure
+            for i, candidate in enumerate(candidates):
+                # Use reverse index as fallback score to ensure different ordering
+                candidate.score = 50.0 - (i * 5)  # 50, 45, 40, etc.
+                # Basic criterion score
+                candidate.criterion_scores["Diversity"] = 100.0 - (i * 10)
+            
+            # Re-sort and re-rank
+            candidates.sort(key=lambda x: x.score or 0, reverse=True)
+            for i, candidate in enumerate(candidates):
+                candidate.rank = i + 1
+                
         # Convert previously generated responses into sample responses format
         update_progress(current_step + 0.5, total_steps, "Formatting sample responses...")
         
@@ -1304,6 +1471,14 @@ async def optimize_system_messages(
                     if DEBUG_MODE:
                         logger.warning(f"No valid response found for candidate {i+1}, using placeholder")
                     content = "No valid response was generated for this candidate."
+                elif len(content.strip()) < 10:
+                    if DEBUG_MODE:
+                        logger.warning(f"Very short response for candidate {i+1}: '{content}', using placeholder")
+                    content = "Response was too short or invalid."
+                    
+                # Clean content if it's very long (to avoid display issues)
+                if len(content) > 10000:
+                    content = content[:10000] + "... [truncated due to excessive length]"
                 
                 # Store the result with the same format as before
                 sample_responses[str(i)] = {

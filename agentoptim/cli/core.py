@@ -189,21 +189,37 @@ class FancySpinner:
         
         self.start_time = time.time()
         self.last_update_time = self.start_time
+        last_message = None  # Track last displayed message to avoid flicker
+        last_percent = None  # Track last displayed percent 
         
         try:
             while self.running:
-                progress_bar = ""
-                if self.percent > 0:
-                    filled_len = int(20 * self.percent / 100)
-                    progress_bar = f"[{'=' * filled_len}{' ' * (20 - filled_len)}] {self.percent}% {self._eta_text()}"
+                # Only update the display if something changed or every 10 frames
+                current_time = time.time()
+                should_update = (
+                    self.message != last_message or
+                    self.percent != last_percent or
+                    self.current_frame % 10 == 0 or
+                    current_time - self.last_update_time < 2.0  # Always update during the first 2 seconds
+                )
                 
-                # Construct the spinner line
-                frame = self.frames[self.current_frame]
-                line = f"{Fore.CYAN}{frame}{Style.RESET_ALL} {self.message} {Fore.YELLOW}{progress_bar}{Style.RESET_ALL}"
-                
-                # Clear line and print spinner
-                sys.stdout.write("\r\033[K" + line)
-                sys.stdout.flush()
+                if should_update:
+                    progress_bar = ""
+                    if self.percent > 0:
+                        filled_len = int(20 * self.percent / 100)
+                        progress_bar = f"[{'=' * filled_len}{' ' * (20 - filled_len)}] {self.percent}% {self._eta_text()}"
+                    
+                    # Construct the spinner line
+                    frame = self.frames[self.current_frame]
+                    line = f"{Fore.CYAN}{frame}{Style.RESET_ALL} {self.message} {Fore.YELLOW}{progress_bar}{Style.RESET_ALL}"
+                    
+                    # Clear line and print spinner
+                    sys.stdout.write("\r\033[K" + line)
+                    sys.stdout.flush()
+                    
+                    # Update tracking variables
+                    last_message = self.message
+                    last_percent = self.percent
                 
                 # Update frame
                 self.current_frame = (self.current_frame + 1) % len(self.frames)
@@ -248,6 +264,22 @@ class FancySpinner:
 
 def format_box(title, content, style="single", border_color=Fore.CYAN, title_align="center", padding=1):
     """Create a nicely formatted box around the content with a title."""
+    # Detect if we're running under MCP by checking specific environment variables
+    is_mcp_environment = (
+        "MODEL_CONTEXT_PROTOCOL_STDIO" in os.environ or 
+        "MODEL_CONTEXT_PROTOCOL_VERSION" in os.environ or
+        os.environ.get("AGENTOPTIM_IN_MCP", "0") == "1"
+    )
+    
+    # For MCP mode, just return plain text without box formatting
+    if is_mcp_environment:
+        result = [title]
+        result.append("")
+        result.extend(content.strip().split("\n"))
+        return "\n".join(result)
+    
+    # For terminal mode, create a fancy box
+    
     # Get box style
     box = BOX_STYLES[style]
     
