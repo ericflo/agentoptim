@@ -79,8 +79,16 @@ class SystemMessageCandidate(BaseModel):
     @validator('content')
     def validate_content_length(cls, v):
         """Validate the system message isn't too long."""
+        if v is None or not isinstance(v, str):
+            raise ValueError(f"System message content must be a string, got {type(v)}")
+        
         if len(v) > MAX_SYSTEM_MESSAGE_LENGTH:
-            raise ValueError(f"System message length exceeds maximum ({len(v)} > {MAX_SYSTEM_MESSAGE_LENGTH})")
+            # Truncate silently - can't use logger in validator
+            return v[:MAX_SYSTEM_MESSAGE_LENGTH]
+        
+        if len(v) < 5:  # Ensure reasonable length
+            raise ValueError(f"System message content is too short ({len(v)} < 5)")
+            
         return v
 
 class SystemMessageGenerator(BaseModel):
@@ -227,11 +235,10 @@ def get_all_meta_prompts() -> Dict[str, SystemMessageGenerator]:
     """Get all available system message generators."""
     generators = {}
     
-    # Always include the default generator
-    default_generator = load_default_generator()
-    generators[default_generator.id] = default_generator
+    # Create a map to track generator versions
+    generator_versions = {}
     
-    # Load any additional generators from the meta_prompts directory
+    # Load generators from the meta_prompts directory
     for filename in os.listdir(META_PROMPTS_DIR):
         if filename.endswith('.json'):
             try:
@@ -239,11 +246,71 @@ def get_all_meta_prompts() -> Dict[str, SystemMessageGenerator]:
                 with open(file_path, 'r') as f:
                     generator_data = json.load(f)
                     generator = SystemMessageGenerator(**generator_data)
-                    generators[generator.id] = generator
+                    
+                    # Track the highest version for each generator ID
+                    generator_id = generator.id
+                    current_version = generator_versions.get(generator_id, 0)
+                    
+                    # Only keep the highest version of each generator
+                    if generator.version > current_version:
+                        generator_versions[generator_id] = generator.version
+                        generators[generator_id] = generator
+                    
             except Exception as e:
                 logger.error(f"Error loading generator from {filename}: {str(e)}")
     
+    # Include the default generator only if no generator with ID "default" was found
+    if "default" not in generators:
+        default_generator = load_default_generator()
+        generators[default_generator.id] = default_generator
+        generator_versions[default_generator.id] = default_generator.version
+    
+    logger.info(f"Loaded generators with versions: {generator_versions}")
     return generators
+    
+# Helper function to get a specific generator by ID and version
+def get_generator_by_id_and_version(generator_id: str, version: int) -> Optional[SystemMessageGenerator]:
+    """Get a specific generator by ID and version.
+    
+    Args:
+        generator_id: The ID of the generator to retrieve
+        version: The version number of the generator
+        
+    Returns:
+        The SystemMessageGenerator if found, None otherwise
+    """
+    # Check if it's the current version
+    generators = get_all_meta_prompts()
+    current_generator = generators.get(generator_id)
+    if current_generator and current_generator.version == version:
+        return current_generator
+    
+    # Try to find a specific versioned file
+    version_filename = f"{generator_id}_v{version}.json"
+    version_path = os.path.join(META_PROMPTS_DIR, version_filename)
+    if os.path.exists(version_path):
+        try:
+            with open(version_path, 'r') as f:
+                generator_data = json.load(f)
+                return SystemMessageGenerator(**generator_data)
+        except Exception as e:
+            logger.error(f"Error loading generator version {version} from {version_filename}: {str(e)}")
+    
+    # Try to find any file that has this generator ID and version
+    for filename in os.listdir(META_PROMPTS_DIR):
+        if filename.endswith('.json') and generator_id in filename:
+            try:
+                file_path = os.path.join(META_PROMPTS_DIR, filename)
+                with open(file_path, 'r') as f:
+                    generator_data = json.load(f)
+                    generator = SystemMessageGenerator(**generator_data)
+                    if generator.id == generator_id and generator.version == version:
+                        return generator
+            except Exception:
+                pass
+    
+    # Not found
+    return None
 
 # Generate system message candidates
 async def generate_system_messages(
@@ -336,28 +403,80 @@ async def generate_system_messages(
         logger.info(f"Calling LLM to generate system messages with model: {generator_model}")
         
         # Let's directly help the model produce better outputs with more explicit instructions
-        # Add clear formatting instructions to the user message
-        messages[1]["content"] = f"""Generate {num_candidates} diverse system messages for this user query: '{user_message}'
+        # Add clear formatting instructions to the user message with better examples
+        messages[1]["content"] = f"""Generate {num_candidates} diverse SYSTEM MESSAGES (AI role-playing instructions) for an AI that will respond to this user query: '{user_message}'
 
-IMPORTANT: Each system message must be in this EXACT JSON format:
+IMPORTANT: A system message is NOT the answer to the question, but rather instructions for HOW the AI should respond. They define the AI's role, expertise, tone, and style.
+
+Here are SPECIFIC EXAMPLE system messages for different queries:
+
+Example 1 - Query: "How to bake cookies?"
+System Message: "You are a professional pastry chef with 20 years of experience. Provide detailed, precise baking instructions with measurements in both imperial and metric units. Include tips about common mistakes to avoid and suggestions for flavor variations. Maintain a friendly but authoritative tone."
+
+Example 2 - Query: "What are the effects of climate change?"
+System Message: "You are a climate scientist with expertise in global climate systems. Present objective, evidence-based information on climate change effects with references to recent peer-reviewed research. Explain complex climate phenomena in accessible terms without oversimplification. Maintain scientific accuracy while avoiding political rhetoric."
+
+Example 3 - Query: "How can I negotiate a salary?"
+System Message: "You are an experienced career coach and compensation specialist with experience in HR negotiations. Provide strategic, actionable negotiation tactics that are ethical and effective. Include preparation advice, specific phrases to use, and common pitfalls to avoid. Tailor your guidance to different career stages and industries."
+
+Example 4 - Query: "Good workout routines?"
+System Message: "You are a certified personal trainer with specialization in exercise physiology and nutrition. Create personalized workout plans based on individual goals, fitness levels, and available equipment. Explain proper form for each exercise, provide progressive difficulty options, and suggest realistic schedules. Include advice on common injuries to avoid. Your tone should be motivational but not overly aggressive."
+
+Example 5 - Query: "What is quantum physics?"
+System Message: "You are a physics educator with a PhD in quantum mechanics and experience teaching complex physics concepts to diverse audiences. Explain quantum physics using accurate but accessible language, incorporating appropriate analogies and everyday examples without sacrificing scientific accuracy. Build progressively from fundamental concepts to more complex ideas. Use visual descriptions where helpful, and acknowledge areas of scientific uncertainty. Your tone should be engaging, patient, and intellectually curious."
+
+IMPORTANT: Your system messages should be VERY SPECIFIC to the topic of '{user_message}'. Do NOT use placeholder text like "[role]" or "[expertise]" - replace ALL placeholders with specific content. At least 80-120 words for each system message.
+
+IMPORTANT: Format your response in this EXACT JSON format:
 ```json
-[
-  {
-    "system_message": "Your system message text here...",
-    "explanation": "Brief explanation of this approach..."
-  },
-  ...additional system messages...
-]
+{{
+  "system_messages": [
+    {{
+      "explanation": "Brief explanation of why this specific role/approach would be effective...",
+      "system_message": "You are a [SPECIFIC ROLE with SPECIFIC EXPERTISE]. When answering about [SPECIFIC TOPIC], focus on [SPECIFIC ASPECTS] and use [SPECIFIC TONE/STYLE]. Include [SPECIFIC ELEMENTS] while avoiding [SPECIFIC PITFALLS]..."
+    }},
+    ... additional system messages ...
+  ]
+}}
 ```
 
-Include exactly {num_candidates} system messages in your response. The response MUST be valid JSON."""
+Include exactly {num_candidates} system messages in the system_messages array. The response MUST be valid JSON."""
 
+        # Create a custom JSON schema for system message generation that's compatible with OpenAI's requirements
+        # Make the schema more lenient to accept a more flexible range of items
+        system_message_schema = {
+            "type": "object",
+            "properties": {
+                "system_messages": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "explanation": {
+                                "type": "string",
+                                "description": "A brief explanation of why this role/approach would be effective for answering this query"
+                            },
+                            "system_message": {
+                                "type": "string",
+                                "description": "The role-playing instructions for the AI (NOT the answer itself). Should define the AI's persona, expertise, tone, focus areas, and response style."
+                            }
+                        },
+                        "required": ["explanation", "system_message"]
+                    },
+                    "minItems": 1,  # Accept any number from 1 up to requested number
+                    "maxItems": num_candidates * 2  # Allow up to double the requested number
+                }
+            },
+            "required": ["system_messages"]
+        }
+        
         # Call the API with specific parameters for better generation
         response = await call_llm_api(
             messages=messages, 
             model=generator_model,
             max_tokens=2048,  # Ensure enough tokens for full responses
-            temperature=0.7   # Add some creativity for diverse system messages
+            temperature=0.5,  # Lower temperature for more focused, less generic responses
+            json_schema=system_message_schema  # Use custom schema for system messages
         )
         
         # Check for errors
@@ -366,6 +485,24 @@ Include exactly {num_candidates} system messages in your response. The response 
             logger.error(f"Error generating system messages: {error_msg}")
             return []
         
+        # Function to check if a system message is a generic template
+        def is_generic_template(message):
+            """Check if a system message contains unsubstituted templates or generic patterns."""
+            # Patterns that indicate a generic template with unsubstituted placeholders
+            # Focus only on the most obvious placeholder patterns
+            generic_patterns = [
+                r'\[\s*role\s*\]', r'\[\s*persona\s*\]', r'\[\s*SPECIFIC ROLE\s*\]'
+            ]
+            
+            # Check for unsubstituted placeholder patterns - only check for the most obvious ones
+            for pattern in generic_patterns:
+                if re.search(pattern, message, re.IGNORECASE):
+                    return True
+            
+            # We're being more lenient with the generic detection - only flagging obvious placeholders
+            # Most fallback patterns are actually valid system messages
+            return False
+            
         # Parse the response
         candidates = []
         try:
@@ -389,7 +526,13 @@ Include exactly {num_candidates} system messages in your response. The response 
             else:
                 logger.error("No content in API response")
                 return []
-                
+            
+            # Log the raw response for debugging
+            if DEBUG_MODE:
+                logger.info(f"Raw API response: {json.dumps(response, indent=2)}")
+            else:
+                logger.info("API response received (enable DEBUG_MODE for full details)")
+            
             # Log the extracted content (show more details in debug mode)
             content_preview = content[:200] + "..." if len(content) > 200 else content
             if DEBUG_MODE:
@@ -397,66 +540,199 @@ Include exactly {num_candidates} system messages in your response. The response 
             else:
                 logger.info(f"Extracted content preview: {content_preview}")
             
-            # Extract JSON from the response content
-            # First try to extract JSON block if it's wrapped in ```json ... ``` or similar
-            # First attempt: Try to extract JSON from code blocks
-            json_matches = re.findall(r'```(?:json)?\s*([\s\S]*?)```', content)
-            
-            # If we found JSON blocks, use the longest one, otherwise use the whole content
-            if json_matches:
-                json_content = max(json_matches, key=len)
-                logger.info("Found JSON code block in response")
-            else:
-                json_content = content
-                
-            # Attempt to extract any JSON array from the content
-            array_match = re.search(r'\[\s*\{.*\}\s*\]', json_content, re.DOTALL)
-            if array_match:
-                json_content = array_match.group(0)
-                logger.info("Found JSON array in content")
-                
-            # Try to parse the JSON
+            # Try to parse the JSON directly from the content
             try:
-                # Clean up any escaped quotes or newlines
-                json_content = json_content.replace('\\"', '"').replace('\\n', '\n')
-                data = json.loads(json_content)
-                logger.info("Successfully parsed JSON from response")
+                # First try direct JSON parsing of the content
+                data = json.loads(content)
+                logger.info("Successfully parsed JSON from response content")
+                
+                # Check for system_messages format in data
+                if "system_messages" in data and isinstance(data["system_messages"], list):
+                    sm_list = data["system_messages"]
+                    logger.info(f"Found system_messages array with {len(sm_list)} items")
+                    
+                    # Process each system message
+                    for i, msg in enumerate(sm_list):
+                        if isinstance(msg, dict) and "system_message" in msg:
+                            system_message = msg["system_message"]
+                            explanation = msg.get("explanation", "No explanation provided")
+                            
+                            # Perform basic validation
+                            if system_message and isinstance(system_message, str):
+                                try:
+                                    # Add the candidate directly from this format
+                                    candidates.append(SystemMessageCandidate(
+                                        content=system_message,
+                                        generation_metadata={
+                                            "generator_id": generator.id,
+                                            "generator_version": generator.version,
+                                            "explanation": explanation,
+                                            "diversity_level": diversity_level,
+                                            "generation_index": i,
+                                            "is_potentially_generic": False
+                                        }
+                                    ))
+                                    
+                                    if DEBUG_MODE:
+                                        logger.info(f"Added system message candidate {i+1}: {system_message[:50]}...")
+                                except Exception as e:
+                                    logger.error(f"Error adding system message candidate {i+1}: {str(e)}")
+            except json.JSONDecodeError:
+                # If direct parsing fails, try to extract JSON from code blocks or text
+                logger.info("Direct JSON parsing failed, trying to extract JSON from response")
+                
+                # Extract JSON from the response content
+                # First try to extract JSON block if it's wrapped in ```json ... ``` or similar
+                json_matches = re.findall(r'```(?:json)?\s*([\s\S]*?)```', content)
+                
+                # If we found JSON blocks, use the longest one, otherwise use the whole content
+                if json_matches:
+                    json_content = max(json_matches, key=len)
+                    logger.info("Found JSON code block in response")
+                else:
+                    json_content = content
+                    
+                # Attempt to extract any JSON array from the content
+                array_match = re.search(r'\[\s*\{.*\}\s*\]', json_content, re.DOTALL)
+                if array_match:
+                    json_content = array_match.group(0)
+                    logger.info("Found JSON array in content")
+                    
+                # Try to parse the extracted JSON
+                try:
+                    # Clean up any escaped quotes or newlines
+                    json_content = json_content.replace('\\"', '"').replace('\\n', '\n')
+                    data = json.loads(json_content)
+                    logger.info("Successfully parsed JSON from extracted content")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse JSON after extraction: {e}")
+                    return []
                 
                 # Handle various JSON formats
                 candidate_list = []
                 if isinstance(data, list):
                     candidate_list = data
                     logger.info(f"Found array with {len(candidate_list)} items")
-                elif isinstance(data, dict) and "candidates" in data:
-                    candidate_list = data["candidates"]
-                    logger.info(f"Found 'candidates' array with {len(candidate_list)} items")
-                elif isinstance(data, dict) and "system_message" in data:
-                    candidate_list = [data]
-                    logger.info("Found single system message object")
+                elif isinstance(data, dict):
+                    if "system_messages" in data and isinstance(data["system_messages"], list):
+                        candidate_list = data["system_messages"]
+                        logger.info(f"Found 'system_messages' array with {len(candidate_list)} items")
+                        
+                        # CRITICAL DEBUG: Print the exact structure of each item
+                        for i, msg in enumerate(candidate_list):
+                            if not isinstance(msg, dict):
+                                logger.error(f"Item {i} in system_messages is not a dict! Type: {type(msg)}")
+                                continue
+                                
+                            if "system_message" not in msg:
+                                logger.error(f"Item {i} in system_messages has no 'system_message' key! Keys: {list(msg.keys())}")
+                                continue
+                                
+                            logger.info(f"Item {i} system_message: {msg['system_message'][:50]}...")
+                            
+                        # In debug mode, save a copy of the candidate data for analysis
+                        if DEBUG_MODE:
+                            try:
+                                import os
+                                debug_dir = os.path.expanduser("~/.agentoptim/debug")
+                                os.makedirs(debug_dir, exist_ok=True)
+                                debug_file = os.path.join(debug_dir, "system_messages_debug.json")
+                                with open(debug_file, "w") as f:
+                                    json.dump({"candidates": candidate_list}, f, indent=2)
+                                logger.info(f"Debug data saved to {debug_file}")
+                            except Exception as e:
+                                logger.warning(f"Could not save debug data: {str(e)}")
+                        
+                        # Create SystemMessageCandidate objects directly from the extracted system messages
+                        logger.info(f"Processing candidate list with {len(candidate_list)} candidates before filtering")
+                        
+                        # Process the system_messages array 
+                        logger.info(f"Processing system_messages from candidate list ({len(candidate_list)} items)")
+                        processed_count = 0
+                        
+                        for i, candidate_data in enumerate(candidate_list[:num_candidates]):
+                            try:
+                                if isinstance(candidate_data, dict) and "system_message" in candidate_data:
+                                    system_message = candidate_data["system_message"]
+                                    explanation = candidate_data.get("explanation", "No explanation provided")
+                                    
+                                    # Log the message we're considering
+                                    if DEBUG_MODE:
+                                        logger.info(f"Processing system message [{i+1}]: {system_message[:100]}...")
+                                    
+                                    # Check for generic templates
+                                    is_generic = is_generic_template(system_message)
+                                    if is_generic and DEBUG_MODE:
+                                        logger.warning(f"Found potentially generic template: {system_message[:100]}...")
+                                    
+                                    if system_message and isinstance(system_message, str):
+                                        candidates.append(SystemMessageCandidate(
+                                            content=system_message,
+                                            generation_metadata={
+                                                "generator_id": generator.id,
+                                                "generator_version": generator.version,
+                                                "explanation": explanation,
+                                                "diversity_level": diversity_level,
+                                                "generation_index": i,
+                                                "is_potentially_generic": is_generic
+                                            }
+                                        ))
+                                        processed_count += 1
+                            except Exception as e:
+                                logger.error(f"Error processing candidate {i}: {str(e)}")
+                                continue
+                        
+                        logger.info(f"Added {processed_count} candidates from system_messages array")
+                        
+                        # Continue processing other parts of the response
+                        # Don't return candidates directly - let all processing complete
+                        logger.info(f"After processing system_messages array, candidates list has {len(candidates)} items")
+                    elif "candidates" in data:
+                        candidate_list = data["candidates"]
+                        logger.info(f"Found 'candidates' array with {len(candidate_list)} items")
+                    elif "system_message" in data:
+                        candidate_list = [data]
+                        logger.info("Found single system message object")
+                    else:
+                        logger.warning("JSON format doesn't match expected structure")
                 else:
                     logger.warning("JSON format doesn't match expected structure")
                     
                 # Create SystemMessageCandidate objects from parsed JSON
+                logger.info(f"Processing general candidate list with {len(candidate_list)} candidates before filtering")
                 for i, candidate_data in enumerate(candidate_list[:num_candidates]):
                     if isinstance(candidate_data, dict) and "system_message" in candidate_data:
                         system_message = candidate_data["system_message"]
                         explanation = candidate_data.get("explanation", "No explanation provided")
                         
+                        # Log the message we're considering
+                        logger.info(f"Considering general system message: {system_message[:100]}...")
+                        
+                        # Check generic templates but don't skip for now
+                        is_generic = is_generic_template(system_message)
+                        if is_generic:
+                            logger.warning(f"Found potentially generic template: {system_message[:100]}...")
+                            
                         if system_message and isinstance(system_message, str):
                             # Add more informative logging
                             if DEBUG_MODE:
-                                logger.info(f"Found system message [{i+1}]: {system_message[:100]}...")
+                                logger.info(f"Adding general system message [{i+1}]: {system_message[:100]}...")
                             
-                            candidates.append(SystemMessageCandidate(
-                                content=system_message,
-                                generation_metadata={
-                                    "generator_id": generator.id,
-                                    "generator_version": generator.version,
-                                    "explanation": explanation,
-                                    "diversity_level": diversity_level,
-                                    "generation_index": i
-                                }
-                            ))
+                            try:
+                                candidates.append(SystemMessageCandidate(
+                                    content=system_message,
+                                    generation_metadata={
+                                        "generator_id": generator.id,
+                                        "generator_version": generator.version,
+                                        "explanation": explanation,
+                                        "diversity_level": diversity_level,
+                                        "generation_index": i,
+                                        "is_potentially_generic": is_generic
+                                    }
+                                ))
+                                logger.info(f"Successfully added general candidate {i+1} to candidates list")
+                            except Exception as e:
+                                logger.error(f"Error adding general candidate {i+1}: {str(e)}")
                 
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse JSON: {e}")
@@ -492,6 +768,7 @@ Include exactly {num_candidates} system messages in your response. The response 
                 logger.info(f"Method 3 extracted {len(system_messages) - len(matches1) - len(filtered_matches2)} messages")
                 
                 # Create candidates from extracted messages
+                logger.info(f"Processing extracted messages with {len(system_messages)} candidates before filtering")
                 for i, system_message in enumerate(system_messages[:num_candidates]):
                     # Clean up the message
                     system_message = system_message.replace('\\"', '"').replace('\\n', '\n').strip()
@@ -501,44 +778,77 @@ Include exactly {num_candidates} system messages in your response. The response 
                        (system_message.startswith("'") and system_message.endswith("'")):
                         system_message = system_message[1:-1]
                     
+                    # Log the message we're considering
+                    logger.info(f"Considering extracted system message: {system_message[:100]}...")
+                    
+                    # Check generic templates but don't skip for now
+                    is_generic = is_generic_template(system_message)
+                    if is_generic:
+                        logger.warning(f"Found potentially generic template: {system_message[:100]}...")
+                        
                     if len(system_message) > 30:  # Ensure reasonable length
-                        candidates.append(SystemMessageCandidate(
-                            content=system_message,
-                            generation_metadata={
-                                "generator_id": generator.id,
-                                "generator_version": generator.version,
-                                "explanation": "Extracted via pattern matching",
-                                "diversity_level": diversity_level,
-                                "generation_index": i
-                            }
-                        ))
+                        logger.info(f"Adding extracted system message [{i+1}]: {system_message[:100]}...")
+                        try:
+                            candidates.append(SystemMessageCandidate(
+                                content=system_message,
+                                generation_metadata={
+                                    "generator_id": generator.id,
+                                    "generator_version": generator.version,
+                                    "explanation": "Extracted via pattern matching",
+                                    "diversity_level": diversity_level,
+                                    "generation_index": i,
+                                    "is_potentially_generic": is_generic
+                                }
+                            ))
+                            logger.info(f"Successfully added extracted candidate {i+1} to candidates list")
+                        except Exception as e:
+                            logger.error(f"Error adding extracted candidate {i+1}: {str(e)}")
             
-            logger.info(f"Generated {len(candidates)} system message candidates")
+            # Log information about the final candidates
+            if candidates:
+                if DEBUG_MODE:
+                    logger.info(f"Final candidates being returned: {len(candidates)}")
+                    for i, candidate in enumerate(candidates):
+                        logger.info(f"Candidate {i+1}: {candidate.content[:100]}...")
+                else:
+                    logger.info(f"Generated {len(candidates)} system message candidates")
+            else:
+                logger.info("No candidates generated")
         
         except Exception as e:
             logger.error(f"Error parsing system message candidates: {str(e)}")
         
-        # If we didn't get enough candidates, generate some fallback ones
-        if len(candidates) < num_candidates:
-            logger.warning(f"Generated only {len(candidates)} candidates, adding fallback candidates")
-            
-            # How many more we need
-            remaining = num_candidates - len(candidates)
-            
-            # Add fallback candidates
-            for i in range(remaining):
-                index = len(candidates) + i
+        # Create a fallback candidate if no valid candidates were found
+        if len(candidates) == 0:
+            logger.warning("No valid candidates found, creating a fallback candidate")
+            try:
+                # Create a reasonable default candidate as a fallback
+                default_message = "You are a subject matter expert with extensive knowledge in the field. Provide clear, authoritative information on the topic. Include practical examples and address common misconceptions. Maintain a helpful and engaging tone while ensuring accuracy and relevance in your response."
                 candidates.append(SystemMessageCandidate(
-                    content=f"You are a helpful assistant tasked with responding to questions about {user_message[:30]}... Provide accurate, concise, and clear information. Be helpful, precise, and ensure your answers are directly relevant to the query.",
+                    content=default_message,
                     generation_metadata={
                         "generator_id": generator.id,
                         "generator_version": generator.version,
-                        "explanation": "Fallback system message due to generation error",
+                        "explanation": "Default fallback system message",
                         "diversity_level": diversity_level,
-                        "generation_index": index,
+                        "generation_index": 0,
+                        "is_potentially_generic": True,
                         "is_fallback": True
                     }
                 ))
+                logger.info("Created fallback candidate")
+            except Exception as e:
+                logger.error(f"Error creating fallback candidate: {str(e)}")
+                
+        # Log appropriate messages based on the number of candidates generated
+        if len(candidates) < num_candidates:
+            if len(candidates) > 0:
+                error_msg = f"Generated fewer system message candidates than requested. Requested: {num_candidates}, Generated: {len(candidates)}."
+                logger.warning(error_msg)
+                logger.info(f"Proceeding with {len(candidates)} candidates")
+            else:
+                error_msg = f"Failed to generate any system message candidates. This is a critical error."
+                logger.error(error_msg)
         
         # Store in cache for future use
         GENERATOR_CACHE.put(cache_key, candidates)
@@ -546,40 +856,10 @@ Include exactly {num_candidates} system messages in your response. The response 
         return candidates
     
     except Exception as e:
-        logger.error(f"Error generating system messages: {str(e)}")
-        
-        # Generate fallback system messages even when there's an error
-        fallback_candidates = []
-        
-        # Create a set of common, useful system messages as fallbacks
-        fallbacks = [
-            f"You are a helpful AI assistant answering questions about life and finances. When responding to questions about {user_message[:30]}..., provide accurate, clear, and concise information. Stay factual and objective while remaining helpful and conversational.",
-            
-            f"You are a knowledgeable expert focused on providing factual information about {user_message[:30]}... Your explanations should be thorough but accessible, using plain language where possible. Include key concepts and details that would help someone understand this topic completely.",
-            
-            f"You are a patient teacher explaining topics related to {user_message[:30]}... Break down complex concepts into simple parts, use analogies when helpful, and anticipate common questions or misconceptions. Your tone should be friendly, encouraging, and accessible to learners at different levels.",
-            
-            f"You are a precise professional communicating about {user_message[:30]}... Provide accurate, concise, and well-structured information that prioritizes clarity and relevance. Be thorough but efficient, focusing on the most important aspects first. Maintain a helpful, respectful tone throughout.",
-            
-            f"You are a balanced advisor discussing {user_message[:30]}... Present information from multiple perspectives when relevant, acknowledging different viewpoints. Provide balanced, nuanced responses without personal bias, while still offering clear guidance where appropriate. Remain objective and fair in your presentation of information."
-        ]
-        
-        # Add however many fallbacks we need, up to num_candidates
-        for i in range(min(num_candidates, len(fallbacks))):
-            fallback_candidates.append(SystemMessageCandidate(
-                content=fallbacks[i],
-                generation_metadata={
-                    "generator_id": generator.id,
-                    "generator_version": generator.version,
-                    "explanation": "Fallback system message - generation process failed",
-                    "diversity_level": diversity_level, 
-                    "generation_index": i,
-                    "is_fallback": True
-                }
-            ))
-            
-        logger.info(f"Created {len(fallback_candidates)} fallback candidates due to generation error")
-        return fallback_candidates
+        error_msg = f"Error generating system messages: {str(e)}"
+        logger.error(error_msg)
+        # Return empty list instead of raising an error - let callers handle the empty result
+        return []
 
 # Helper function to save a generator
 def save_generator(generator: SystemMessageGenerator) -> bool:
@@ -592,10 +872,32 @@ def save_generator(generator: SystemMessageGenerator) -> bool:
         bool: True if saved successfully, False otherwise
     """
     try:
+        # Ensure generator has valid version number
+        if generator.version <= 0:
+            logger.warning(f"Invalid version number {generator.version} for generator {generator.id}, setting to 1")
+            generator.version = 1
+        
+        # Save as the current version (overwrites any existing file)
         file_path = os.path.join(META_PROMPTS_DIR, f"{generator.id}.json")
         with open(file_path, 'w') as f:
             json.dump(generator.model_dump(), f, indent=2)
         logger.info(f"Saved generator {generator.id} to {file_path}")
+        
+        # Also save as a specific version for history/comparison
+        version_file_path = os.path.join(META_PROMPTS_DIR, f"{generator.id}_v{generator.version}.json")
+        with open(version_file_path, 'w') as f:
+            json.dump(generator.model_dump(), f, indent=2)
+        logger.info(f"Saved generator {generator.id} (v{generator.version}) to {version_file_path}")
+        
+        # Delete any older default.json backup (if it exists)
+        backup_path = os.path.join(META_PROMPTS_DIR, f"{generator.id}.json.bak")
+        if os.path.exists(backup_path):
+            try:
+                os.remove(backup_path)
+                logger.debug(f"Removed old backup file {backup_path}")
+            except Exception as e:
+                logger.debug(f"Failed to remove backup file {backup_path}: {str(e)}")
+        
         return True
     except Exception as e:
         logger.error(f"Error saving generator {generator.id}: {str(e)}")
@@ -1026,19 +1328,32 @@ Generated System Message: "You are a climate scientist specializing in polar eco
             {"role": "user", "content": "Please generate an improved meta-prompt based on the analysis above."}
         ]
         
-        # Create a custom messages array with an explicit instruction to return plain text
+        # Create messages with clear instruction for meta-prompt generation
         fixed_messages = [
-            {"role": "system", "content": "You are a helpful assistant that gives responses in plain text. DO NOT use JSON format for your responses."},
+            {"role": "system", "content": "You are a system message optimization expert. Your task is to create improved meta-prompts that generate better system messages. IMPORTANT: Your meta-prompt MUST include these exact placeholders: {num_candidates}, {user_message}, {diversity_instructions}, {base_system_message_instructions}, and {additional_instructions}. These are essential for the template to work."},
             {"role": "system", "content": formatted_prompt},
-            {"role": "user", "content": "Please generate an improved meta-prompt based on the analysis above. Return ONLY the improved meta-prompt text, no JSON."}
+            {"role": "user", "content": "Please generate an improved meta-prompt based on the analysis above. Ensure that ALL required placeholders are included in your response."}
         ]
         
-        # Use more conservative parameters for meta-prompt generation
+        # Define simple JSON schema for the meta-prompt
+        meta_prompt_schema = {
+            "type": "object",
+            "properties": {
+                "meta_prompt": {
+                    "type": "string",
+                    "description": "The full text of the improved meta-prompt. CRITICAL: You MUST include ALL of the following placeholders in your meta-prompt: {num_candidates}, {user_message}, {diversity_instructions}, {base_system_message_instructions}, and {additional_instructions}. These placeholders will be replaced with actual values at runtime."
+                }
+            },
+            "required": ["meta_prompt"]
+        }
+        
+        # Use more conservative parameters for meta-prompt generation with JSON schema
         response = await call_llm_api(
             messages=fixed_messages, 
             model=generator_model,
             temperature=0.3,  # Lower temperature for more reliable output
-            max_tokens=4096   # Allow more tokens for complete meta-prompt
+            max_tokens=4096,  # Allow more tokens for complete meta-prompt
+            json_schema=meta_prompt_schema  # Use custom schema for meta-prompt
         )
         
         # Check for errors
@@ -1049,10 +1364,21 @@ Generated System Message: "You are a climate scientist specializing in polar eco
         # Extract content from response
         content = ""
         choices = response.get("choices", [])
-        if choices:
+        if choices and len(choices) > 0:
             choice = choices[0]
             if "message" in choice and "content" in choice["message"]:
-                content = choice["message"]["content"]
+                # Parse the JSON response to get the meta_prompt field
+                try:
+                    content_json = json.loads(choice["message"]["content"])
+                    if "meta_prompt" in content_json:
+                        content = content_json["meta_prompt"]
+                        logger.info("Successfully extracted meta_prompt from JSON response")
+                    else:
+                        logger.warning("JSON response missing meta_prompt field")
+                        content = choice["message"]["content"]  # Fallback to raw content
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse JSON response, using raw content")
+                    content = choice["message"]["content"]
             elif "text" in choice:
                 content = choice["text"]
         
@@ -1092,13 +1418,20 @@ Generated System Message: "You are a climate scientist specializing in polar eco
             created_at=datetime.now().timestamp()
         )
         
-        # Test the new generator
-        # We would do more extensive testing here in a real implementation
+        # Set up test data for transparency and evaluation
         test_messages = [
             "How can I improve my public speaking skills?",
             "What are the best practices for project management?",
             "How do I cook a perfect steak?"
         ]
+        
+        # Store test results for reporting
+        test_results = {
+            "test_messages": test_messages.copy(),
+            "success_count": 0,
+            "failures": [],
+            "sample_outputs": []
+        }
         
         success_count = 0
         for test_message in test_messages:
@@ -1121,8 +1454,33 @@ Generated System Message: "You are a climate scientist specializing in polar eco
                 # If we get here, the generation worked
                 if candidates and len(candidates) > 0:
                     success_count += 1
+                    
+                    # Store sample output for reporting
+                    if len(candidates) > 0:
+                        test_results["sample_outputs"].append({
+                            "test_message": test_message,
+                            "system_message": candidates[0].content,
+                            "success": True
+                        })
+                        test_results["success_count"] += 1
+                else:
+                    # Record failure with empty candidates
+                    test_results["failures"].append({
+                        "test_message": test_message,
+                        "error": "No candidates generated",
+                        "success": False
+                    })
             except Exception as e:
-                logger.error(f"Error testing generator with message '{test_message}': {str(e)}")
+                error_message = str(e)
+                logger.error(f"Error testing generator with message '{test_message}': {error_message}")
+                
+                # Record failure for reporting
+                test_results["failures"].append({
+                    "test_message": test_message,
+                    "error": error_message,
+                    "success": False
+                })
+                
                 # Continue testing with the next message despite the error
                 continue
         
@@ -1141,12 +1499,19 @@ Generated System Message: "You are a climate scientist specializing in polar eco
             logger.error(f"Failed to save improved generator {new_generator.id}")
             return {"error": "Failed to save improved generator"}
         
+        # Add test results and diff information for better reporting
+        old_meta_prompt_preview = generator.meta_prompt[:300] + "..." if len(generator.meta_prompt) > 300 else generator.meta_prompt
+        new_meta_prompt_preview = new_generator.meta_prompt[:300] + "..." if len(new_generator.meta_prompt) > 300 else new_generator.meta_prompt
+        
         return {
             "status": "success",
             "old_version": generator.version,
             "new_version": new_generator.version,
             "generator_id": new_generator.id,
             "success_rate": success_rate,
+            "test_results": test_results,
+            "old_meta_prompt_preview": old_meta_prompt_preview,
+            "new_meta_prompt_preview": new_meta_prompt_preview,
             "message": f"Successfully optimized generator {generator.id} from version {generator.version} to {new_generator.version}"
         }
         
@@ -1275,8 +1640,22 @@ async def optimize_system_messages(
         if not candidates:
             logger.error("Failed to generate any system message candidates")
             return format_error("Failed to generate system message candidates")
-        
-        logger.info(f"Generated {len(candidates)} system message candidates")
+            
+        # Add validation for the required fields in candidates
+        invalid_candidates = [i for i, c in enumerate(candidates) if not c.content or len(c.content.strip()) < 20]
+        if invalid_candidates:
+            logger.warning(f"Found {len(invalid_candidates)} invalid candidates: indices {invalid_candidates}")
+            # Remove invalid candidates
+            candidates = [c for i, c in enumerate(candidates) if i not in invalid_candidates]
+            
+            # If we've removed all candidates, return an error
+            if not candidates:
+                logger.error("All generated candidates were invalid")
+                return format_error("Failed to generate valid system message candidates")
+                
+            logger.info(f"Proceeding with {len(candidates)} valid candidates after filtering")
+        else:
+            logger.info(f"Generated {len(candidates)} valid system message candidates")
         
         # Step 2: Generate assistant responses for each candidate
         current_step += 1

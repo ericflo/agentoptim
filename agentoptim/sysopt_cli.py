@@ -1462,6 +1462,15 @@ async def handle_optimize_meta(args):
             
         generator = generators[args.generator]
         
+        # Check if the evalset exists
+        from agentoptim.evalset import get_evalset
+        evalset = get_evalset(args.evalset_id)
+        if not evalset:
+            spinner.stop()
+            print(f"{Fore.RED}Error: EvalSet '{args.evalset_id}' not found. Please provide a valid evalset ID.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Hint: Use 'agentoptim evalset list' to see available evalsets.{Style.RESET_ALL}")
+            return 1
+            
         # Run self-optimization
         result = await self_optimize_generator(
             generator=generator,
@@ -1479,15 +1488,177 @@ async def handle_optimize_meta(args):
             print(f"{Fore.RED}Error: {result['error']}{Style.RESET_ALL}")
             return 1
             
-        # Display result
+        # Display result with detailed information
         if args.format == "json":
             print(json.dumps(result, indent=2))
         else:
-            print(f"{Fore.GREEN}✅ Self-optimization successful!{Style.RESET_ALL}")
-            print(f"Generator: {result.get('generator_id')}")
+            print(f"\n{Fore.GREEN}✅ Meta-prompt Self-optimization{Style.RESET_ALL}")
+            print(f"\n{Fore.CYAN}== OPTIMIZATION SUMMARY =={Style.RESET_ALL}")
+            print(f"Generator ID: {result.get('generator_id')}")
             print(f"Version: {result.get('old_version')} → {result.get('new_version')}")
             print(f"Success rate: {result.get('success_rate', 0):.2f}")
-            print(f"{Fore.YELLOW}The generator has been improved and will generate better system messages.{Style.RESET_ALL}")
+            
+            # Get the actual generators to show before/after
+            try:
+                from agentoptim.sysopt.core import get_generator_by_id_and_version
+                
+                old_generator = get_generator_by_id_and_version(
+                    result.get('generator_id'), 
+                    result.get('old_version')
+                )
+                
+                new_generator = get_generator_by_id_and_version(
+                    result.get('generator_id'), 
+                    result.get('new_version')
+                )
+                
+                if old_generator and new_generator:
+                    # Show metrics comparison
+                    print(f"\n{Fore.CYAN}== PERFORMANCE METRICS =={Style.RESET_ALL}")
+                    for metric, value in new_generator.performance_metrics.items():
+                        old_value = old_generator.performance_metrics.get(metric, "N/A")
+                        if isinstance(old_value, (int, float)) and isinstance(value, (int, float)):
+                            change = value - old_value
+                            change_str = f"{change:+.2f}" if isinstance(change, float) else f"{change:+d}"
+                            print(f"{metric}: {old_value} → {value} ({change_str})")
+                        else:
+                            print(f"{metric}: {old_value} → {value}")
+                    
+                    # Show prompt differences in a useful format
+                    print(f"\n{Fore.CYAN}== META-PROMPT COMPARISON =={Style.RESET_ALL}")
+                    
+                    # Use previews from result if available, otherwise calculate them
+                    old_preview = result.get('old_meta_prompt_preview')
+                    new_preview = result.get('new_meta_prompt_preview')
+                    
+                    if not old_preview:
+                        old_preview = old_generator.meta_prompt[:300] + "..." if len(old_generator.meta_prompt) > 300 else old_generator.meta_prompt
+                    
+                    if not new_preview:
+                        new_preview = new_generator.meta_prompt[:300] + "..." if len(new_generator.meta_prompt) > 300 else new_generator.meta_prompt
+                    
+                    # Import rich for fancy table display
+                    try:
+                        from rich.console import Console
+                        from rich.table import Table
+                        from rich.syntax import Syntax
+                        from rich.panel import Panel
+                        from rich.text import Text
+                        import difflib
+                        
+                        # Create a table showing side-by-side comparison
+                        console = Console()
+                        
+                        # Generate a unified diff to identify changes
+                        old_lines = old_generator.meta_prompt.splitlines()
+                        new_lines = new_generator.meta_prompt.splitlines()
+                        
+                        # Generate diff for detailed comparison
+                        diff = list(difflib.unified_diff(
+                            old_lines,
+                            new_lines,
+                            lineterm='',
+                            n=0  # Context lines
+                        ))
+                        
+                        # Extract changes
+                        additions = []
+                        deletions = []
+                        for line in diff:
+                            if line.startswith('+') and not line.startswith('+++'):
+                                additions.append(line[1:])
+                            elif line.startswith('-') and not line.startswith('---'):
+                                deletions.append(line[1:])
+                        
+                        # Create summary of changes
+                        if additions or deletions:
+                            print(f"\n{Fore.CYAN}== KEY CHANGES =={Style.RESET_ALL}")
+                            if deletions:
+                                print(f"\n{Fore.RED}Removed:{Style.RESET_ALL}")
+                                for line in deletions:
+                                    print(f"  - {line}")
+                            if additions:
+                                print(f"\n{Fore.GREEN}Added:{Style.RESET_ALL}")
+                                for line in additions:
+                                    print(f"  + {line}")
+
+                        # Full meta-prompts
+                        print(f"\n{Fore.YELLOW}Previous meta-prompt (v{old_generator.version}):{Style.RESET_ALL}")
+                        print(f"{old_generator.meta_prompt}")
+                        
+                        print(f"\n{Fore.GREEN}New meta-prompt (v{new_generator.version}):{Style.RESET_ALL}")
+                        print(f"{new_generator.meta_prompt}")
+                        
+                    except ImportError:
+                        # Fallback to simpler output if rich is not available
+                        print(f"\n{Fore.YELLOW}Previous meta-prompt (v{old_generator.version}):{Style.RESET_ALL}")
+                        print(f"{old_generator.meta_prompt}")
+                        
+                        print(f"\n{Fore.GREEN}New meta-prompt (v{new_generator.version}):{Style.RESET_ALL}")
+                        print(f"{new_generator.meta_prompt}")
+                    
+                    # Show test results if available
+                    if "test_results" in result:
+                        test_results = result["test_results"]
+                        print(f"\n{Fore.CYAN}== TEST RESULTS =={Style.RESET_ALL}")
+                        print(f"Test queries: {len(test_results.get('test_messages', []))}")
+                        print(f"Successful generations: {test_results.get('success_count', 0)}")
+                        print(f"Failed generations: {len(test_results.get('failures', []))}")
+                        
+                        # Show sample outputs
+                        if test_results.get('sample_outputs'):
+                            print(f"\n{Fore.CYAN}== SAMPLE SYSTEM MESSAGES =={Style.RESET_ALL}")
+                            for i, sample in enumerate(test_results.get('sample_outputs', [])):
+                                test_message = sample.get('test_message', '')
+                                system_message = sample.get('system_message', '')
+                                
+                                # Format the system message with indentation for readability
+                                formatted_message = "\n    ".join(system_message.split("\n"))
+                                
+                                print(f"\n{Fore.YELLOW}Test Query {i+1}:{Style.RESET_ALL} \"{test_message}\"")
+                                print(f"{Fore.GREEN}Complete System Message:{Style.RESET_ALL}")
+                                print(f"    {formatted_message}")
+                        
+                        # Show failures
+                        if test_results.get('failures'):
+                            print(f"\n{Fore.RED}== GENERATION FAILURES =={Style.RESET_ALL}")
+                            for i, failure in enumerate(test_results.get('failures', [])):
+                                print(f"\n{Fore.YELLOW}Failed Query {i+1}:{Style.RESET_ALL} \"{failure.get('test_message')}\"")
+                                print(f"{Fore.RED}Error Details:{Style.RESET_ALL} {failure.get('error')}")
+                    
+                    # Get the full length for context
+                    # Calculate various meta-prompt stats
+                    old_len = len(old_generator.meta_prompt)
+                    new_len = len(new_generator.meta_prompt)
+                    len_change = new_len - old_len
+                    len_change_str = f"{len_change:+d}"
+                    
+                    # Calculate word counts for more meaningful length comparisons
+                    old_word_count = len(old_generator.meta_prompt.split())
+                    new_word_count = len(new_generator.meta_prompt.split())
+                    word_diff = new_word_count - old_word_count
+                    
+                    # Calculate line counts
+                    old_line_count = len(old_generator.meta_prompt.splitlines())
+                    new_line_count = len(new_generator.meta_prompt.splitlines())
+                    line_diff = new_line_count - old_line_count
+                    
+                    print(f"\n{Fore.CYAN}== META-PROMPT STATISTICS =={Style.RESET_ALL}")
+                    print(f"Characters: {old_len} → {new_len} ({len_change_str})")
+                    print(f"Words: {old_word_count} → {new_word_count} ({word_diff:+d})")
+                    print(f"Lines: {old_line_count} → {new_line_count} ({line_diff:+d})")
+                    
+                    # Add a way to see the full meta-prompts
+                    print(f"\n{Fore.CYAN}== DETAILED VIEW =={Style.RESET_ALL}")
+                    print(f"To view the full old meta-prompt: {Fore.YELLOW}cat ~/.agentoptim/sysopt/meta_prompts/{result.get('generator_id')}_v{result.get('old_version')}.json{Style.RESET_ALL}")
+                    print(f"To view the full new meta-prompt: {Fore.YELLOW}cat ~/.agentoptim/sysopt/meta_prompts/{result.get('generator_id')}_v{result.get('new_version')}.json{Style.RESET_ALL}")
+                
+            except Exception as e:
+                logger.error(f"Error retrieving generators for comparison: {str(e)}")
+                # Show basic information even if detailed comparison fails
+                pass
+                
+            print(f"\n{Fore.GREEN}The generator has been improved and will generate better system messages.{Style.RESET_ALL}")
             
         return 0
         
